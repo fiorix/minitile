@@ -37,7 +37,8 @@ public struct Engine: Sendable {
             do { output.reply = try command(argv, output: &output) }
             catch { state = previous; output = Output(reply: Reply(ok: false, text: String(describing: error))) }
         case .configLoaded(let config): self.config = config
-        case .displaysChanged, .dragEnded: break
+        case .dragEnded(let id, let frame, let cursor): dragEnded(id, frame: frame, cursor: cursor, output: &output)
+        case .displaysChanged: break
         }
         cleanup()
         resetLayouts()

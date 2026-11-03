@@ -95,6 +95,8 @@ public enum Input: Sendable {
 public enum Action: Sendable, Equatable {
     case focus(WindowID)
     case close(WindowID)
+    /// Explicit floating-window resize; ordinary floating frames remain absent from the scene.
+    case setFrame(WindowID, Rect)
     case reloadConfig
     case quit
 }
