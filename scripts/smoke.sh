@@ -3,14 +3,32 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 interactive=0
 build=1
-for argument in "$@"; do
-    case "$argument" in
+recovery_directory=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
         --interactive) interactive=1 ;;
         --no-build) build=0 ;;
-        --help|-h) echo 'Usage: smoke.sh [--interactive] [--no-build]'; exit 0 ;;
-        *) echo "Unknown argument: $argument" >&2; exit 2 ;;
+        --cleanup)
+            if [ "$#" -lt 2 ] || [ -z "$2" ]; then echo '--cleanup requires a test directory.' >&2; exit 2; fi
+            recovery_directory=$2
+            shift
+            ;;
+        --help|-h) echo 'Usage: smoke.sh [--interactive | --cleanup TEST_DIRECTORY] [--no-build]'; exit 0 ;;
+        *) echo "Unknown argument: $1" >&2; exit 2 ;;
     esac
+    shift
 done
+if [ -n "$recovery_directory" ]; then
+    if [ "$interactive" = 1 ]; then echo '--cleanup cannot be combined with --interactive.' >&2; exit 2; fi
+    task_tmp=$(cd "${TMPDIR:-/tmp}" && pwd -P)
+    recovery_directory=$(cd "$recovery_directory" && pwd -P)
+    if [ "$(dirname "$recovery_directory")" != "$task_tmp" ] ||
+        [[ $(basename "$recovery_directory") != minitile-smoke.* ]] ||
+        [ ! -f "$recovery_directory/minitile.toml" ] || [ ! -f "$recovery_directory/state.json" ]; then
+        echo '--cleanup accepts only a saved minitile-smoke directory directly inside TMPDIR.' >&2
+        exit 2
+    fi
+fi
 if [ "$interactive" = 1 ] && [ ! -t 0 ]; then
     echo "Interactive checks require a Terminal." >&2
     exit 2
@@ -30,7 +48,11 @@ else
     codesign --verify --strict build/Minitile.app
 fi
 
-testdir=$(mktemp -d "${TMPDIR:-/tmp/}minitile-smoke.XXXXXX")
+if [ -n "$recovery_directory" ]; then
+    testdir=$recovery_directory
+else
+    testdir=$(mktemp -d "${TMPDIR:-/tmp/}minitile-smoke.XXXXXX")
+fi
 prefix=$(basename "$testdir")
 report="$PWD/build/smoke-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$report"
@@ -39,6 +61,17 @@ export MINITILE_STATE="$testdir/state.json"
 export MINITILE_SOCKET="$testdir/socket"
 export MINITILE_SMOKE_DIRECTORY="$testdir"
 export MINITILE_SMOKE_WINDOWS=""
+if [ -n "$recovery_directory" ]; then
+    # SavedState encodes UInt32 dictionary keys as alternating IDs and values.
+    # Keep the original IDs if startup cannot rediscover every saved window.
+    if [ ! -f "$testdir/cleanup-original-state.json" ]; then
+        cp "$MINITILE_STATE" "$testdir/cleanup-original-state.json"
+    fi
+    MINITILE_SMOKE_WINDOWS=$(jq -r --arg prefix "$prefix" '
+        [.windows[] | select(type == "object") | .info |
+         select(.bundleID == "com.apple.TextEdit" and (.title | contains($prefix))) |
+         "\(.id):\(.pid)"] | join(",")' "$testdir/cleanup-original-state.json")
+fi
 front_pid=$(build/smoke-support front)
 textedit_was_running=0
 if pgrep -x TextEdit >/dev/null; then textedit_was_running=1; fi
@@ -46,6 +79,7 @@ app_pid=""
 textedit_pid=""
 cleaning=0
 documents_opened=0
+if [ -n "$recovery_directory" ]; then documents_opened=1; fi
 watch_pid=""
 mntl="$PWD/build/mntl"
 
@@ -56,7 +90,7 @@ cleanup() {
     trap - EXIT HUP INT TERM
     set +e
     if [ -n "$watch_pid" ]; then kill "$watch_pid" 2>/dev/null; wait "$watch_pid" 2>/dev/null; fi
-    local remaining=0 ids=""
+    local remaining=$documents_opened ids=""
     if "$mntl" --json state > "$report/cleanup-state.json" 2>/dev/null; then
         ids=$(jq -r --arg prefix "$prefix" '.windows[] | select(.bundle_id == "com.apple.TextEdit" and (.title | contains($prefix))) | .id' "$report/cleanup-state.json")
         for id in $ids; do
@@ -65,6 +99,19 @@ cleanup() {
         done
         for ((attempt=0; attempt<40; attempt++)); do
             remaining=$("$mntl" --json state 2>/dev/null | jq '.windows | length')
+            if [ "$remaining" = 0 ] && [ -n "$recovery_directory" ]; then
+                if "$mntl" --json debug windows > "$report/cleanup-windows.json"; then
+                    remaining=$(jq --arg pairs "$MINITILE_SMOKE_WINDOWS" --arg prefix "$prefix" '
+                        ($pairs | split(",")) as $known |
+                        [.[] | . as $window |
+                         select(.bundleID == "com.apple.TextEdit" and
+                           ((.title | contains($prefix)) or
+                            ($known | index("\($window.id):\($window.pid)") != null)))] | length
+                        ' "$report/cleanup-windows.json")
+                else
+                    remaining=1
+                fi
+            fi
             if [ "$remaining" = 0 ]; then break; fi
             sleep 0.1
         done
@@ -173,9 +220,13 @@ grid() {
     jq -S '{displays: [.displays[] | {id, workspace, workspaces: [.workspaces[] | {home, page, pages: [.pages[] | {id, variant, r1, r2, windows}]}]}], windows: [.windows[] | {id, hidden, floating}]}'
 }
 
-write_config
+if [ -z "$recovery_directory" ]; then write_config; fi
 launch
 "$mntl" --json config info | jq -e '.only_apps == ["com.apple.TextEdit"]' >/dev/null
+if [ -n "$recovery_directory" ]; then
+    echo 'Recovered the saved test session; closing its documents through normal cleanup.'
+    exit 0
+fi
 "$mntl" --json debug spaces > "$report/initial-spaces.json"
 jq -e 'length > 0 and all(.[]; .info.unmanagedReason == null)' "$report/initial-spaces.json" >/dev/null
 for ((index=1; index<=5; index++)); do
@@ -204,7 +255,8 @@ Ready for real keys, starting with four TextEdit windows on workspace 1, page 1:
   Ctrl+Up: four windows again, without Mission Control or App Expose opening.
 
 Return to this Terminal with Cmd+Tab, describe what happened, then press Return.
-The test documents will close and minitile will stop. Ctrl+C also cleans up.
+Keep minitile running until this prompt finishes so it can close the test documents.
+Then minitile will stop. Ctrl+C also runs cleanup.
 INSTRUCTIONS
     read -r -p 'Observed result: ' observation
     jq -n --arg observation "$observation" '{observation: $observation}' > "$report/manual-observation.json"

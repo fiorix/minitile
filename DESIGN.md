@@ -2,7 +2,7 @@
 
 minitile is a tiling window manager for macOS. It runs with SIP enabled and aims for a small core that blends with macOS: a handful of keys that reuse the native desktop shortcuts, mouse gestures where macOS users already use the mouse, and every function scriptable from the `mntl` command line tool. HyprMac (github.com/zacharytgray/HyprMac) is a source of macOS behaviour to respect, not a feature list to copy.
 
-Status: core, IPC and mntl are implemented and verified with 84 core tests and 17 IPC tests. The macOS shell builds with 12 helper tests and has passed the single-display TextEdit command smoke test, including native placement, config-error retention and restart persistence. Signing and Accessibility work when launched from Terminal. Physical keys, gestures, activation pre-emption and multiple displays still need live validation.
+Status: core, IPC and mntl are implemented and verified with 84 core tests and 17 IPC tests. The macOS shell builds with 12 helper tests and has passed the single-display TextEdit command smoke test, including native placement, config-error retention and restart persistence. Signing and Accessibility work when launched from Terminal. Physical Ctrl+arrow navigation is verified, including suppression of Mission Control and App Expose. Modified-arrow moves, gestures, activation pre-emption and multiple displays still need live validation.
 
 ## Model
 
@@ -123,7 +123,7 @@ Everything else (floating, layout variant, spatial focus, exact ratios) is a com
 
 Notes:
 
-- Validated: a session-level event tap sees Ctrl+Left before the Dock acts on it, and swallowing it kept the desktop from switching. The keypress was synthesized at the HID level, the path hardware events take. Ctrl+Up/Down are system shortcuts 32 and 33 with the same Ctrl+fn modifiers as Ctrl+Left/Right (79 and 81), but swallowing them was not tested.
+- Validated with physical keys in the app: Ctrl+Right/Left changed pages and Ctrl+Down/Up changed workspaces. The user confirmed the expected window counts without Mission Control or App Expose opening; the watch log recorded the corresponding page/workspace transitions. The earlier session-tap probe also swallowed a HID-synthesized Ctrl+Left before the Dock switched desktops. Ctrl+Up/Down are system shortcuts 32 and 33 with the same Ctrl+fn modifiers as Ctrl+Left/Right (79 and 81).
 - Arrow keys carry the fn and keypad flags, so binding matches ignore them.
 - Mission Control stays reachable through its own key and trackpad gesture. It shows the stash desktop with every hidden page's windows, which makes it an escape hatch rather than a view of the grid.
 - The event tap also swallows Desktop N shortcuts that would lead into the stash.
@@ -296,7 +296,7 @@ Known risks:
 - Untested:
   - multiple displays (see Open);
   - trackpad swipes;
-  - Mission Control, App Expose, Dock and notification clicks;
+  - Mission Control and App Expose through their dedicated keys or gestures, Dock and notification clicks;
   - Stage Manager and fullscreen Spaces;
   - Reduce Motion on;
   - "When switching to an application, switch to a Space with open windows" turned off;
@@ -511,7 +511,7 @@ The shell remains in Swift 6 mode. AX observer callbacks run on the main run loo
 
 The automatic smoke run passed with five TextEdit documents on one 2056x1329-point display, whose visible frame was 2056x1290 at y=39. It exercised page navigation, nudge, workspace carry and empty-workspace creation, hide/show, floating toggle, swap, close and invalid-config retention. Native desktop membership and tiled frames were checked after state assertions, with a 20-point tolerance. The final four-window snapshot matched all 16 frame components exactly. Restart preserved five window assignments across two workspaces and three pages, including the alternate layout and ratios 0.4/0.7; the normalized grid snapshots were identical. Both stashed windows yielded AX handles on the first discovery pass. Cleanup removed the temporary directory, and the current desktop remained 1 with the same visible/stash pair, 1/1176. The timing report was an idle reconciliation and does not measure page-flip latency.
 
-`scripts/smoke.sh --interactive` prepares five test documents and pauses for real keyboard input, recording the user's observation, watch events and before/after state before cleanup. It starts on a four-window page; Ctrl+Right/Left should show the one-window page and return, and Ctrl+Down/Up should create an empty workspace and return. `--no-build` reuses an already signed bundle when no application code has changed. Physical-key interception, Mission Control/App Expose suppression, drag behavior, native activation pre-emption, trackpad bounce and multiple-display behavior remain unverified by the automatic command test.
+`scripts/smoke.sh --interactive` prepares five test documents and pauses for real keyboard input, recording the user's observation, watch events and before/after state before cleanup. It starts on a four-window page; Ctrl+Right/Left should show the one-window page and return, and Ctrl+Down/Up should create an empty workspace and return. The user confirmed that physical-key sequence, including Mission Control/App Expose suppression, and the watch log captured 17 page/workspace changes across repeated navigation. Unified logs show a menu action followed by normal application termination before the final response, matching Quit Minitile; the resulting missing socket prevented final capture and cleanup. The prompt now makes clear that minitile must remain running until cleanup finishes. `--cleanup TEST_DIRECTORY` reopens a preserved test session to close its documents, retaining files if known windows remain or the manager is unavailable. It accepts only saved smoke directories directly inside TMPDIR and restricts stash recovery to saved window ID/pid pairs. `--no-build` reuses an already signed bundle when no application code has changed. Modified-arrow moves, drag behavior, native activation pre-emption, trackpad bounce and multiple-display behavior remain unverified live.
 - Running minitile over every app rearranges the user's desktops, so the first such run needs the user's go-ahead.
 - `dev/spikes/` holds the throwaway programs that validated the primitives, with their logs. They are reference code for SkyLight, focus, activation pre-emption and the event tap, not a base to build on. Upstream sources: yabai `src/misc/macho_dlsym.h` and `src/space_manager.c`.
 
