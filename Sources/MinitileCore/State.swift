@@ -54,6 +54,7 @@ public struct SavedState: Codable, Sendable, Equatable {
     public var displays: [DisplayState] = []
     public var windows: [WindowID: WindowState] = [:]
     public var focus: WindowID?
+    public var activeDisplay: DisplayID?
     public var serial: UInt64 = 0
     public init() {}
 }
