@@ -1,0 +1,139 @@
+session: display=37D8832A-2D66-02CA-B9F7-8F30A301B230 visible=1176 stash=1 order=[1,1176] front=Chan(68653) focused_wid=15341 cursor=(219,63) visible_frame=(0,39 2056x1290) TextEdit_running_before=0
+
+## 5. user navigates into the stash with ctrl+fn+arrow
+[   423.1ms          ] open: P0 wid=15891 pid=72507 on visible frame=(239,106 646x416)
+
+### notify
+[  1039.9ms +    0.3] [mon] start react=bounce-early app=0 stash_probes=12 visible_probes=2 cur=1176 front=Chan(68653)
+[  1049.6ms +    0.0] posted left a space (hotkey 79)
+[  1068.8ms +   19.2] [poll] stash shown 0 -> 1 (cur=1176 stash_probe_onscreen=1 stashed_subject_onscreen=0)
+[  2051.6ms + 1001.9] [poll] current space 1176 -> 1
+[  2055.0ms + 1005.4] [poll] front process Chan(68653) -> Google Chrome(4553)
+[  2055.6ms + 1006.0] [poll] all visible-desktop probes offscreen 0 -> 1
+[  2055.8ms + 1006.1] [ws] didActivateApplication Google Chrome(4553)
+[  2055.8ms + 1006.2] [ws] activeSpaceDidChange current=1 (stash)
+[  2055.9ms + 1006.3] [react] BOUNCE (ws: activeSpaceDidChange + current==stash): moved 0 window(s) to visible (0.0ms), instant switch (0.1ms)
+[  2057.6ms + 1008.0] [poll] front process Google Chrome(4553) -> Chan(68653)
+[  2061.7ms + 1012.0] [poll] all visible-desktop probes offscreen 1 -> 0
+[  2061.8ms + 1012.2] [ws] didActivateApplication Chan(68653)
+[  2069.6ms + 1020.0] [ws] activeSpaceDidChange current=1176 (visible)
+[  2070.8ms + 1021.2] [poll] current space 1 -> 1176
+[  2071.6ms + 1021.9] [poll] stash shown 1 -> 0 (cur=1176 stash_probe_onscreen=0 stashed_subject_onscreen=0)
+[  3549.7ms + 2500.1] [mon] stop
+[  3549.8ms          ] result: bounced=1 (ws: activeSpaceDidChange + current==stash) final current=1176 stash shown total 1002.7ms
+[  3962.2ms +    0.3] [mon] start react=none app=-1 stash_probes=12 visible_probes=2 cur=1176 front=Chan(68653)
+[  5464.4ms + 1500.2] [mon] stop
+[  5464.4ms          ] dock probe (hotkey 81 toward visible): dock was in sync
+
+### notify
+[  6077.7ms +    0.4] [mon] start react=bounce-early app=0 stash_probes=12 visible_probes=2 cur=1176 front=Chan(68653)
+[  6078.4ms +    0.0] posted left a space (hotkey 79)
+[  6093.4ms +   15.0] [poll] stash shown 0 -> 1 (cur=1176 stash_probe_onscreen=1 stashed_subject_onscreen=0)
+[  7079.6ms + 1001.2] [poll] all visible-desktop probes offscreen 0 -> 1
+[  7083.0ms + 1004.6] [ws] didActivateApplication Google Chrome(4553)
+[  7083.1ms + 1004.8] [ws] activeSpaceDidChange current=1 (stash)
+[  7083.3ms + 1004.9] [react] BOUNCE (ws: activeSpaceDidChange + current==stash): moved 0 window(s) to visible (0.0ms), instant switch (0.1ms)
+[  7084.5ms + 1006.1] [poll] current space 1176 -> 1
+[  7098.1ms + 1019.7] [poll] all visible-desktop probes offscreen 1 -> 0
+[  7098.2ms + 1019.9] [ws] didActivateApplication Chan(68653)
+[  7098.3ms + 1020.0] [ws] activeSpaceDidChange current=1176 (visible)
+[  7099.5ms + 1021.2] [poll] current space 1 -> 1176
+[  7100.2ms + 1021.9] [poll] stash shown 1 -> 0 (cur=1176 stash_probe_onscreen=0 stashed_subject_onscreen=0)
+[  8580.7ms + 2502.3] [mon] stop
+[  8580.9ms          ] result: bounced=1 (ws: activeSpaceDidChange + current==stash) final current=1176 stash shown total 1006.9ms
+[  8991.2ms +    0.2] [mon] start react=none app=-1 stash_probes=12 visible_probes=2 cur=1176 front=Chan(68653)
+[ 10491.7ms + 1500.3] [mon] stop
+[ 10491.8ms          ] dock probe (hotkey 81 toward visible): dock was in sync
+
+### notify+150
+[ 11099.5ms +    0.1] [mon] start react=bounce-early app=0 stash_probes=12 visible_probes=2 cur=1176 front=Chan(68653)
+[ 11099.8ms +    0.0] posted left a space (hotkey 79)
+[ 11107.6ms +    7.8] [poll] stash shown 0 -> 1 (cur=1176 stash_probe_onscreen=1 stashed_subject_onscreen=0)
+[ 12099.3ms +  999.5] [poll] all visible-desktop probes offscreen 0 -> 1
+[ 12101.4ms + 1001.6] [ws] didActivateApplication Google Chrome(4553)
+[ 12101.5ms + 1001.7] [ws] activeSpaceDidChange current=1 (stash)
+[ 12101.6ms + 1001.8] [react] bounce scheduled in 150ms (ws: activeSpaceDidChange + current==stash)
+[ 12102.8ms + 1003.0] [poll] current space 1176 -> 1
+[ 12103.1ms + 1003.3] [poll] front process Chan(68653) -> Google Chrome(4553)
+[ 12253.3ms + 1153.5] [react] BOUNCE (ws: activeSpaceDidChange + current==stash, +150ms delay): moved 0 window(s) to visible (0.0ms), instant switch (0.3ms)
+[ 12278.2ms + 1178.4] [poll] all visible-desktop probes offscreen 1 -> 0
+[ 12280.1ms + 1180.3] [ws] didActivateApplication Chan(68653)
+[ 12280.2ms + 1180.4] [ws] activeSpaceDidChange current=1176 (visible)
+[ 12281.4ms + 1181.6] [poll] current space 1 -> 1176
+[ 12281.6ms + 1181.8] [poll] front process Google Chrome(4553) -> Chan(68653)
+[ 12282.2ms + 1182.4] [poll] stash shown 1 -> 0 (cur=1176 stash_probe_onscreen=0 stashed_subject_onscreen=0)
+[ 13601.8ms + 2502.0] [mon] stop
+[ 13601.9ms          ] result: bounced=1 (ws: activeSpaceDidChange + current==stash, +150ms delay) final current=1176 stash shown total 1174.6ms
+[ 14012.1ms +    0.3] [mon] start react=none app=-1 stash_probes=12 visible_probes=2 cur=1176 front=Chan(68653)
+[ 15514.7ms + 1501.1] [mon] stop
+[ 15514.8ms          ] dock probe (hotkey 81 toward visible): dock was in sync
+
+### notify+150
+[ 16125.7ms +    0.3] [mon] start react=bounce-early app=0 stash_probes=12 visible_probes=2 cur=1176 front=Chan(68653)
+[ 16126.2ms +    0.0] posted left a space (hotkey 79)
+[ 16133.7ms +    7.5] [poll] stash shown 0 -> 1 (cur=1176 stash_probe_onscreen=1 stashed_subject_onscreen=0)
+[ 17126.7ms + 1000.5] [poll] all visible-desktop probes offscreen 0 -> 1
+[ 17128.4ms + 1002.2] [ws] didActivateApplication Google Chrome(4553)
+[ 17128.6ms + 1002.4] [ws] activeSpaceDidChange current=1 (stash)
+[ 17128.6ms + 1002.4] [react] bounce scheduled in 150ms (ws: activeSpaceDidChange + current==stash)
+[ 17129.9ms + 1003.7] [poll] current space 1176 -> 1
+[ 17130.8ms + 1004.6] [poll] front process Chan(68653) -> Google Chrome(4553)
+[ 17281.0ms + 1154.8] [react] BOUNCE (ws: activeSpaceDidChange + current==stash, +150ms delay): moved 0 window(s) to visible (0.0ms), instant switch (0.2ms)
+[ 17301.3ms + 1175.1] [poll] all visible-desktop probes offscreen 1 -> 0
+[ 17301.7ms + 1175.5] [ws] didActivateApplication Chan(68653)
+[ 17301.8ms + 1175.6] [ws] activeSpaceDidChange current=1176 (visible)
+[ 17303.0ms + 1176.8] [poll] current space 1 -> 1176
+[ 17304.5ms + 1178.3] [poll] front process Google Chrome(4553) -> Chan(68653)
+[ 17305.2ms + 1179.0] [poll] stash shown 1 -> 0 (cur=1176 stash_probe_onscreen=0 stashed_subject_onscreen=0)
+[ 18627.5ms + 2501.3] [mon] stop
+[ 18627.5ms          ] result: bounced=1 (ws: activeSpaceDidChange + current==stash, +150ms delay) final current=1176 stash shown total 1171.4ms
+[ 19040.2ms +    0.2] [mon] start react=none app=-1 stash_probes=12 visible_probes=2 cur=1176 front=Chan(68653)
+[ 20541.4ms + 1501.1] [mon] stop
+[ 20541.5ms          ] dock probe (hotkey 81 toward visible): dock was in sync
+
+### notify+400
+[ 21157.5ms +    0.2] [mon] start react=bounce-early app=0 stash_probes=12 visible_probes=2 cur=1176 front=Chan(68653)
+[ 21158.0ms +    0.0] posted left a space (hotkey 79)
+[ 21167.9ms +    9.8] [poll] stash shown 0 -> 1 (cur=1176 stash_probe_onscreen=1 stashed_subject_onscreen=0)
+[ 22160.4ms + 1002.4] [poll] all visible-desktop probes offscreen 0 -> 1
+[ 22160.8ms + 1002.7] [ws] didActivateApplication Google Chrome(4553)
+[ 22160.9ms + 1002.9] [ws] activeSpaceDidChange current=1 (stash)
+[ 22160.9ms + 1002.9] [react] bounce scheduled in 400ms (ws: activeSpaceDidChange + current==stash)
+[ 22161.9ms + 1003.9] [poll] current space 1176 -> 1
+[ 22162.2ms + 1004.2] [poll] front process Chan(68653) -> Google Chrome(4553)
+[ 22561.5ms + 1403.4] [react] BOUNCE (ws: activeSpaceDidChange + current==stash, +400ms delay): moved 0 window(s) to visible (0.0ms), instant switch (0.3ms)
+[ 22585.8ms + 1427.8] [poll] all visible-desktop probes offscreen 1 -> 0
+[ 22587.3ms + 1429.3] [ws] didActivateApplication Chan(68653)
+[ 22587.4ms + 1429.3] [ws] activeSpaceDidChange current=1176 (visible)
+[ 22588.6ms + 1430.5] [poll] current space 1 -> 1176
+[ 22588.8ms + 1430.7] [poll] front process Google Chrome(4553) -> Chan(68653)
+[ 22589.3ms + 1431.3] [poll] stash shown 1 -> 0 (cur=1176 stash_probe_onscreen=0 stashed_subject_onscreen=0)
+[ 23660.0ms + 2502.0] [mon] stop
+[ 23660.1ms          ] result: bounced=1 (ws: activeSpaceDidChange + current==stash, +400ms delay) final current=1176 stash shown total 1421.4ms
+[ 24078.9ms +    0.2] [mon] start react=none app=-1 stash_probes=12 visible_probes=2 cur=1176 front=Chan(68653)
+[ 25579.9ms + 1500.8] [mon] stop
+[ 25580.0ms          ] dock probe (hotkey 81 toward visible): dock was in sync
+
+### tap
+[ 26181.0ms          ] active session event tap installed: swallows ctrl+arrow toward the stash
+[ 26189.7ms +    0.1] [mon] start react=bounce-late app=0 stash_probes=12 visible_probes=2 cur=1176 front=Chan(68653)
+[ 26189.9ms +    0.0] posted left a space (hotkey 79)
+[ 26190.8ms +    0.9] [tap] swallowed keyDown keycode 123 flags 0x20840000
+[ 26190.9ms +    0.9] [tap] swallowed keyUp keycode 123 flags 0x20840000
+[ 28691.7ms + 2501.8] [mon] stop
+[ 28692.2ms          ] result: bounced=0 () final current=1176 stash shown total 0.0ms
+
+| run | stash shown first | cur==stash | ws spaceChange | bounce start | bounce done | stash hidden again | stash visible total ms | final | Dock desynced after | tap swallowed |
+|---|---|---|---|---|---|---|---|---|---|---|
+| notify | 19.2 | 1002.0 | 1006.2 | 1006.2 | 1006.3 | 1021.9 | 1002.7 | visible | no | 0 |
+| notify | 15.1 | 1006.1 | 1004.8 | 1004.8 | 1004.9 | 1022.0 | 1006.9 | visible | no | 0 |
+| notify+150 | 7.8 | 1003.0 | 1001.8 | 1153.1 | 1153.5 | 1182.4 | 1174.6 | visible | no | 0 |
+| notify+150 | 7.6 | 1003.7 | 1002.4 | 1154.6 | 1154.8 | 1179.0 | 1171.4 | visible | no | 0 |
+| notify+400 | 9.9 | 1003.9 | 1002.9 | 1403.2 | 1403.4 | 1431.3 | 1421.4 | visible | no | 0 |
+| tap | - | - | - | - | - | - | 0.0 | visible | - | 2 |
+(ms after the key event; early = bounce when stash windows first go on screen, late = current==stash, notify = activeSpaceDidChange, +N = delay)
+[ 28692.5ms          ] cleanup (end)
+[ 28692.8ms          ] close: P0 on stash; moving to visible first
+[ 29091.1ms          ] close: P0 wid=15891 press err=0 gone=1
+[ 29398.8ms          ] cleanup: TextEdit was not running before and has no windows; terminate=1
+[ 30923.9ms          ] cleanup done: current=1176 (visible 1176) front=Chan(68653) cursor=(219,63) saved=(219,63) test windows left=0 space order 1,1176 (start 1,1176)

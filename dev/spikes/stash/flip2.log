@@ -1,0 +1,92 @@
+session: display=37D8832A-2D66-02CA-B9F7-8F30A301B230 visible=1176 stash=1 order=[1,1176] front=Chan(68653) focused_wid=15341 cursor=(219,63) visible_frame=(0,39 2056x1290) TextEdit_running_before=0
+
+## 6. page flip timing
+[   469.9ms          ] open: A2_0 wid=16203 pid=72871 on visible frame=(240,107 644x414)
+[   470.8ms          ] open: A2_1 wid=16204 pid=72871 on visible frame=(269,135 644x416)
+[   583.1ms          ] open: B2_0 wid=16206 pid=72871 on visible frame=(297,164 646x416)
+[   587.0ms          ] open: B2_1 wid=16207 pid=72871 on visible frame=(326,193 646x416)
+[   588.3ms          ] [ax] AXWindowCreated pid=72871(TextEdit) registered_wid=0 element_wid=16206
+[   588.6ms          ] [ax] AXFocusedWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16207
+[   597.1ms          ] [ax] AXMainWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16207
+[   597.5ms          ] [ax] AXWindowCreated pid=72871(TextEdit) registered_wid=0 element_wid=16207
+[   928.0ms          ] [ws] didActivateApplication TextEdit(72871)
+[   929.5ms          ] [ax] AXFocusedWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16203
+[   962.0ms          ] [ax] AXMainWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16203
+[   963.6ms          ] [ax] AXFocusedWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16203
+[   963.8ms          ] [ax] AXMainWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16203
+[   964.0ms          ] [ax] AXApplicationActivated pid=72871(TextEdit) registered_wid=0 element_wid=0
+[  1628.3ms          ] flip 2+2 hide-first: call1=0.2ms call2=0.3ms ax_layout_done=25.3ms settled=43.4ms ax_err=0 desk_switched=0 front=TextEdit
+[  2040.3ms          ] [ax] AXFocusedWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16206
+[  2040.4ms          ] [ax] AXMainWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16206
+[  2703.8ms          ] flip 2+2 show-first: call1=0.2ms call2=0.3ms ax_layout_done=4.5ms settled=5.6ms ax_err=0 desk_switched=0 front=TextEdit
+[  3124.5ms          ] [ax] AXFocusedWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16203
+[  3125.0ms          ] [ax] AXMainWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16203
+[  3796.3ms          ] flip 2+2 pre-layout while stashed, then hide-first: call1=2.0ms call2=2.1ms ax_layout_done=1.9ms settled=17.1ms ax_err=0 desk_switched=0 front=TextEdit
+[  4198.4ms          ] close: A2_0 on stash; moving to visible first
+[  4339.0ms          ] [ax] AXFocusedWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16206
+[  4339.8ms          ] [ax] AXMainWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16206
+[  4628.6ms          ] close: A2_0 wid=16203 press err=0 gone=1
+[  4765.9ms          ] [ax] AXFocusedWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16207
+[  4766.7ms          ] [ax] AXMainWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16207
+[  5045.0ms          ] close: B2_0 wid=16206 press err=0 gone=1
+[  5045.9ms          ] close: A2_1 on stash; moving to visible first
+[  5440.9ms          ] close: A2_1 wid=16204 press err=0 gone=1
+[  5844.0ms          ] close: B2_1 wid=16207 press err=0 gone=1
+[  6062.3ms          ] open: A4_0 wid=16219 pid=72871 on visible frame=(240,107 644x414)
+[  6064.5ms          ] open: A4_1 wid=16220 pid=72871 on visible frame=(269,136 644x414)
+[  6065.8ms          ] open: A4_2 wid=16221 pid=72871 on visible frame=(298,165 644x414)
+[  6070.0ms          ] open: A4_3 wid=16222 pid=72871 on visible frame=(327,193 644x416)
+[  6249.4ms          ] open: B4_0 wid=16225 pid=72871 on visible frame=(356,223 644x414)
+[  6254.3ms          ] open: B4_1 wid=16226 pid=72871 on visible frame=(385,252 644x414)
+[  6255.8ms          ] open: B4_2 wid=16227 pid=72871 on visible frame=(414,281 644x414)
+[  6257.1ms          ] open: B4_3 wid=16228 pid=72871 on visible frame=(443,310 644x414)
+[  6258.2ms          ] [ax] AXWindowCreated pid=72871(TextEdit) registered_wid=0 element_wid=16219
+[  6258.5ms          ] [ax] AXWindowCreated pid=72871(TextEdit) registered_wid=0 element_wid=16220
+[  6258.8ms          ] [ax] AXWindowCreated pid=72871(TextEdit) registered_wid=0 element_wid=16221
+[  6273.7ms          ] [ax] AXFocusedWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16222
+[  6273.9ms          ] [ax] AXMainWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16222
+[  6280.8ms          ] [ax] AXWindowCreated pid=72871(TextEdit) registered_wid=0 element_wid=16222
+[  6281.0ms          ] [ax] AXWindowCreated pid=72871(TextEdit) registered_wid=0 element_wid=16225
+[  6281.1ms          ] [ax] AXWindowCreated pid=72871(TextEdit) registered_wid=0 element_wid=16226
+[  6281.3ms          ] [ax] AXWindowCreated pid=72871(TextEdit) registered_wid=0 element_wid=16227
+[  6281.4ms          ] [ax] AXFocusedWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16228
+[  6281.5ms          ] [ax] AXMainWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16228
+[  6281.6ms          ] [ax] AXWindowCreated pid=72871(TextEdit) registered_wid=0 element_wid=16228
+[  6595.3ms          ] [ax] AXFocusedWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16219
+[  6595.7ms          ] [ax] AXMainWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16219
+[  7307.0ms          ] flip 4+4 hide-first: call1=0.2ms call2=0.2ms ax_layout_done=40.4ms settled=57.6ms ax_err=0 desk_switched=0 front=TextEdit
+[  7733.8ms          ] [ax] AXFocusedWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16225
+[  7734.3ms          ] [ax] AXMainWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16225
+[  8413.4ms          ] flip 4+4 show-first: call1=0.2ms call2=0.2ms ax_layout_done=21.6ms settled=25.6ms ax_err=0 desk_switched=0 front=TextEdit
+[  8832.0ms          ] [ax] AXFocusedWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16219
+[  8832.6ms          ] [ax] AXMainWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16219
+[  9514.3ms          ] flip 4+4 pre-layout while stashed, then hide-first: call1=8.5ms call2=8.6ms ax_layout_done=8.4ms settled=27.6ms ax_err=0 desk_switched=0 front=TextEdit
+[  9919.8ms          ] close: A4_0 on stash; moving to visible first
+[  9955.7ms          ] [ax] AXFocusedWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16225
+[  9956.7ms          ] [ax] AXMainWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16225
+[ 10244.0ms          ] close: A4_0 wid=16219 press err=0 gone=1
+[ 10375.6ms          ] [ax] AXFocusedWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16228
+[ 10377.5ms          ] [ax] AXMainWindowChanged pid=72871(TextEdit) registered_wid=0 element_wid=16228
+[ 10669.6ms          ] close: B4_0 wid=16225 press err=0 gone=1
+[ 10671.0ms          ] close: A4_1 on stash; moving to visible first
+[ 11077.7ms          ] close: A4_1 wid=16220 press err=0 gone=1
+[ 11470.6ms          ] close: B4_1 wid=16226 press err=0 gone=1
+[ 11471.7ms          ] close: A4_2 on stash; moving to visible first
+[ 11887.0ms          ] close: A4_2 wid=16221 press err=0 gone=1
+[ 12272.6ms          ] close: B4_2 wid=16227 press err=0 gone=1
+[ 12273.7ms          ] close: A4_3 on stash; moving to visible first
+[ 12587.2ms          ] close: A4_3 wid=16222 press err=0 gone=1
+[ 12994.3ms          ] close: B4_3 wid=16228 press err=0 gone=1
+
+| flip | call 1 ms | call 2 ms | AX layout done ms | settled ms (B onscreen at target, A offscreen on stash) | AX err | desktop switched | front after |
+|---|---|---|---|---|---|---|---|
+| 2+2 hide-first | 0.2 | 0.3 | 25.3 | 43.4 | 0 | no | TextEdit |
+| 2+2 show-first | 0.2 | 0.3 | 4.5 | 5.6 | 0 | no | TextEdit |
+| 2+2 pre-layout while stashed, then hide-first | 2.0 | 2.1 | 1.9 | 17.1 | 0 | no | TextEdit |
+| 4+4 hide-first | 0.2 | 0.2 | 40.4 | 57.6 | 0 | no | TextEdit |
+| 4+4 show-first | 0.2 | 0.2 | 21.6 | 25.6 | 0 | no | TextEdit |
+| 4+4 pre-layout while stashed, then hide-first | 8.5 | 8.6 | 8.4 | 27.6 | 0 | no | TextEdit |
+[ 12994.8ms          ] cleanup (end)
+[ 13304.0ms          ] cleanup: TextEdit was not running before and has no windows; terminate=1
+[ 13316.9ms          ] [ws] didActivateApplication Chan(68653)
+[ 14836.1ms          ] cleanup done: current=1176 (visible 1176) front=Chan(68653) cursor=(219,63) saved=(219,63) test windows left=0 space order 1,1176 (start 1,1176)
