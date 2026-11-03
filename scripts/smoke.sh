@@ -1,13 +1,34 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+interactive=0
+build=1
+for argument in "$@"; do
+    case "$argument" in
+        --interactive) interactive=1 ;;
+        --no-build) build=0 ;;
+        --help|-h) echo 'Usage: smoke.sh [--interactive] [--no-build]'; exit 0 ;;
+        *) echo "Unknown argument: $argument" >&2; exit 2 ;;
+    esac
+done
+if [ "$interactive" = 1 ] && [ ! -t 0 ]; then
+    echo "Interactive checks require a Terminal." >&2
+    exit 2
+fi
 command -v jq >/dev/null
 if pgrep -x minitile >/dev/null; then
     echo "Stop the existing minitile instance before the smoke test." >&2
     exit 1
 fi
-scripts/build-app.sh
-swiftc -module-cache-path "$PWD/.build/clang-cache" scripts/smoke-support.swift -o build/smoke-support
+if [ "$build" = 1 ]; then
+    scripts/build-app.sh
+    swiftc -module-cache-path "$PWD/.build/clang-cache" scripts/smoke-support.swift -o build/smoke-support
+else
+    for executable in build/Minitile.app/Contents/MacOS/minitile build/mntl build/smoke-support; do
+        if [ ! -x "$executable" ]; then echo 'Build first by omitting --no-build.' >&2; exit 1; fi
+    done
+    codesign --verify --strict build/Minitile.app
+fi
 
 testdir=$(mktemp -d "${TMPDIR:-/tmp/}minitile-smoke.XXXXXX")
 prefix=$(basename "$testdir")
@@ -25,6 +46,7 @@ app_pid=""
 textedit_pid=""
 cleaning=0
 documents_opened=0
+watch_pid=""
 mntl="$PWD/build/mntl"
 
 cleanup() {
@@ -33,6 +55,7 @@ cleanup() {
     cleaning=1
     trap - EXIT HUP INT TERM
     set +e
+    if [ -n "$watch_pid" ]; then kill "$watch_pid" 2>/dev/null; wait "$watch_pid" 2>/dev/null; fi
     local remaining=0 ids=""
     if "$mntl" --json state > "$report/cleanup-state.json" 2>/dev/null; then
         ids=$(jq -r --arg prefix "$prefix" '.windows[] | select(.bundle_id == "com.apple.TextEdit" and (.title | contains($prefix))) | .id' "$report/cleanup-state.json")
@@ -166,6 +189,30 @@ textedit_pid=$(jq -r '.windows[0].pid' "$report/state.json")
 display_id=$(jq -r '.windows[0].display' "$report/state.json")
 read -r -a ids <<< "$(jq -r '.windows | sort_by(.id) | map(.id | tostring) | join(" ")' "$report/state.json")"
 a=${ids[0]}; b=${ids[1]}; c=${ids[2]}; e=${ids[4]}
+
+if [ "$interactive" = 1 ]; then
+    "$mntl" window show "$a"
+    wait_state ".windows[] | select(.id == $a) | .shown"
+    "$mntl" --json state > "$report/manual-start.json"
+    "$mntl" --json watch > "$report/manual-events.jsonl" &
+    watch_pid=$!
+    cat <<'INSTRUCTIONS'
+Ready for real keys, starting with four TextEdit windows on workspace 1, page 1:
+  Ctrl+Right: one window on the next page.
+  Ctrl+Left: four windows again.
+  Ctrl+Down: an empty workspace.
+  Ctrl+Up: four windows again, without Mission Control or App Expose opening.
+
+Return to this Terminal with Cmd+Tab, describe what happened, then press Return.
+The test documents will close and minitile will stop. Ctrl+C also cleans up.
+INSTRUCTIONS
+    read -r -p 'Observed result: ' observation
+    jq -n --arg observation "$observation" '{observation: $observation}' > "$report/manual-observation.json"
+    "$mntl" --json state > "$report/manual-end.json"
+    "$mntl" --json debug health > "$report/manual-health.json"
+    echo 'Manual observation and watch events recorded.'
+    exit 0
+fi
 
 "$mntl" window show "$a"
 "$mntl" page next
