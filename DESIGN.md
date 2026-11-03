@@ -2,7 +2,7 @@
 
 minitile is a tiling window manager for macOS. It runs with SIP enabled and aims for a small core that blends with macOS: a handful of keys that reuse the native desktop shortcuts, mouse gestures where macOS users already use the mouse, and every function scriptable from the `mntl` command line tool. HyprMac (github.com/zacharytgray/HyprMac) is a source of macOS behaviour to respect, not a feature list to copy.
 
-Status: core, IPC and mntl are implemented and verified with 74 core tests and 17 IPC tests. The macOS shell integration and live checks remain separate; remaining macOS checks are listed under "Open".
+Status: core, IPC and mntl are implemented and verified with 84 core tests and 17 IPC tests. The macOS shell integration and live checks remain separate; remaining macOS checks are listed under "Open".
 
 ## Model
 
@@ -403,7 +403,7 @@ Scene visible/stashed lists express desktop ownership, including minimized and a
   - windows on the visible desktop fill pages of the first workspace;
   - windows on the stash follow on further pages.
 
-Adoption preserves discovery order within the visible and stash groups. Stash adoption begins after the first workspace's last populated page, even if a visible page has free slots. Unknown windows join the first workspace without changing a valid saved view; the shell's startup focus observation can show a different page. Known windows keep their saved placement regardless of macOS's observed display position. Repeated observations of the same ID are ignored after the first. Unsupported or structurally invalid saved snapshots fall back to adoption. A changed pid in a later appearance/update is treated as a new window identity. Persistent JSON defaults additive fields when absent; the script-facing `state` shape is documented separately above.
+Adoption preserves discovery order within the visible and stash groups. Stash adoption begins after the first workspace's last populated page, even if a visible page has free slots. Unknown windows join the first workspace without changing a valid saved view; the shell's startup focus observation can show a different page. Known windows keep their saved placement regardless of macOS's observed display position. Repeated observations of the same ID are ignored after the first. Unsupported or structurally invalid saved snapshots fall back to adoption. A changed pid in a later appearance/update is treated as a new window identity. Only `SavedState` supplies defaults for absent top-level fields. `PageState`, `WorkspaceState`, `DisplayState` and `WindowState` use synthesized decoding, so a missing required key fails decoding of the entire saved-state file. The script-facing `state` shape is documented separately above.
 - On quit, stashed windows stay on the stash, where Mission Control can reach them.
 - Startup checks, in order: Accessibility permission (prompt, explain in the menu bar, and wait until granted); the SkyLight functions (refuse to run if missing); "Displays have separate Spaces"; a desktop pair per display (unmanaged displays are listed in the menu bar). If the current desktop of a display is its stash, minitile switches to the visible one.
 
