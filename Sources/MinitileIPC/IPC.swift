@@ -21,24 +21,3 @@ public func socketPath(environment: [String: String] = ProcessInfo.processInfo.e
     return (directory as NSString).appendingPathComponent("minitile.sock")
 }
 
-/// Newline-delimited JSON server. The handler runs only on `handlerQueue`; socket I/O never does.
-public final class Server: Sendable {
-    public typealias Completion = @Sendable (Reply) -> Void
-    public typealias Handler = @Sendable ([String], @escaping Completion) -> Void
-
-    /// Construction does not bind. Call `start()` once, and retain the server until `stop()`.
-    public init(path: String, handlerQueue: DispatchQueue, handler: @escaping Handler) {}
-    public func start() throws {}
-    public func stop() {}
-    /// Enqueue an event for all watch connections without blocking the caller.
-    public func broadcast(event: Event) {}
-}
-
-/// Blocking socket client. Run streaming calls off the main thread.
-public struct Client: Sendable {
-    public var path: String
-    public init(path: String) { self.path = path }
-    public func request(_ argv: [String]) throws -> Reply { Reply(ok: false, text: "Not implemented") }
-    /// Delivers the initial reply and then events until EOF or `onEvent` returns false.
-    public func watch(onReply: (Reply) -> Void, onEvent: (Event) -> Bool) throws {}
-}
