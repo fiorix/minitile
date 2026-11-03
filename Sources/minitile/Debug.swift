@@ -3,6 +3,40 @@ import CSkyLight
 import MinitileCore
 
 extension AppDelegate {
+    func handleKey(_ decision: KeyDecision, trace: KeyTrace?) {
+        if let trace {
+            let route: String
+            let argv: [String]
+            switch decision {
+            case .pass: route = "pass"; argv = []
+            case .swallow: route = "swallow"; argv = []
+            case .command(let command): route = "command"; argv = command
+            }
+            let key = [123: "left", 124: "right", 125: "down", 126: "up"][Int(trace.keycode)] ?? String(trace.keycode)
+            let chord = Chord(modifiers: KeyRouter.modifiers(CGEventFlags(rawValue: trace.flags)), key: key)
+            logKey(["phase": .string("received"), "event_time": .number(trace.time),
+                    "dispatch_delay_ms": .number((ProcessInfo.processInfo.systemUptime - trace.time) * 1000),
+                    "event": .string(trace.down ? "down" : "up"), "keycode": .number(Double(trace.keycode)),
+                    "flags": .string(String(trace.flags, radix: 16)), "chord": .string(chord.description),
+                    "route": .string(route), "argv": .array(argv.map(JSONValue.string)),
+                    "focus": engine.savedState().focus.map { .number(Double($0)) } ?? .null,
+                    "suspended": .array(suspendedReasons.sorted().map(JSONValue.string))])
+        }
+        if case .command(let argv) = decision {
+            let reply = command(argv)
+            if let trace {
+                logKey(["phase": .string("result"), "event_time": .number(trace.time),
+                        "ok": .bool(reply.ok), "text": .string(reply.text),
+                        "focus": engine.savedState().focus.map { .number(Double($0)) } ?? .null])
+            }
+        }
+    }
+
+    private func logKey(_ fields: [String: JSONValue]) {
+        guard let data = try? JSONEncoder().encode(JSONValue.object(fields)) else { return }
+        FileHandle.standardError.write(Data("minitile: key \(String(decoding: data, as: UTF8.self))\n".utf8))
+    }
+
     func debug(_ argv: [String]) -> Reply {
         guard argv.count == 1 else { return Reply(ok: false, text: "debug spaces|windows|scene|timings|health") }
         do {
@@ -48,6 +82,7 @@ extension AppDelegate {
             case "health":
                 data = .object(["started": .bool(started), "pid": .number(Double(ProcessInfo.processInfo.processIdentifier)), "suspended": .bool(discovery?.frozen == true),
                                 "secure_input": .bool(csl_secure_input_enabled()), "tap_unavailable": .bool(keyboard?.unavailable == true),
+                                "key_trace_enabled": .bool(keyboard?.traceEnabled == true),
                                 "startup_stash_windows": .number(Double(startupStashCount)),
                                 "startup_immediate_stash_handles": .number(Double(startupImmediateHandles)),
                                 "config": .string(paths.config.path), "state": .string(paths.state.path),

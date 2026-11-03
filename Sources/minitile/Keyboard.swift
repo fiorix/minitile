@@ -8,7 +8,25 @@ struct NativeChord: Hashable {
     var modifiers: Modifiers
 }
 
-enum KeyDecision: Equatable { case pass, swallow, command([String]) }
+enum KeyDecision: Equatable, Sendable { case pass, swallow, command([String]) }
+
+struct KeyTrace: Sendable {
+    var time: TimeInterval
+    var keycode: UInt16
+    var flags: UInt64
+    var down: Bool
+}
+
+struct KeyTraceFilter {
+    private var held: Set<UInt16> = []
+
+    mutating func includes(_ code: UInt16, modifiers: Modifiers, down: Bool) -> Bool {
+        guard (123...126).contains(code) else { return false }
+        if !down { return held.remove(code) != nil || modifiers.contains(.ctrl) }
+        if modifiers.contains(.ctrl) { held.insert(code) }
+        return held.contains(code)
+    }
+}
 
 struct KeyRouter {
     var bindings: [Chord: [String]] = [:]
@@ -51,13 +69,18 @@ final class KeyboardTap: @unchecked Sendable {
     // AX, commands and WindowServer operations run on the main thread.
     private let lock = NSLock()
     private var router = KeyRouter()
+    private var traceFilter = KeyTraceFilter()
     private var port: CFMachPort?
     private var loop: CFRunLoop?
     private var stopping = false
     private var failed = false
-    private let command: @MainActor @Sendable ([String]) -> Void
+    let traceEnabled: Bool
+    private let handle: @MainActor @Sendable (KeyDecision, KeyTrace?) -> Void
 
-    init(command: @escaping @MainActor @Sendable ([String]) -> Void) { self.command = command }
+    init(traceEnabled: Bool = false, handle: @escaping @MainActor @Sendable (KeyDecision, KeyTrace?) -> Void) {
+        self.traceEnabled = traceEnabled
+        self.handle = handle
+    }
 
     @MainActor func update(config: Config, displays: DisplayCatalog, dragged: WindowID?) {
         var blocked = Set<NativeChord>()
@@ -124,12 +147,22 @@ final class KeyboardTap: @unchecked Sendable {
         }
         guard type == .keyDown || type == .keyUp else { return Unmanaged.passUnretained(event) }
         let code = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
-        let decision = lock.withLock { router.key(code, modifiers: KeyRouter.modifiers(event.flags), down: type == .keyDown) }
-        switch decision {
-        case .pass: return Unmanaged.passUnretained(event)
-        case .swallow: return nil
-        case .command(let argv): DispatchQueue.main.async { [command] in command(argv) }; return nil
+        let down = type == .keyDown
+        let flags = event.flags.rawValue
+        let modifiers = KeyRouter.modifiers(event.flags)
+        let (decision, trace): (KeyDecision, KeyTrace?) = lock.withLock {
+            let decision = router.key(code, modifiers: modifiers, down: down)
+            let trace = traceEnabled && traceFilter.includes(code, modifiers: modifiers, down: down)
+                ? KeyTrace(time: ProcessInfo.processInfo.systemUptime, keycode: code, flags: flags, down: down) : nil
+            return (decision, trace)
         }
+        switch decision {
+        case .command:
+            DispatchQueue.main.async { [handle] in handle(decision, trace) }
+        case .pass, .swallow:
+            if trace != nil { DispatchQueue.main.async { [handle] in handle(decision, trace) } }
+        }
+        return decision == .pass ? Unmanaged.passUnretained(event) : nil
     }
 
     @MainActor private static func keyNames() -> [UInt16: String] {

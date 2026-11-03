@@ -144,7 +144,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.handle(.focusChanged(id))
         }
         discovery.moved = { [weak self] in self?.windowMoved($0) }
-        let keyboard = KeyboardTap { [weak self] in _ = self?.command($0) }
+        let keyboard = KeyboardTap(traceEnabled: ProcessInfo.processInfo.environment["MINITILE_TRACE_KEYS"] == "1") { [weak self] decision, trace in
+            self?.handleKey(decision, trace: trace)
+        }
         keyboard.update(config: engine.config, displays: displays, dragged: nil)
         self.keyboard = keyboard
         keyboard.start()

@@ -46,6 +46,48 @@ import Testing
     #expect(router.key(123, modifiers: [], down: false) == .swallow)
 }
 
+@Test func smokeConfigRoutesEveryControlShiftArrowAndRetainsKeyUp() throws {
+    let config = try Config.parse("only_apps = [\"com.apple.TextEdit\"]\npadding = 8\ngaps = 8\n")
+    let arrows: [(UInt16, String, [String])] = [
+        (123, "left", ["window", "nudge", "left"]),
+        (124, "right", ["window", "nudge", "right"]),
+        (125, "down", ["window", "move", "workspace", "next"]),
+        (126, "up", ["window", "move", "workspace", "prev"]),
+    ]
+    let flags: CGEventFlags = [.maskControl, .maskShift, .maskSecondaryFn, .maskNumericPad, .maskAlphaShift]
+    #expect(KeyRouter.modifiers(flags) == [.ctrl, .shift])
+    for (code, name, expected) in arrows {
+        for releasedFlags: CGEventFlags in [[.maskControl, .maskSecondaryFn, .maskNumericPad], []] {
+            var router = KeyRouter(bindings: config.bindings, names: [code: name])
+            #expect(router.key(code, modifiers: KeyRouter.modifiers(flags), down: true) == .command(expected))
+            #expect(router.key(code, modifiers: KeyRouter.modifiers(releasedFlags), down: false) == .swallow)
+            #expect(router.key(code, modifiers: [], down: false) == .pass)
+            #expect(router.key(code, modifiers: [], down: true) == .pass)
+        }
+    }
+}
+
+@Test func keyTraceExcludesTypingAndTracksArrowReleaseAfterModifiers() {
+    var filter = KeyTraceFilter()
+    let events: [(UInt16, Modifiers, Bool, Bool)] = [
+        (0, [], true, false),
+        (0, [.ctrl, .shift], true, false),
+        (124, [], true, false),
+        (124, [], false, false),
+        (124, [.ctrl, .shift], true, true),
+        (124, [], true, true),
+        (0, [], true, false),
+        (124, [], false, true),
+        (124, [], false, false),
+        (124, [], true, false),
+        (123, .ctrl, false, true),
+    ]
+    for (code, modifiers, down, expected) in events {
+        let traced = filter.includes(code, modifiers: modifiers, down: down)
+        #expect(traced == expected)
+    }
+}
+
 @Test func swallowedKeyUpSurvivesConfigAndModifierChanges() {
     var router = KeyRouter(bindings: Config.defaultBindings, names: [124: "right"])
     #expect(router.key(124, modifiers: .ctrl, down: true) == .command(["page", "next"]))

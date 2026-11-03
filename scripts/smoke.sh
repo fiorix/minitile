@@ -61,6 +61,7 @@ export MINITILE_STATE="$testdir/state.json"
 export MINITILE_SOCKET="$testdir/socket"
 export MINITILE_SMOKE_DIRECTORY="$testdir"
 export MINITILE_SMOKE_WINDOWS=""
+export MINITILE_TRACE_KEYS="$interactive"
 if [ -n "$recovery_directory" ]; then
     # SavedState encodes UInt32 dictionary keys as alternating IDs and values.
     # Keep the original IDs if startup cannot rediscover every saved window.
@@ -164,6 +165,7 @@ launch() {
     open -n -g --env "MINITILE_CONFIG=$MINITILE_CONFIG" --env "MINITILE_STATE=$MINITILE_STATE" \
         --env "MINITILE_SOCKET=$MINITILE_SOCKET" --env "MINITILE_SMOKE_DIRECTORY=$MINITILE_SMOKE_DIRECTORY" \
         --env "MINITILE_SMOKE_WINDOWS=$MINITILE_SMOKE_WINDOWS" \
+        --env "MINITILE_TRACE_KEYS=$MINITILE_TRACE_KEYS" \
         --stdout "$testdir/stdout.log" --stderr "$testdir/stderr.log" "$PWD/build/Minitile.app"
     while ((SECONDS < deadline)); do
         if [ -z "$app_pid" ]; then app_pid=$(pgrep -n -x minitile || true); fi
@@ -222,13 +224,24 @@ grid() {
 
 if [ -z "$recovery_directory" ]; then write_config; fi
 launch
-"$mntl" --json config info | jq -e '.only_apps == ["com.apple.TextEdit"]' >/dev/null
+"$mntl" --json config info > "$report/config.json"
+jq -e '.only_apps == ["com.apple.TextEdit"]' "$report/config.json" >/dev/null
 if [ -n "$recovery_directory" ]; then
     echo 'Recovered the saved test session; closing its documents through normal cleanup.'
     exit 0
 fi
 "$mntl" --json debug spaces > "$report/initial-spaces.json"
-jq -e 'length > 0 and all(.[]; .info.unmanagedReason == null)' "$report/initial-spaces.json" >/dev/null
+if ! jq -e 'length > 0 and all(.[]; .info.unmanagedReason == null)' "$report/initial-spaces.json" >/dev/null; then
+    echo 'Smoke test cannot manage the current displays:' >&2
+    jq -r 'if length == 0 then "  No displays were discovered."
+        else .[] | select(.info.unmanagedReason != null) | "  \(.info.id): \(.info.unmanagedReason)" end
+        ' "$report/initial-spaces.json" >&2
+    exit 1
+fi
+if [ "$interactive" = 1 ] && ! jq -e '.key_trace_enabled' "$report/health.json" >/dev/null; then
+    echo 'Shortcut tracing is unavailable. Rebuild by omitting --no-build.' >&2
+    exit 1
+fi
 for ((index=1; index<=5; index++)); do
     printf 'minitile smoke document %s\n' "$index" > "$testdir/$prefix-$index.txt"
     open -a TextEdit "$testdir/$prefix-$index.txt"
@@ -255,7 +268,8 @@ Ready for real keys, starting with four TextEdit windows on workspace 1, page 1:
   Ctrl+Up: four windows again, without Mission Control or App Expose opening.
 
 Further checks, starting on the four-window page:
-  1. Window moves: Ctrl+Shift+Right twice, then Ctrl+Shift+Left twice.
+  1. Window moves: click a test document to focus it.
+     Press Ctrl+Shift+Right twice, then Ctrl+Shift+Left twice.
      Expect one, two, one, then four windows; focus follows the moved window.
      Ctrl+Shift+Down then Ctrl+Shift+Up should show one, then four windows.
   2. Activation: Ctrl+Down to an empty workspace, Cmd+Tab to this Terminal,
@@ -272,6 +286,7 @@ Further checks, starting on the four-window page:
      return to the first desktop with the same page visible.
 If a check fails, stop the sequence and report its number and what happened.
 Report skipped checks as skipped. Leave monitor unplug/replug for a separate run.
+Ctrl+arrow traces are saved in the smoke report's stderr.log.
 
 Return to this Terminal with Cmd+Tab, describe what happened, then press Return.
 Keep minitile running until this prompt finishes so it can close the test documents.
