@@ -123,11 +123,11 @@ extension Engine {
     }
 
     mutating func appeared(_ info: WindowInfo, output: inout Output) {
-        guard state.windows[info.id] == nil,
+        guard allows(info), state.windows[info.id] == nil,
               let d = displayIndex(info.display) ?? currentDisplay(),
               state.displays[d].info.unmanagedReason == nil,
               let start = currentLocation(display: d) else { return }
-        state.windows[info.id] = WindowState(info: info, display: state.displays[d].info.id, floating: false)
+        state.windows[info.id] = WindowState(info: info, display: state.displays[d].info.id, floating: floating(info))
         let at = place(info.id, at: start)
         output.events.append(Event(type: "window_added", data: .number(Double(info.id))))
         if info.fromFrontmostApp {

@@ -28,7 +28,7 @@ public struct Engine: Sendable {
             }
         case .windowAppeared(let info): appeared(info, output: &output)
         case .windowGone(let id): gone(id, output: &output)
-        case .windowUpdated(let info): state.windows[info.id]?.info = info
+        case .windowUpdated(let info): updateWindow(info, output: &output)
         case .focusChanged(let id):
             if let id, let at = location(id) { show(at, focusWindow: false, output: &output); focus(id, action: false, output: &output) }
             else if id == nil { focus(nil, action: false, output: &output) }
@@ -36,7 +36,7 @@ public struct Engine: Sendable {
         case .command(let argv):
             do { output.reply = try command(argv, output: &output) }
             catch { state = previous; output = Output(reply: Reply(ok: false, text: String(describing: error))) }
-        case .configLoaded(let config): self.config = config
+        case .configLoaded(let config): loadConfig(config, output: &output)
         case .dragEnded(let id, let frame, let cursor): dragEnded(id, frame: frame, cursor: cursor, output: &output)
         case .displaysChanged: break
         }

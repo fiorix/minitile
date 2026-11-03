@@ -49,10 +49,22 @@ extension Engine {
                       let a = Double(argv[2]), a.isFinite, let b = Double(argv[3]), b.isFinite,
                       let d = currentDisplay(), let at = currentLocation(display: d) {
                 setRatios(at, a, b)
-            } else if argv.count == 3, argv[0] == "window", ["focus", "show"].contains(argv[1]),
-               let id = WindowID(argv[2]), let at = location(id) {
-                show(at, focusWindow: false, output: &output)
-                focus(id, action: true, output: &output)
+            } else if argv.count >= 2, argv[0] == "window", ["focus", "show", "hide", "float", "close"].contains(argv[1]) {
+                var args = Array(argv.dropFirst(2))
+                let id: WindowID
+                if let first = args.first, let explicit = WindowID(first) { id = explicit; args.removeFirst() }
+                else if let focused = state.focus { id = focused }
+                else { throw CommandError("Expected a window ID; no window is focused") }
+                guard state.windows[id] != nil else { throw CommandError("Unknown window ID \(id)") }
+                if argv[1] == "float" {
+                    guard args.isEmpty || (args.count == 1 && ["on", "off"].contains(args[0])) else { throw CommandError("Expected on or off") }
+                    try setFloating(id, value: args.first.map { $0 == "on" }, output: &output)
+                } else {
+                    guard args.isEmpty else { throw CommandError("Expected an optional window ID") }
+                    if argv[1] == "hide" { hideWindow(id, output: &output) }
+                    else if argv[1] == "close" { output.actions.append(.close(id)) }
+                    else { try showWindow(id, output: &output) }
+                }
             } else { throw CommandError("Expected a command; run help") }
         }
         return Reply(text: "OK")
