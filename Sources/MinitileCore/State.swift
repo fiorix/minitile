@@ -59,4 +59,19 @@ public struct SavedState: Codable, Sendable, Equatable {
     public var displayViews: [DisplayID: UInt64] = [:]
     public var serial: UInt64 = 0
     public init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case version, displays, windows, focus, activeDisplay, displayViews, serial
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        version = try values.decodeIfPresent(Int.self, forKey: .version) ?? 1
+        displays = try values.decodeIfPresent([DisplayState].self, forKey: .displays) ?? []
+        windows = try values.decodeIfPresent([WindowID: WindowState].self, forKey: .windows) ?? [:]
+        focus = try values.decodeIfPresent(WindowID.self, forKey: .focus)
+        activeDisplay = try values.decodeIfPresent(DisplayID.self, forKey: .activeDisplay)
+        displayViews = try values.decodeIfPresent([DisplayID: UInt64].self, forKey: .displayViews) ?? [:]
+        serial = try values.decodeIfPresent(UInt64.self, forKey: .serial) ?? 0
+    }
 }

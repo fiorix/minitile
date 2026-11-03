@@ -10,22 +10,8 @@ public struct Engine: Sendable {
         let previous = state
         var output = Output()
         switch input {
-        case .started(_, let windows, let displays, let focused):
-            state = SavedState()
-            for info in displays {
-                var display = DisplayState(info: info)
-                if info.unmanagedReason == nil {
-                    let workspace = newWorkspace(home: info.id)
-                    display.workspaces = [workspace]
-                    display.currentWorkspace = workspace.id
-                }
-                state.displays.append(display)
-            }
-            for info in windows { appeared(info, output: &output) }
-            if let focused, let at = location(focused) {
-                show(at, focusWindow: false, output: &output)
-                focus(focused, action: false, output: &output)
-            }
+        case .started(let saved, let windows, let displays, let focused):
+            start(saved: saved, windows: windows, displays: displays, focused: focused, output: &output)
         case .windowAppeared(let info): appeared(info, output: &output)
         case .windowGone(let id): gone(id, output: &output)
         case .windowUpdated(let info): updateWindow(info, output: &output)
