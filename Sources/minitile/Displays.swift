@@ -30,11 +30,20 @@ enum Geometry {
 @MainActor
 final class DisplayCatalog {
     private(set) var displays: [NativeDisplay] = []
+    private(set) var desktopNumbers: [UInt64: Int] = [:]
     var infos: [DisplayInfo] { displays.map(\.info) }
 
     /// Compare topology and usable geometry, excluding which desktop is currently showing.
     @discardableResult func refresh() -> Bool {
         let raw = csl_copy_managed_display_spaces() as? [[String: Any]] ?? []
+        desktopNumbers = [:]
+        for display in raw {
+            for space in display["Spaces"] as? [[String: Any]] ?? [] {
+                if (space["type"] as? NSNumber)?.intValue == 0, let id = space["id64"] as? NSNumber {
+                    desktopNumbers[id.uint64Value] = desktopNumbers.count + 1
+                }
+            }
+        }
         let screens = NSScreen.screens
         let height = screens.first?.frame.height ?? 0
         let fresh: [NativeDisplay] = screens.enumerated().compactMap { index, screen in
