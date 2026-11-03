@@ -14,7 +14,8 @@ let package = Package(
     targets: [
         .target(name: "MinitileCore", dependencies: ["MinitileIPC", .product(name: "TOMLDecoder", package: "TOMLDecoder")]),
         .target(name: "MinitileIPC"),
-        .target(name: "CSkyLight"),
+        .target(name: "CSkyLight", cSettings: [.unsafeFlags(["-fobjc-arc"])],
+                linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("Carbon")]),
         .executableTarget(name: "minitile", dependencies: ["MinitileCore", "MinitileIPC", "CSkyLight"]),
         .executableTarget(name: "mntl", dependencies: ["MinitileIPC"]),
         .testTarget(name: "MinitileCoreTests", dependencies: ["MinitileCore"]),
