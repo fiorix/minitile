@@ -17,6 +17,13 @@ public struct Chord: Codable, Sendable, Hashable {
     public init(modifiers: Modifiers = [], key: String) { self.modifiers = modifiers; self.key = key }
 }
 
+extension Chord: CustomStringConvertible {
+    public var description: String {
+        let names: [(Modifiers, String)] = [(.ctrl, "ctrl"), (.shift, "shift"), (.alt, "alt"), (.cmd, "cmd")]
+        return (names.filter { modifiers.contains($0.0) }.map(\.1) + [key]).joined(separator: "+")
+    }
+}
+
 /// Validated configuration. Parse file contents outside `Engine.handle` and retain the old config on errors.
 public struct Config: Sendable, Equatable {
     public var gaps: Double

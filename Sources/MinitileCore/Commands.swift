@@ -6,67 +6,175 @@ struct CommandError: Error, CustomStringConvertible {
 }
 
 extension Engine {
+    /// Stable CLI grammar, shared by help, bindings and shell menu commands.
+    public static let help = """
+    help
+    state
+    watch
+    window list
+    window info|show|hide|close [ID]
+    window focus [ID|left|right|up|down]
+    window float [ID] [on|off]
+    window nudge [ID] left|right
+    window move [ID] left|right|up|down
+    window move [ID] page|workspace INDEX|next|prev
+    window move [ID] display UUID|next|prev
+    window swap [ID] OTHER_ID
+    window resize [ID] SHARE|WIDTHxHEIGHT
+    page list
+    page info|show|variant [INDEX|next|prev]
+    page next|prev
+    page ratio R1 [R2]
+    workspace list
+    workspace info|show [INDEX|next|prev]
+    workspace next|prev|new
+    display list
+    display info [UUID|next|prev]
+    config list|info|reload|open
+    quit
+
+    Pages and workspaces use 1-based indices; tiled slots use 0-based indices.
+    Window IDs default to the focused window. Page/workspace context is its display.
+    Tiled resize uses fractional shares; floating resize uses WIDTHxHEIGHT in points.
+    """
+
     mutating func command(_ argv: [String], output: inout Output) throws -> Reply {
-        switch argv {
-        case ["help"], []: return Reply(text: "page next|prev; workspace next|prev|new; window focus <id>")
-        case ["watch"]: return Reply(text: "Watching events")
-        case ["page", "next"]: try navigatePage(1, output: &output)
-        case ["page", "prev"]: try navigatePage(-1, output: &output)
-        case ["workspace", "next"]: try navigateWorkspace(1, output: &output)
-        case ["workspace", "prev"]: try navigateWorkspace(-1, output: &output)
-        case ["workspace", "new"]: try navigateWorkspace(1, alwaysNew: true, output: &output)
-        default:
-            if argv.count >= 2, argv[0] == "window", ["move", "nudge", "swap", "resize"].contains(argv[1]) {
-                var args = Array(argv.dropFirst(2))
-                let id: WindowID
-                if args.count >= 2, let explicit = WindowID(args[0]) { id = explicit; args.removeFirst() }
-                else if let focused = state.focus { id = focused }
-                else { throw CommandError("Expected a window ID; no window is focused") }
-                guard state.windows[id] != nil else { throw CommandError("Unknown window ID \(id)") }
-                switch argv[1] {
-                case "nudge":
-                    guard args.count == 1, ["left", "right"].contains(args[0]) else { throw CommandError("Expected left or right") }
-                    try nudge(id, direction: args[0] == "left" ? -1 : 1, output: &output)
-                case "move":
-                    if args.count == 1, ["left", "right", "up", "down"].contains(args[0]) {
-                        if args[0] == "left" || args[0] == "right" {
-                            try nudge(id, direction: args[0] == "left" ? -1 : 1, output: &output)
-                        } else { try moveTarget(id, noun: "workspace", address: args[0] == "up" ? "prev" : "next", output: &output) }
-                    } else {
-                        guard args.count == 2 else { throw CommandError("Expected a direction or page|workspace|display ADDRESS") }
-                        try moveTarget(id, noun: args[0], address: args[1], output: &output)
-                    }
-                case "swap":
-                    guard args.count == 1, let other = WindowID(args[0]) else { throw CommandError("Expected another window ID") }
-                    try swap(id, other, output: &output)
-                default:
-                    guard args.count == 1 else { throw CommandError("Expected a share or WIDTHxHEIGHT") }
-                    try resize(id, size: args[0], output: &output)
-                }
-            } else if argv == ["page", "variant"], let d = currentDisplay(), let at = currentLocation(display: d) {
-                variant(at)
-            } else if argv.count == 4, argv.prefix(2) == ["page", "ratio"],
-                      let a = Double(argv[2]), a.isFinite, let b = Double(argv[3]), b.isFinite,
-                      let d = currentDisplay(), let at = currentLocation(display: d) {
-                setRatios(at, a, b)
-            } else if argv.count >= 2, argv[0] == "window", ["focus", "show", "hide", "float", "close"].contains(argv[1]) {
-                var args = Array(argv.dropFirst(2))
-                let id: WindowID
-                if let first = args.first, let explicit = WindowID(first) { id = explicit; args.removeFirst() }
-                else if let focused = state.focus { id = focused }
-                else { throw CommandError("Expected a window ID; no window is focused") }
-                guard state.windows[id] != nil else { throw CommandError("Unknown window ID \(id)") }
-                if argv[1] == "float" {
-                    guard args.isEmpty || (args.count == 1 && ["on", "off"].contains(args[0])) else { throw CommandError("Expected on or off") }
-                    try setFloating(id, value: args.first.map { $0 == "on" }, output: &output)
-                } else {
-                    guard args.isEmpty else { throw CommandError("Expected an optional window ID") }
-                    if argv[1] == "hide" { hideWindow(id, output: &output) }
-                    else if argv[1] == "close" { output.actions.append(.close(id)) }
-                    else { try showWindow(id, output: &output) }
-                }
-            } else { throw CommandError("Expected a command; run help") }
+        if argv.isEmpty || argv == ["help"] { return Reply(text: Self.help, data: .string(Self.help)) }
+        if argv == ["state"] { let value = stateRecord(); return Reply(text: field(value), data: value) }
+        if argv == ["watch"] { return Reply(text: "Watching events") }
+        if argv == ["quit"] { output.actions.append(.quit); return Reply(text: "Quitting") }
+        guard argv.count >= 2 else { throw CommandError("Expected a noun and verb; run help") }
+        let noun = argv[0], verb = argv[1], args = Array(argv.dropFirst(2))
+        switch noun {
+        case "window": return try windowCommand(verb, args: args, output: &output)
+        case "page", "workspace": return try gridCommand(noun, verb: verb, args: args, output: &output)
+        case "display":
+            if verb == "list", args.isEmpty {
+                return listReply(state.displays.indices.map(displayRecord), columns: ["id", "primary", "workspace", "unmanaged_reason"])
+            }
+            guard verb == "info", args.count <= 1 else { throw CommandError("Expected display list or display info [UUID|next|prev]") }
+            return infoReply(displayRecord(try addressedDisplay(args.first)))
+        case "config":
+            guard args.isEmpty else { throw CommandError("Expected config list|info|reload|open") }
+            switch verb {
+            case "list", "info": return infoReply(configRecord())
+            case "reload": output.actions.append(.reloadConfig)
+            case "open": output.actions.append(.openConfig)
+            default: throw CommandError("Expected config list|info|reload|open")
+            }
+        default: throw CommandError("Expected window, page, workspace, display or config; run help")
         }
         return Reply(text: "OK")
+    }
+
+    func addressedDisplay(_ address: String?) throws -> Int {
+        if let address, address != "next", address != "prev" {
+            guard let d = displayIndex(address) else { throw CommandError("Expected a known display UUID, next or prev") }
+            return d
+        }
+        guard let d = currentDisplay() ?? state.displays.indices.first else { throw CommandError("No display") }
+        guard let address else { return d }
+        return try addressedIndex(address, current: d, count: state.displays.count)
+    }
+
+    mutating func gridCommand(_ noun: String, verb: String, args: [String], output: inout Output) throws -> Reply {
+        guard let d = currentDisplay(), var at = currentLocation(display: d) else { throw CommandError("No managed display") }
+        let workspace = state.displays[d].workspaces[at.workspace]
+        let count = noun == "page" ? workspace.pages.count : state.displays[d].workspaces.count
+        if verb == "list", args.isEmpty {
+            if noun == "page" {
+                return listReply(workspace.pages.indices.map { pageRecord(Location(display: d, workspace: at.workspace, page: $0)) },
+                                 columns: ["index", "shown", "variant", "r1", "r2", "windows"])
+            }
+            return listReply(state.displays[d].workspaces.indices.map { workspaceRecord(display: d, workspace: $0) },
+                             columns: ["index", "home", "shown", "page"])
+        }
+        if ["info", "show", "variant"].contains(verb), args.count <= 1, noun == "page" || verb != "variant" {
+            let index = try args.first.map { try addressedIndex($0, current: noun == "page" ? at.page : at.workspace, count: count) }
+                ?? (noun == "page" ? at.page : at.workspace)
+            if noun == "page" { at.page = index }
+            else {
+                at.workspace = index
+                let target = state.displays[d].workspaces[index]
+                at.page = target.pages.firstIndex { $0.id == target.currentPage } ?? 0
+            }
+            if verb == "info" { return infoReply(noun == "page" ? pageRecord(at) : workspaceRecord(display: d, workspace: at.workspace)) }
+            if verb == "show" { show(at, output: &output) }
+            else { variant(at) }
+        } else if args.isEmpty, verb == "next" || verb == "prev" {
+            if noun == "page" { try navigatePage(verb == "next" ? 1 : -1, output: &output) }
+            else { try navigateWorkspace(verb == "next" ? 1 : -1, output: &output) }
+        } else if noun == "workspace", verb == "new", args.isEmpty {
+            try navigateWorkspace(1, alwaysNew: true, output: &output)
+        } else if noun == "page", verb == "ratio", (1...2).contains(args.count),
+                  let a = Double(args[0]), a.isFinite,
+                  args.count == 1 || (Double(args[1]).map(\.isFinite) == true) {
+            setRatios(at, a, args.count == 2 ? Double(args[1])! : page(at).r2)
+        } else { throw CommandError("Expected \(noun) list|info|show|next|prev\(noun == "page" ? "|variant|ratio" : "|new"); run help") }
+        return Reply(text: "OK")
+    }
+
+    mutating func windowCommand(_ verb: String, args supplied: [String], output: inout Output) throws -> Reply {
+        if verb == "list", supplied.isEmpty {
+            let positions = locations()
+            return listReply(state.windows.keys.sorted().map { windowRecord($0, positions: positions) },
+                             columns: ["id", "app", "title", "display", "workspace", "page", "slot", "floating"])
+        }
+        if verb == "focus", supplied.count == 1, ["left", "right", "up", "down"].contains(supplied[0]) {
+            try spatialFocus(supplied[0], output: &output)
+            return Reply(text: "OK")
+        }
+        var args = supplied
+        let needsTarget = ["move", "nudge", "swap", "resize"].contains(verb)
+        let id: WindowID
+        if args.count >= (needsTarget ? 2 : 1), let first = args.first, let explicit = WindowID(first) { id = explicit; args.removeFirst() }
+        else if let focused = state.focus { id = focused }
+        else { throw CommandError("Expected a window ID; no window is focused") }
+        guard state.windows[id] != nil else { throw CommandError("Unknown window ID \(id)") }
+        switch verb {
+        case "info", "show", "focus", "hide", "close":
+            guard args.isEmpty else { throw CommandError("Expected window \(verb) [ID]") }
+            if verb == "info" { return infoReply(windowRecord(id, positions: locations())) }
+            if verb == "hide" { hideWindow(id, output: &output) }
+            else if verb == "close" { output.actions.append(.close(id)) }
+            else { try showWindow(id, output: &output) }
+        case "float":
+            guard args.isEmpty || (args.count == 1 && ["on", "off"].contains(args[0])) else { throw CommandError("Expected window float [ID] [on|off]") }
+            try setFloating(id, value: args.first.map { $0 == "on" }, output: &output)
+        case "nudge":
+            guard args.count == 1, ["left", "right"].contains(args[0]) else { throw CommandError("Expected window nudge [ID] left|right") }
+            try nudge(id, direction: args[0] == "left" ? -1 : 1, output: &output)
+        case "move":
+            if args.count == 1, ["left", "right", "up", "down"].contains(args[0]) {
+                if args[0] == "left" || args[0] == "right" { try nudge(id, direction: args[0] == "left" ? -1 : 1, output: &output) }
+                else { try moveTarget(id, noun: "workspace", address: args[0] == "up" ? "prev" : "next", output: &output) }
+            } else {
+                guard args.count == 2 else { throw CommandError("Expected a direction or page|workspace|display ADDRESS") }
+                try moveTarget(id, noun: args[0], address: args[1], output: &output)
+            }
+        case "swap":
+            guard args.count == 1, let other = WindowID(args[0]) else { throw CommandError("Expected window swap [ID] OTHER_ID") }
+            try swap(id, other, output: &output)
+        case "resize":
+            guard args.count == 1 else { throw CommandError("Expected window resize [ID] SHARE|WIDTHxHEIGHT") }
+            try resize(id, size: args[0], output: &output)
+        default: throw CommandError("Expected window list|info|show|hide|focus|float|move|nudge|swap|resize|close")
+        }
+        return Reply(text: "OK")
+    }
+
+    mutating func spatialFocus(_ direction: String, output: inout Output) throws {
+        guard let id = state.focus, let at = location(id) else { throw CommandError("No focused window") }
+        let tiledFrames = frames(at)
+        guard let origin = (tiledFrames[id] ?? state.windows[id]?.info.frame)?.center else { return }
+        var best: WindowID?, distance = Double.infinity
+        for other in page(at).windows where other != id && canFocus(other) {
+            guard let point = (tiledFrames[other] ?? state.windows[other]?.info.frame)?.center else { continue }
+            let dx = point.x - origin.x, dy = point.y - origin.y
+            let inDirection = direction == "left" ? dx < -1 : direction == "right" ? dx > 1 : direction == "up" ? dy < -1 : dy > 1
+            let candidate = dx * dx + dy * dy
+            if inDirection && candidate < distance { best = other; distance = candidate }
+        }
+        if let best { focus(best, action: true, output: &output) }
     }
 }

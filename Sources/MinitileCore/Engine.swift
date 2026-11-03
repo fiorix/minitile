@@ -44,6 +44,14 @@ public struct Engine: Sendable {
         }
         cleanup()
         resetLayouts()
+        for i in output.events.indices where output.events[i].type == "page_shown" {
+            if case .object(var data) = output.events[i].data, case .string(let id) = data["display"],
+               let d = displayIndex(id), let at = currentLocation(display: d) {
+                data["workspace"] = .number(Double(at.workspace + 1))
+                data["page"] = .number(Double(at.page + 1))
+                output.events[i].data = .object(data)
+            }
+        }
         output.scene = makeScene()
         output.stateChanged = state != previous
         return output

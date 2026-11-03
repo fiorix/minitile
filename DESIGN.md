@@ -149,7 +149,56 @@ Commands are noun then verb. Windows are addressed by window ID and default to t
 
 Every noun has `list` and `info`. `info` takes an address and defaults to the current one: the focused window, or the page, workspace or display holding it.
 
-The exact grammar is settled while building and published by `mntl help`. This table fixes the shape and the rule that nothing is UI-only.
+The exact grammar is published by `mntl help`:
+
+```text
+help
+state
+watch
+window list
+window info|show|hide|close [ID]
+window focus [ID|left|right|up|down]
+window float [ID] [on|off]
+window nudge [ID] left|right
+window move [ID] left|right|up|down
+window move [ID] page|workspace INDEX|next|prev
+window move [ID] display UUID|next|prev
+window swap [ID] OTHER_ID
+window resize [ID] SHARE|WIDTHxHEIGHT
+page list
+page info|show|variant [INDEX|next|prev]
+page next|prev
+page ratio R1 [R2]
+workspace list
+workspace info|show [INDEX|next|prev]
+workspace next|prev|new
+display list
+display info [UUID|next|prev]
+config list|info|reload|open
+quit
+```
+
+Page and workspace addresses are 1-based; tiled slots are 0-based. Floating and explicitly hidden windows have a null slot. Window IDs are decimal. With no focused window, commands use the most recently selected display, then the primary managed display. `page list` lists the current workspace; `workspace list` lists the current display. An explicit display UUID can inspect an unmanaged display. `info`, `show` and `variant` addresses resolve within the current context; `next`/`prev` in these addresses clamp at the ends. Only navigation commands and window moves create pages or workspaces. `workspace new` appends an empty workspace unless the current one is already empty.
+
+Window moves and swaps follow the addressed source window. A move to its existing page does nothing. Left/right moves are nudges; up/down moves carry between workspaces. Explicit moves to a full page use placement spill. Spatial focus chooses the nearest window center in the requested half-plane on the same page, with grid order breaking ties; it does not wrap. Minimized and app-hidden windows are excluded from spatial focus.
+
+For tiled resize, a single share applies along the layout's split axis; `WIDTHxHEIGHT` supplies physical-axis fractional shares. Cuts are clamped by the layout rules. Floating resize requires `WIDTHxHEIGHT` in positive points and emits an explicit frame-write action. `page ratio R1` leaves r2 unchanged. Config reload is completed by the shell before its socket reply; failures keep the previous config. `config open` opens the config file in the user's editor.
+
+### JSON data contract
+
+Every response has `ok`, `text` and `data`. Errors and successful mutations use null data; inspection commands use the shapes below. Missing addresses, bundle IDs, desktop IDs and focus values are null rather than omitted. Rectangles use `{x, y, width, height}` in global points. `info` text contains one field per line; list text uses aligned columns. Text is for people; scripts should use `--json`.
+
+| Command | Data |
+|---|---|
+| `help` | Grammar string. |
+| `window list`, `window info` | Array of window objects, or one window object. Fields: `id`, `pid`, `bundle_id`, `app`, `title`, `frame`, `display`, `workspace`, `page`, `slot`, `floating`, `hidden`, `focused`, `shown`, `minimized`, `app_hidden`, `tileable`. `frame` is the latest observed or explicitly resized frame. `hidden` means explicitly hidden by mntl; `shown` also excludes minimized/app-hidden windows and pages not being viewed. |
+| `page list`, `page info` | Array of page objects, or one page object. Fields: `id` (persistent identity), `index`, `display`, `workspace`, `shown`, `variant` (`standard` or `alternate`), `r1`, `r2`, `windows` (all assigned IDs in order), `tiled` (including reserved minimized/app-hidden slots), `floating`, `last_focus`. |
+| `workspace list`, `workspace info` | Array of workspace objects, or one workspace object. Fields: `id` (persistent identity), `index`, `display` (current host), `home`, `shown`, `page` (last-viewed page index), `pages` (page objects). |
+| `display list`, `display info` | Array of display objects, or one display object. Fields: `id` (UUID), `frame`, `visible_frame`, `primary`, `unmanaged_reason`, `visible_space`, `stash_space`, `workspace` (current index), `workspaces` (workspace objects), `home_workspaces`, `merged_workspaces` (workspace index arrays). |
+| `config list`, `config info` | Object with `gaps`, `padding`, `float_apps`, `only_apps`, `bindings`. Binding keys are canonical chords and values are command strings. |
+| `state` | Object with `version: 1`, `focus`, `active_display`, `displays` (display objects), `windows` (window objects ordered by ID). This inspection shape is separate from the saved-state file. |
+
+Watch events have `{type, data}`. Types `focus`, `window_added`, `window_removed` and `window_moved` carry a window ID; `focus` can carry null. `page_shown` carries `{display, workspace, page}` with indices after empty-page cleanup. `display_changed` carries the supplied array of `DisplayInfo` objects using their Swift Codable field names. `config_reloaded` carries null. A watcher is disconnected if its pending output exceeds 4 MiB; ordinary command replies can be larger. The CLI prints the initial watch reply using its usual text/data choice, followed by JSON event lines.
 
 ## Displays
 
@@ -358,7 +407,7 @@ only_apps = []        # bundle IDs; when non-empty, minitile manages only these 
 "ctrl+shift+down" = "window move workspace next"
 ```
 
-The command strings above are illustrative until `mntl help` fixes the grammar. A chord is modifiers (`ctrl`, `shift`, `alt`, `cmd`) and one key (a letter, a digit, `left`, `right`, `up`, `down`, `return`, `space`, `tab`, `escape`, `f1` to `f20`), joined with `+`.
+The command strings above use the final grammar. A chord is modifiers (`ctrl`, `shift`, `alt`, `cmd`) and one key (a letter, a digit, `left`, `right`, `up`, `down`, `return`, `space`, `tab`, `escape`, `f1` to `f20`), joined with `+`.
 
 ## macOS behaviour to respect
 
@@ -455,4 +504,3 @@ Not planned:
   - each display's stash works on its own: moves and page flips on one display leave the other alone;
   - activation pre-emption when the app's window sits on the other display's stash;
   - what macOS does with a disconnected display's desktops and the windows on its stash, and whether they come back on reconnect.
-- The exact `mntl` grammar.

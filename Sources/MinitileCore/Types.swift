@@ -98,6 +98,8 @@ public enum Action: Sendable, Equatable {
     /// Explicit floating-window resize; ordinary floating frames remain absent from the scene.
     case setFrame(WindowID, Rect)
     case reloadConfig
+    /// Open the configured TOML file in the user's editor.
+    case openConfig
     case quit
 }
 
