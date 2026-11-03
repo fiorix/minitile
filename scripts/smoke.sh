@@ -254,6 +254,25 @@ Ready for real keys, starting with four TextEdit windows on workspace 1, page 1:
   Ctrl+Down: an empty workspace.
   Ctrl+Up: four windows again, without Mission Control or App Expose opening.
 
+Further checks, starting on the four-window page:
+  1. Window moves: Ctrl+Shift+Right twice, then Ctrl+Shift+Left twice.
+     Expect one, two, one, then four windows; focus follows the moved window.
+     Ctrl+Shift+Down then Ctrl+Shift+Up should show one, then four windows.
+  2. Activation: Ctrl+Down to an empty workspace, Cmd+Tab to this Terminal,
+     then Cmd+Tab back to TextEdit. Its previous page should return without
+     macOS switching to the stash desktop.
+  3. Resize: drag an inner edge of a tile about 100 points, then release.
+     The shared divider should stay at the new position and tiles should fit.
+  4. Swap: drag a title bar onto another tile and release over its center.
+     The two documents should exchange tiles.
+  5. Drag keys: start moving a title bar, hold the mouse down and press
+     Ctrl+Right. That document should move to its own page. Release, then
+     Ctrl+Shift+Left should return it to the four-window page.
+  6. Trackpad: swipe toward the second native desktop. Minitile should
+     return to the first desktop with the same page visible.
+If a check fails, stop the sequence and report its number and what happened.
+Report skipped checks as skipped. Leave monitor unplug/replug for a separate run.
+
 Return to this Terminal with Cmd+Tab, describe what happened, then press Return.
 Keep minitile running until this prompt finishes so it can close the test documents.
 Then minitile will stop. Ctrl+C also runs cleanup.
@@ -262,6 +281,7 @@ INSTRUCTIONS
     jq -n --arg observation "$observation" '{observation: $observation}' > "$report/manual-observation.json"
     "$mntl" --json state > "$report/manual-end.json"
     "$mntl" --json debug health > "$report/manual-health.json"
+    check_scene
     echo 'Manual observation and watch events recorded.'
     exit 0
 fi
