@@ -100,3 +100,52 @@ import Testing
     #expect(e.savedState().windows[1]?.hidden == false)
     #expect(grid(e) == [[[1]]])
 }
+
+@Test func minimizingFocusedWindowWaitsForNativeFocus() {
+    var e = engine(2)
+    command(&e, "window focus 1")
+    var info = window(1)
+    info.minimized = true
+    let out = e.handle(.windowUpdated(info))
+    #expect(out.actions.isEmpty)
+    #expect(e.savedState().focus == nil)
+    #expect(grid(e) == [[[1, 2]]])
+    #expect(out.scene.displays["primary"]?.visible == [1, 2])
+    #expect(out.events.allSatisfy { $0.type != "page_shown" })
+}
+
+@Test(arguments: [[WindowID(1), 2], [WindowID(2), 1]])
+func hidingFocusedAppWaitsForNativeFocus(_ order: [WindowID]) {
+    var e = Engine()
+    let windows = [window(1, pid: 500), window(2, pid: 500), window(3)]
+    _ = e.handle(.started(saved: nil, windows: windows, displays: [testDisplay], focus: 1))
+    for id in order {
+        var info = window(id, pid: 500)
+        info.appHidden = true
+        let out = e.handle(.windowUpdated(info))
+        #expect(out.actions.isEmpty)
+        #expect(out.scene.displays["primary"]?.visible == [1, 2, 3])
+        #expect(out.events.allSatisfy { $0.type != "page_shown" })
+    }
+    #expect(e.savedState().focus == nil)
+    #expect(grid(e) == [[[1, 2, 3]]])
+    let out = e.handle(.focusChanged(3))
+    #expect(e.savedState().focus == 3)
+    #expect(out.actions.isEmpty)
+}
+
+@Test func explicitHideStillRefocusesRemainingWindow() {
+    var e = engine(2)
+    command(&e, "window focus 1")
+    let out = command(&e, "window hide")
+    #expect(out.actions == [.focus(2)])
+    #expect(e.savedState().focus == 2)
+}
+
+@Test func configExclusionStillRefocusesRemainingWindow() {
+    var e = engine(2)
+    command(&e, "window focus 1")
+    let out = e.handle(.configLoaded(Config(onlyApps: ["app.2"])))
+    #expect(out.actions == [.focus(2)])
+    #expect(e.savedState().focus == 2)
+}

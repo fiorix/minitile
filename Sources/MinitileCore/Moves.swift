@@ -20,8 +20,17 @@ extension Engine {
             target.page = index
             move(id, to: target, output: &output)
         } else {
-            let index = at.page + direction
-            guard state.displays[at.display].workspaces[at.workspace].pages.indices.contains(index) else { return }
+            let pages = state.displays[at.display].workspaces[at.workspace].pages
+            var index = at.page + direction
+            guard pages.indices.contains(index) else { return }
+            while pages.indices.contains(index), state.windows[id]?.floating != true, tiled(pages[index]).count >= 4 {
+                index += direction
+            }
+            if !pages.indices.contains(index) {
+                index = direction < 0 ? 0 : pages.count
+                let created = PageState(id: nextSerial())
+                state.displays[at.display].workspaces[at.workspace].pages.insert(created, at: index)
+            }
             var target = at
             target.page = index
             move(id, to: target, output: &output)

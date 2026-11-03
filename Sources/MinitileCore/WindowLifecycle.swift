@@ -17,12 +17,12 @@ extension Engine {
         }
         guard allows(info) else { gone(info.id, output: &output); return }
         state.windows[info.id]?.info = info
+        let lostFocus = state.focus == info.id && (info.minimized || info.appHidden)
+        if lostFocus { focus(nil, action: false, output: &output) }
         updateFloating(info.id, value: floating(info, override: old.floatingOverride), output: &output)
-        if old.info.minimized && !info.minimized, let at = location(info.id) {
+        if !lostFocus && old.info.minimized && !info.minimized, let at = location(info.id) {
             show(at, focusWindow: false, output: &output)
             focus(info.id, action: true, output: &output)
-        } else if state.focus == info.id && (info.minimized || info.appHidden), let at = location(info.id) {
-            show(at, output: &output)
         }
     }
 

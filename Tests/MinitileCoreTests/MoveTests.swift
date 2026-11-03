@@ -17,9 +17,50 @@ import Testing
     var e = engine(1)
     command(&e, "window focus 1")
     let before = e.savedState()
-    command(&e, "window nudge left")
-    command(&e, "window nudge right")
+    for direction in ["left", "right"] {
+        let out = command(&e, "window nudge \(direction)")
+        #expect(out.actions.isEmpty)
+        #expect(out.events.isEmpty)
+        #expect(!out.stateChanged)
+    }
     command(&e, "window move up")
+    #expect(e.savedState() == before)
+}
+
+@Test func loneWindowNudgesLeftPastFullNeighborOntoNewFirstPage() {
+    var e = engine(5)
+    let out = command(&e, "window nudge 5 left")
+    #expect(grid(e) == [[[5], [1, 2, 3, 4]]])
+    #expect(out.scene.displays["primary"]?.visible == [5])
+    #expect(out.actions == [.focus(5)])
+    #expect(out.events.contains { $0.type == "window_moved" })
+}
+
+@Test(arguments: ["left", "right"])
+func loneWindowScansPastFullPagesInNudgeDirection(_ direction: String) {
+    var e = engine(6)
+    command(&e, "window nudge 1 left")
+    command(&e, "window move 5 page 2")
+    #expect(grid(e) == [[[1], [2, 3, 4, 5], [6]]])
+    let id: WindowID = direction == "left" ? 6 : 1
+    let out = command(&e, "window nudge \(id) \(direction)")
+    let expected: [[[WindowID]]] = direction == "left" ? [[[1, 6], [2, 3, 4, 5]]] : [[[2, 3, 4, 5], [6, 1]]]
+    #expect(grid(e) == expected)
+    #expect(e.savedState().focus == id)
+    #expect(out.actions == [.focus(id)])
+}
+
+@Test(arguments: ["left", "right"])
+func loneWindowAtWorkspaceEndEmitsNothing(_ direction: String) {
+    var e = engine(5)
+    if direction == "left" { command(&e, "window nudge 1 left") }
+    let id: WindowID = direction == "left" ? 1 : 5
+    command(&e, "window focus \(id)")
+    let before = e.savedState()
+    let out = command(&e, "window nudge \(direction)")
+    #expect(out.actions.isEmpty)
+    #expect(out.events.isEmpty)
+    #expect(!out.stateChanged)
     #expect(e.savedState() == before)
 }
 

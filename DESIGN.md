@@ -2,7 +2,7 @@
 
 minitile is a tiling window manager for macOS. It runs with SIP enabled and aims for a small core that blends with macOS: a handful of keys that reuse the native desktop shortcuts, mouse gestures where macOS users already use the mouse, and every function scriptable from the `mntl` command line tool. HyprMac (github.com/zacharytgray/HyprMac) is a source of macOS behaviour to respect, not a feature list to copy.
 
-Status: core, IPC and mntl are implemented and verified with 74 core tests and 17 IPC tests. The macOS shell is implemented and builds, with 12 shell helper tests passing; its live integration remains unverified. SkyLight symbol and selector resolution succeeds on this Mac. Bundle signing is blocked in the development sandbox by `Apple Development: no identity found`. Remaining macOS checks are listed under "Open".
+Status: core, IPC and mntl are implemented and verified with 84 core tests and 17 IPC tests. The macOS shell builds with 12 helper tests and has passed the single-display TextEdit command smoke test, including native placement, config-error retention and restart persistence. Signing and Accessibility work when launched from Terminal. Physical keys, gestures, activation pre-emption and multiple displays still need live validation.
 
 ## Model
 
@@ -27,11 +27,12 @@ The currently viewed empty page/workspace is retained until the view leaves it, 
 - If a new window from the frontmost app lands on a page that is not shown, that page is shown, since macOS focuses such windows. Windows from background apps are placed without changing the view.
 - When a window closes, the remaining windows on its page re-tile, and the freed slot is reused by the next new window. Windows never flow back from later pages.
 - When focus moves to a window on a hidden page by any means (Cmd+`, the Dock, a notification, `mntl window focus`), that page is shown.
-- When an app with no window on a shown page is activated (Cmd-Tab, the Dock), the page holding its most recently focused window is shown. macOS does the focusing. See "Rules minitile must follow" for the timing.
+- When an app with no window on a shown page is activated (Cmd-Tab, the Dock), the page holding its most recently focused window is shown. macOS does the focusing. Minimized windows do not count as being on a shown page; windows of a hidden app do, since activation unhides them. See "Rules minitile must follow" for the timing.
 
 ### Navigation and focus
 
 - Showing a page focuses the window that last had focus on it, or its first window. An empty page focuses nothing.
+- When the focused window closes or is minimized, or its app is hidden, minitile does not focus another window. macOS picks the next one, and minitile follows it.
 - Showing a workspace shows the page last viewed in it.
 - Ctrl+Left on the first page and Ctrl+Up on the first workspace do nothing.
 - Ctrl+Right on the last page opens an empty page, and Ctrl+Down on the last workspace opens an empty workspace. Neither opens a second empty one next to an empty one.
@@ -89,7 +90,7 @@ Default bindings:
 |---|---|---|
 | Ctrl+Left/Right | Show the previous or next page. | Move left/right a space |
 | Ctrl+Up/Down | Show the workspace above or below. | Mission Control, App Expose |
-| Ctrl+Shift+Left/Right | Nudge the focused window. If it shares its page, it moves onto a new page of its own on that side. If it is alone, it joins the neighbouring page, spilling if that page is full. Focus follows. | Select to line start or end in text fields, which Cmd+Shift+arrows also does |
+| Ctrl+Shift+Left/Right | Nudge the focused window. If it shares its page, it moves onto a new page of its own on that side. If it is alone, it joins the neighbouring page; if that page is full, it joins the next page with room in the same direction, or a new page at that end of the workspace. Focus follows. | Select to line start or end in text fields, which Cmd+Shift+arrows also does |
 | Ctrl+Shift+Up/Down | Carry the focused window to the workspace above or below, placed by the placement rules. Past the last workspace, it carries the window into a new one. Focus follows. | - |
 
 Nudging B to the right three times:
@@ -101,9 +102,16 @@ Nudging B to the right three times:
 [A C D] [E] [B]    B shared again, so it gets its own
 ```
 
-Nudging a window that is alone on the first or last page toward the edge does nothing.
+Nudging E to the left, past a full page:
 
-Sharing a page includes floating and reserved minimized/app-hidden windows. Joining a full neighbor scans right using normal placement; a left nudge can therefore remain on its original page if that is the first free page after the full neighbor.
+```
+[A B C D] [E]      start
+[E] [A B C D]      E was alone and no page to its left has room, so it gets a new first page
+```
+
+Nudging a window that is alone on the first or last page toward the edge does nothing, and a nudge that does nothing emits no event or focus action.
+
+Sharing a page includes floating and reserved minimized/app-hidden windows. A nudge always moves the window in its direction: it never lands back on the page it left.
 
 Mouse:
 
@@ -399,7 +407,7 @@ Scene visible/stashed lists express desktop ownership, including minimized and a
   - windows on the visible desktop fill pages of the first workspace;
   - windows on the stash follow on further pages.
 
-Adoption preserves discovery order within the visible and stash groups. Stash adoption begins after the first workspace's last populated page, even if a visible page has free slots. Unknown windows join the first workspace without changing a valid saved view; the shell's startup focus observation can show a different page. Known windows keep their saved placement regardless of macOS's observed display position. Repeated observations of the same ID are ignored after the first. Unsupported or structurally invalid saved snapshots fall back to adoption. A changed pid in a later appearance/update is treated as a new window identity. Persistent JSON defaults additive fields when absent; the script-facing `state` shape is documented separately above.
+Adoption preserves discovery order within the visible and stash groups. Stash adoption begins after the first workspace's last populated page, even if a visible page has free slots. Unknown windows join the first workspace without changing a valid saved view; the shell's startup focus observation can show a different page. Known windows keep their saved placement regardless of macOS's observed display position. Repeated observations of the same ID are ignored after the first. Unsupported or structurally invalid saved snapshots fall back to adoption. A changed pid in a later appearance/update is treated as a new window identity. Only `SavedState` supplies defaults for absent top-level fields. `PageState`, `WorkspaceState`, `DisplayState` and `WindowState` use synthesized decoding, so a missing required key fails decoding of the entire saved-state file. The script-facing `state` shape is documented separately above.
 - On quit, stashed windows stay on the stash, where Mission Control can reach them.
 - Startup checks, in order: Accessibility permission (prompt, explain in the menu bar, and wait until granted); the SkyLight functions (refuse to run if missing); "Displays have separate Spaces"; a desktop pair per display (unmanaged displays are listed in the menu bar). If the current desktop of a display is its stash, minitile switches to the visible one.
 

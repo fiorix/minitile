@@ -39,3 +39,9 @@ CLANG_MODULE_CACHE_PATH="$PWD/.build/clang-cache" swift test --disable-sandbox -
 ```
 
 The passing sandbox-compatible subset uses `--filter 'MinitileCoreTests|replyAlwaysEncodesData|jsonValueRoundTripsNestedValues|socketPathHonorsOverride|invalidSocketPathsFail|regularFileAtSocketPathIsPreserved'`. Build and subset logs are `.build/final-build.log` and `.build/final-tests.log` (ignored by Git).
+
+## Core-v2 review
+
+The design-session changes to Placement, Navigation and focus, and Keys are preserved in the corresponding fixes. Minimized windows are excluded from activation pre-emption; native close/minimize/app-hide transitions clear focus without a focus action or page change; lone-window nudges scan in their direction and insert at that end when full. Edge no-ops remain silent. The saved-state documentation now limits missing-field defaults to SavedState and describes synthesized nested decoding accurately; no decoders changed.
+
+Each of the three code fixes and the documentation correction has its own commit. Regression tests reproduced the activation, native-focus and left-nudge failures before the fixes. Targeted tests pass, and the final local build has no warnings. The local full-suite attempt passed all 84 core tests; socket tests remain blocked by sandbox bind EPERM. IPC source and tests are unchanged from core-v1. The user has started an unrestricted `swift build && swift test`; wait for its final summaries, record the result in this documentation commit, and tag core-v2 only after it passes.
