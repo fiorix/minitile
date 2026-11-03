@@ -20,6 +20,7 @@ let package = Package(
         .executableTarget(name: "mntl", dependencies: ["MinitileIPC"]),
         .testTarget(name: "MinitileCoreTests", dependencies: ["MinitileCore"]),
         .testTarget(name: "MinitileIPCTests", dependencies: ["MinitileIPC"]),
+        .testTarget(name: "MinitileShellTests", dependencies: ["minitile"]),
     ],
     swiftLanguageModes: [.v6]
 )

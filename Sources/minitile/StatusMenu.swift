@@ -5,8 +5,11 @@ import MinitileIPC
 final class StatusMenu: NSObject {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     var command: (([String]) -> Reply)?
+    private var previous: (label: String, warnings: [String], state: String)?
 
     func update(label: String, warnings: [String], state: String) {
+        if let previous, previous.label == label, previous.warnings == warnings, previous.state == state { return }
+        previous = (label, warnings, state)
         item.button?.title = warnings.isEmpty ? label : "\(label) !"
         item.button?.toolTip = warnings.isEmpty ? state : warnings.joined(separator: "\n")
         let menu = NSMenu()

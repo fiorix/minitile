@@ -33,6 +33,7 @@ final class Discovery {
     private var adoption: [WindowID: (pid: Int32, display: NativeDisplay)] = [:]
     var config: Config
     let displays: DisplayCatalog
+    let smokeScope = SmokeScope()
     var frozen = false
     var input: ((Input) -> Void)?
     var activated: ((Int32) -> Void)?
@@ -43,7 +44,7 @@ final class Discovery {
     init(config: Config, displays: DisplayCatalog) { self.config = config; self.displays = displays }
 
     func allows(_ app: NSRunningApplication) -> Bool {
-        app.processIdentifier != ProcessInfo.processInfo.processIdentifier && !app.isTerminated
+        app.processIdentifier != ProcessInfo.processInfo.processIdentifier && !app.isTerminated && app.activationPolicy != .prohibited
             && (config.onlyApps.isEmpty || app.bundleIdentifier.map(config.onlyApps.contains) == true)
     }
 
@@ -72,6 +73,15 @@ final class Discovery {
     func stop() {
         applications.values.forEach { $0.stop() }
         applications.removeAll()
+    }
+
+    func pruneIgnored() {
+        for (pid, context) in applications {
+            if let app = NSRunningApplication(processIdentifier: pid), allows(app) { continue }
+            for id in windows.keys where windows[id]?.info.pid == pid { remove(id) }
+            context.stop()
+            applications.removeValue(forKey: pid)
+        }
     }
 
     func scan() {
@@ -103,7 +113,8 @@ final class Discovery {
 
     private func discover(_ element: AXUIElement, app: NSRunningApplication, cg: [WindowID: CGWindowRecord]) {
         guard let id = AX.id(element), let record = cg[id], record.pid == app.processIdentifier, record.real,
-              AX.value(element, kAXRoleAttribute) as? String == kAXWindowRole else { return }
+              AX.value(element, kAXRoleAttribute) as? String == kAXWindowRole,
+              smokeScope.allows(document: AX.value(element, kAXDocumentAttribute) as? String) else { return }
         if let previous = windows[id] {
             if previous.info.pid == app.processIdentifier && CFEqual(previous.element, element) { return }
             remove(id)
@@ -146,6 +157,8 @@ final class Discovery {
     func update(_ id: WindowID, app: NSRunningApplication? = nil) {
         guard !frozen, let old = windows[id],
               let app = app ?? NSRunningApplication(processIdentifier: old.info.pid) else { return }
+        if smokeScope.directory != nil, let document = AX.value(old.element, kAXDocumentAttribute) as? String,
+           !smokeScope.allows(document: document) { remove(id); return }
         readInfo(id, app: app)
         if let info = windows[id]?.info, info != old.info { input?(.windowUpdated(info)) }
     }
@@ -193,11 +206,14 @@ final class Discovery {
 
     /// Temporarily expose allowed stash windows to acquire AX handles at startup.
     func prepareStash() {
-        guard let cg = CGWindowRecord.snapshot() else { return }
+        guard !frozen, let cg = CGWindowRecord.snapshot() else { return }
         let allowed = Set(NSWorkspace.shared.runningApplications.filter(allows).map(\.processIdentifier))
         for display in displays.displays where display.info.unmanagedReason == nil {
             guard let stash = display.info.stashSpace, let visible = display.info.visibleSpace else { continue }
-            let records = cg.values.filter { $0.real && allowed.contains($0.pid) && displays.windowSpaces($0.id).contains(stash) }
+            let records = cg.values.filter {
+                windows[$0.id] == nil && $0.real && allowed.contains($0.pid) && smokeScope.allowsStash(id: $0.id, pid: $0.pid)
+                    && displays.windowSpaces($0.id).contains(stash)
+            }
             let ids = records.map(\.id).sorted()
             guard !ids.isEmpty, csl_move_windows(ids, ids.count, visible) else { continue }
             for record in records { adoption[record.id] = (record.pid, display) }
@@ -205,10 +221,11 @@ final class Discovery {
     }
 
     var missingAdoptionHandles: [WindowID] { adoption.keys.filter { windows[$0] == nil }.sorted() }
+    var adoptionCount: Int { adoption.count }
 
-    func finishAdoption() {
+    func finishAdoption(restoreAll: Bool = false) {
         // Unreadable windows retain their original desktop and are never adopted by guesswork.
-        for (id, original) in adoption where windows[id] == nil {
+        for (id, original) in adoption where restoreAll || windows[id] == nil {
             guard CGWindowRecord.snapshot()?[id]?.pid == original.pid, let stash = original.display.info.stashSpace else { continue }
             var id = id
             _ = csl_move_windows(&id, 1, stash)

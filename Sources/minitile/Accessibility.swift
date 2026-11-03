@@ -63,7 +63,7 @@ struct CGWindowRecord: Codable {
     var real: Bool { layer == 0 && alpha > 0.01 }
 
     static func snapshot() -> [WindowID: CGWindowRecord]? {
-        guard let rows = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] else { return nil }
+        guard let rows = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]], !rows.isEmpty else { return nil }
         var result: [WindowID: CGWindowRecord] = [:]
         for row in rows {
             guard let id = row[kCGWindowNumber as String] as? NSNumber,

@@ -35,7 +35,7 @@ final class DisplayCatalog {
 
     /// Compare topology and usable geometry, excluding which desktop is currently showing.
     @discardableResult func refresh() -> Bool {
-        let raw = csl_copy_managed_display_spaces() as? [[String: Any]] ?? []
+        guard let raw = csl_copy_managed_display_spaces() as? [[String: Any]], !raw.isEmpty else { return false }
         desktopNumbers = [:]
         for display in raw {
             for space in display["Spaces"] as? [[String: Any]] ?? [] {

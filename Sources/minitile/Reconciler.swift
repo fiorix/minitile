@@ -45,6 +45,7 @@ final class Reconciler {
     }
     func suppressesActivation(_ pid: Int32) -> Bool {
         guard let ownFocus else { return false }
+        if pid != ownFocus.pid { self.ownFocus = nil; return false }
         return pid == ownFocus.pid && ProcessInfo.processInfo.systemUptime < ownFocus.until
     }
 
