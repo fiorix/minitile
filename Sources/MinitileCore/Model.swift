@@ -156,7 +156,7 @@ extension Engine {
 
     mutating func appActivated(_ pid: Int32, output: inout Output) {
         let positions = locations()
-        let candidates = state.windows.values.filter { $0.info.pid == pid && !$0.hidden }
+        let candidates = state.windows.values.filter { $0.info.pid == pid && !$0.hidden && !$0.info.minimized }
         if candidates.contains(where: { positions[$0.info.id].map(isShown) == true }) { return }
         let best = candidates.min {
             if $0.lastFocused != $1.lastFocused { return $0.lastFocused > $1.lastFocused }

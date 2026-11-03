@@ -126,3 +126,41 @@ func command(_ engine: inout Engine, _ args: String) -> Output {
     #expect(e.savedState().focus == 2)
     #expect(!e.handle(.windowGone(999)).stateChanged)
 }
+
+@Test func activationSkipsMinimizedWindowsEvenWithRecentFocus() {
+    var e = Engine()
+    let windows = (1...5).map { window(WindowID($0), pid: [1, 5].contains($0) ? 500 : nil) }
+    _ = e.handle(.started(saved: nil, windows: windows, displays: [testDisplay], focus: 1))
+    var minimized = windows[0]
+    minimized.minimized = true
+    _ = e.handle(.windowUpdated(minimized))
+    #expect(grid(e) == [[[1, 2, 3, 4], [5]]])
+    let out = e.handle(.appActivated(pid: 500))
+    #expect(out.scene.displays["primary"]?.visible == [5])
+    #expect(out.actions.isEmpty)
+}
+
+@Test func activationCountsAppHiddenWindowOnShownPage() {
+    var e = Engine()
+    var windows = (1...5).map { window(WindowID($0), pid: [1, 5].contains($0) ? 500 : nil) }
+    windows[0].appHidden = true
+    _ = e.handle(.started(saved: nil, windows: windows, displays: [testDisplay], focus: nil))
+    let before = e.savedState()
+    let out = e.handle(.appActivated(pid: 500))
+    #expect(e.savedState() == before)
+    #expect(out.actions.isEmpty)
+    #expect(out.events.isEmpty)
+}
+
+@Test func activationWithOnlyMinimizedWindowsLeavesViewAlone() {
+    var e = Engine()
+    var windows = (1...5).map { window(WindowID($0), pid: [1, 5].contains($0) ? 500 : nil) }
+    windows[0].minimized = true
+    windows[4].minimized = true
+    _ = e.handle(.started(saved: nil, windows: windows, displays: [testDisplay], focus: nil))
+    let before = e.savedState()
+    let out = e.handle(.appActivated(pid: 500))
+    #expect(e.savedState() == before)
+    #expect(out.actions.isEmpty)
+    #expect(out.events.isEmpty)
+}

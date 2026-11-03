@@ -27,7 +27,7 @@ The currently viewed empty page/workspace is retained until the view leaves it, 
 - If a new window from the frontmost app lands on a page that is not shown, that page is shown, since macOS focuses such windows. Windows from background apps are placed without changing the view.
 - When a window closes, the remaining windows on its page re-tile, and the freed slot is reused by the next new window. Windows never flow back from later pages.
 - When focus moves to a window on a hidden page by any means (Cmd+`, the Dock, a notification, `mntl window focus`), that page is shown.
-- When an app with no window on a shown page is activated (Cmd-Tab, the Dock), the page holding its most recently focused window is shown. macOS does the focusing. See "Rules minitile must follow" for the timing.
+- When an app with no window on a shown page is activated (Cmd-Tab, the Dock), the page holding its most recently focused window is shown. macOS does the focusing. Minimized windows do not count as being on a shown page; windows of a hidden app do, since activation unhides them. See "Rules minitile must follow" for the timing.
 
 ### Navigation and focus
 
