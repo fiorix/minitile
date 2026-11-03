@@ -2,7 +2,7 @@
 
 minitile is a tiling window manager for macOS. It runs with SIP enabled and aims for a small core that blends with macOS: a handful of keys that reuse the native desktop shortcuts, mouse gestures where macOS users already use the mouse, and every function scriptable from the `mntl` command line tool. HyprMac (github.com/zacharytgray/HyprMac) is a source of macOS behaviour to respect, not a feature list to copy.
 
-Status: core, IPC and mntl are implemented and verified with 74 core tests and 17 IPC tests. The macOS shell integration and live checks remain separate; remaining macOS checks are listed under "Open".
+Status: core, IPC and mntl are implemented and verified with 74 core tests and 17 IPC tests. The macOS shell is implemented and builds, with 12 shell helper tests passing; its live integration remains unverified. SkyLight symbol and selector resolution succeeds on this Mac. Bundle signing is blocked in the development sandbox by `Apple Development: no identity found`. Remaining macOS checks are listed under "Open".
 
 ## Model
 
@@ -131,6 +131,8 @@ Every minitile function is a command. Key bindings, the menu bar, mouse gestures
 - `mntl` is a thin client. It sends its arguments, prints `text` (or `data` with `--json`) and exits 0 on success, 1 on a command error and 2 when minitile cannot be reached. New commands need no change to `mntl`.
 - Config bindings and menu items use the same command strings, for example `"ctrl+left" = "page prev"`.
 - `mntl debug <verb>` commands are answered by the app shell and expose internals: raw desktops per display, the last applied scene, timings. Debug verbs can be added freely. Every other command is answered by the core.
+
+The shell provides `debug spaces`, `debug windows`, `debug scene`, `debug timings` and `debug health`. Spaces include the native display identifier, every native Space and its type, current Space, and core display metadata. Windows include allowed apps' raw layer-0 windows, AX observation status, current spaces, frames and tileability. Scene frame keys are decimal window-ID strings. Health includes process ID, startup/suspension state, secure input, tap availability, paths and warnings. The menu can open config, retry startup after a config error, or quit while normal command handling is still unavailable.
 
 Commands are noun then verb. Windows are addressed by window ID and default to the focused window. Pages and workspaces are addressed by index or `next`/`prev`, and default to the display with the focused window.
 
@@ -278,6 +280,8 @@ Rules minitile must follow:
 - Track windows in minitile's own state. `kAXWindows` does not list stashed windows.
 - At start, windows already on a stash have no AX handle, because `kAXWindows` omits them. minitile moves them to the visible desktop in one call, takes their AX handles, and lets the first reconcile stash them again. They show for a moment at start. Not yet verified: that `kAXWindows` lists a window right after it has been moved to the visible desktop.
 
+The shell tries discovery immediately, then up to four more times at 250 ms intervals. It restores windows with unreadable AX handles to their original stash and reports them. Quitting during adoption restores the temporarily exposed windows. The immediate discovery result and this retry policy still need live validation. Startup discovery is ordered by window ID before the core applies its visible-before-stash adoption rules.
+
 Known risks:
 
 - After an instant switch, the Dock's idea of the current desktop occasionally drifts from the real one (1 of 27 bounces). A Dock-driven move toward the stash then does nothing, and one toward the visible desktop plays a phantom slide. There is no API to detect this. A Dock-driven desktop shortcut re-syncs it.
@@ -404,6 +408,8 @@ Adoption preserves discovery order within the visible and stash groups. Stash ad
 - The config lives in `~/.config/minitile/minitile.toml` (`MINITILE_CONFIG` overrides the path) and is reloaded when the file changes. Editors often replace the file, so the watch covers its directory.
 - It is parsed with TOMLDecoder (github.com/dduan/TOMLDecoder, from 0.4.5: pure Swift, decodes into `Codable` types, MIT). A hand-written parser can replace it later if the dependency becomes a burden.
 - A config error keeps the previous config and shows the error in the menu bar and in the reply to `mntl config reload`.
+
+An initial config error leaves the app inactive with a menu warning; Reload Config retries startup after correction. The watcher observes both the directory for atomic replacements and the file for in-place writes, debounced by 150 ms. A missing directory is watched through its nearest existing ancestor. Config reloads are deferred while the session or display topology is suspended and retried after display recovery.
 - There is no settings GUI. The menu bar icon shows the current workspace and page (the scene label), any warnings, and offers floating, layout variant, reload, open config and quit, each a command.
 
 Schema, with the defaults:
@@ -450,6 +456,8 @@ Discovery:
 - Treat a window as real only if the CG window list shows it at layer 0 with alpha above 0.01.
 - A failed AX read means "unknown", not "closed". A destroyed element may not report its pid, so use the observer's pid.
 - Apps can keep listing a destroyed window briefly. Confirm disappearance with a few rechecks; busy Electron apps flicker otherwise.
+
+The shell confirms disappearance after three WindowServer snapshots no longer contain the same window ID and pid. Event-triggered rechecks run at 150, 400 and 900 ms; a three-second scan catches missed notifications. An empty or failed WindowServer snapshot is unknown. Background agents with prohibited activation policy are excluded from AX observation. Sleep, session inactivity, lock and pending display reconfiguration suspend lifecycle changes.
 - Some apps (Teams, Mail) reuse window IDs on close and reopen.
 - While the session is locked or the displays sleep, the on-screen window list empties. Freeze lifecycle changes until the interruption ends.
 
@@ -476,6 +484,8 @@ Focus and closing:
   - `mntl`, executable, depends on `MinitileIPC` only;
   - `MinitileCoreTests` and `MinitileIPCTests`, using swift-testing.
 - `scripts/build-app.sh` wraps `minitile` in `build/Minitile.app` (bundle ID `com.github.fiorix.minitile`, `LSUIElement` set) and places `mntl` next to it. It signs with `MINITILE_SIGN_IDENTITY`, default "Apple Development", so the Accessibility grant survives rebuilds; an ad-hoc signature changes every build.
+
+The shell remains in Swift 6 mode. AX observer callbacks run on the main run loop; the keyboard tap owns a separate run loop and locks its small command-matching state. Letter and digit bindings use the current keyboard layout, with function and navigation keys matched by native keycode. Stash Desktop N blockers use user-desktop order from the native display-space enumeration; their multiple-display numbering remains unverified. State writes are atomic and serialized off the main thread, and quit flushes pending writes.
 - Logging uses unified logging with subsystem `minitile`.
 - Threads:
   - the main thread runs the `NSApplication` loop, AX work, the core and the reconciler;
@@ -488,6 +498,8 @@ Focus and closing:
 
 - Core and IPC have unit tests run with `swift test`. They need no permissions and never touch windows.
 - The shell is tested live. Automated runs use a temporary config with `only_apps = ["com.apple.TextEdit"]` and TextEdit windows the test opens itself, so the user's windows are never moved or closed. A smoke script drives minitile through `mntl` and checks `mntl --json state`.
+
+`scripts/smoke.sh` is implemented but has not run live. It also compares the requested scene with raw WindowServer spaces and AX frames, checks invalid-config retention and restart persistence, and writes reports under `build/smoke-*`. Its temporary `MINITILE_SMOKE_DIRECTORY` restricts new window discovery to document URLs directly inside that directory. On restart, `MINITILE_SMOKE_WINDOWS` permits startup stash acquisition only for test-observed ID/pid pairs. These are test-harness restrictions in addition to `only_apps`. Cleanup closes only the test's documents, stops the test manager, preserves files if cleanup fails, and quits TextEdit only if the test started it and it has no remaining layer-0 windows.
 - Running minitile over every app rearranges the user's desktops, so the first such run needs the user's go-ahead.
 - `dev/spikes/` holds the throwaway programs that validated the primitives, with their logs. They are reference code for SkyLight, focus, activation pre-emption and the event tap, not a base to build on. Upstream sources: yabai `src/misc/macho_dlsym.h` and `src/space_manager.c`.
 
