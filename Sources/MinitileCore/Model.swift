@@ -213,7 +213,9 @@ extension Engine {
             if let current = currentLocation(display: d) { result.label = "\(current.workspace + 1):\(current.page + 1)" }
             for (w, workspace) in display.workspaces.enumerated() {
                 for (p, page) in workspace.pages.enumerated() {
-                    if isShown(Location(display: d, workspace: w, page: p)) { result.visible += page.windows }
+                    let at = Location(display: d, workspace: w, page: p)
+                    result.frames.merge(frames(at)) { _, new in new }
+                    if isShown(at) { result.visible += page.windows }
                     else { result.stashed += page.windows }
                 }
             }

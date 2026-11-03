@@ -16,7 +16,13 @@ extension Engine {
         case ["workspace", "prev"]: try navigateWorkspace(-1, output: &output)
         case ["workspace", "new"]: try navigateWorkspace(1, alwaysNew: true, output: &output)
         default:
-            if argv.count == 3, argv[0] == "window", ["focus", "show"].contains(argv[1]),
+            if argv == ["page", "variant"], let d = currentDisplay(), let at = currentLocation(display: d) {
+                variant(at)
+            } else if argv.count == 4, argv.prefix(2) == ["page", "ratio"],
+                      let a = Double(argv[2]), a.isFinite, let b = Double(argv[3]), b.isFinite,
+                      let d = currentDisplay(), let at = currentLocation(display: d) {
+                setRatios(at, a, b)
+            } else if argv.count == 3, argv[0] == "window", ["focus", "show"].contains(argv[1]),
                let id = WindowID(argv[2]), let at = location(id) {
                 show(at, focusWindow: false, output: &output)
                 focus(id, action: true, output: &output)

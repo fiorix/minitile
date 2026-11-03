@@ -40,6 +40,7 @@ public struct Engine: Sendable {
         case .displaysChanged, .dragEnded: break
         }
         cleanup()
+        resetLayouts()
         output.scene = makeScene()
         output.stateChanged = state != previous
         return output
