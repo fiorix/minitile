@@ -109,7 +109,7 @@ extension Engine {
         } else if noun == "page", verb == "ratio", (1...2).contains(args.count),
                   let a = Double(args[0]), a.isFinite,
                   args.count == 1 || (Double(args[1]).map(\.isFinite) == true) {
-            setRatios(at, a, args.count == 2 ? Double(args[1])! : page(at).r2)
+            setRatios(at, a, args.count == 2 ? Double(args[1])! : page(at).r2, preserveSecond: args.count == 1)
         } else { throw CommandError("Expected \(noun) list|info|show|next|prev\(noun == "page" ? "|variant|ratio" : "|new"); run help") }
         return Reply(text: "OK")
     }

@@ -5,6 +5,7 @@ struct Location: Equatable {
     var workspace: Int
     var page: Int
     var slot: Int = 0
+    var tiledSlot: Int?
 }
 
 extension Engine {
@@ -39,8 +40,11 @@ extension Engine {
         for d in state.displays.indices {
             for w in state.displays[d].workspaces.indices {
                 for p in state.displays[d].workspaces[w].pages.indices {
+                    var tile = 0
                     for (s, id) in state.displays[d].workspaces[w].pages[p].windows.enumerated() {
-                        result[id] = Location(display: d, workspace: w, page: p, slot: s)
+                        let floats = state.windows[id]?.floating == true
+                        result[id] = Location(display: d, workspace: w, page: p, slot: s, tiledSlot: floats ? nil : tile)
+                        if !floats { tile += 1 }
                     }
                 }
             }
@@ -124,6 +128,7 @@ extension Engine {
     }
 
     mutating func appeared(_ info: WindowInfo, output: inout Output) {
+        if let old = state.windows[info.id], old.info.pid != info.pid { gone(info.id, output: &output) }
         guard allows(info), state.windows[info.id] == nil,
               let d = displayIndex(info.display) ?? currentDisplay(),
               state.displays[d].info.unmanagedReason == nil,

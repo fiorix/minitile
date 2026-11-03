@@ -92,6 +92,10 @@ extension Engine {
         state.displays[b.display].workspaces[b.workspace].pages[b.page].windows[b.slot] = first
         state.windows[first]?.display = state.displays[b.display].info.id
         state.windows[second]?.display = state.displays[a.display].info.id
+        if a.display != b.display || a.workspace != b.workspace || a.page != b.page {
+            if page(a).lastFocus == first { state.displays[a.display].workspaces[a.workspace].pages[a.page].lastFocus = nil }
+            if page(b).lastFocus == second { state.displays[b.display].workspaces[b.workspace].pages[b.page].lastFocus = nil }
+        }
         if follow { show(b, focusWindow: false, output: &output); focus(first, action: true, output: &output) }
         output.events += [Event(type: "window_moved", data: .number(Double(first))), Event(type: "window_moved", data: .number(Double(second)))]
     }
@@ -107,28 +111,34 @@ extension Engine {
         if window.floating {
             guard let second else { throw CommandError("Floating size requires WIDTHxHEIGHT in points") }
             var frame = window.info.frame
-            frame.width = first.rounded(); frame.height = second.rounded()
+            frame.width = max(1, first.rounded()); frame.height = max(1, second.rounded())
             state.windows[id]?.info.frame = frame
             output.actions.append(.setFrame(id, frame))
             return
         }
-        guard let at = location(id), var target = frames(at)[id] else { throw CommandError("Window has no active tile") }
+        guard let at = location(id), let slot = tiled(page(at), activeOnly: true).firstIndex(of: id) else { throw CommandError("Window has no active tile") }
         let display = state.displays[at.display].info.visibleFrame
-        let area = Layout.area(frame: display, padding: config.padding)
         let count = tiled(page(at), activeOnly: true).count
         let landscape = display.width >= display.height
-        let longIsX = (count == 2 && page(at).variant == .alternate) ? !landscape : landscape
-        func changeWidth(_ share: Double) {
-            if abs(target.x - area.x) < 1.1 { target.width = area.width * share - config.gaps / 2 }
-            else { let right = target.maxX; target.width = area.width * share - config.gaps / 2; target.x = right - target.width }
+        let alternate = page(at).variant == .alternate
+        let longShare: Double? = second.map { landscape ? first : $0 } ?? (count == 2 && alternate ? nil : first)
+        let shortShare: Double? = second.map { landscape ? $0 : first } ?? (count == 2 && alternate ? first : nil)
+        var a = page(at).r1, b = page(at).r2
+        var changedA = false, changedB = false
+        if count == 2, let share = alternate ? shortShare : longShare {
+            a = slot == 0 ? share : 1 - share; changedA = true
+        } else if count == 3 && alternate, let share = longShare {
+            if slot == 0 { a = share; changedA = true }
+            else if slot == 1 { a = b - share; changedA = true }
+            else { b = 1 - share; changedB = true }
+        } else if count == 3 {
+            if let share = longShare { a = slot == 0 ? share : 1 - share; changedA = true }
+            if let share = shortShare, slot != 0 { b = slot == 1 ? share : 1 - share; changedB = true }
+        } else if count == 4 {
+            if let share = longShare { a = slot % 2 == 0 ? share : 1 - share; changedA = true }
+            if let share = shortShare { b = slot < 2 ? share : 1 - share; changedB = true }
         }
-        func changeHeight(_ share: Double) {
-            if abs(target.y - area.y) < 1.1 { target.height = area.height * share - config.gaps / 2 }
-            else { let bottom = target.maxY; target.height = area.height * share - config.gaps / 2; target.y = bottom - target.height }
-        }
-        if let second { changeWidth(first); changeHeight(second) }
-        else if longIsX { changeWidth(first) } else { changeHeight(first) }
-        resizeCuts(id, at: at, frame: target)
+        setRatios(at, a, b, preserveFirst: !changedA, preserveSecond: !changedB)
         output.rewrite.insert(id)
     }
 
@@ -144,6 +154,7 @@ extension Engine {
         if count == 3 { cuts = [(longX, false, p.r1), (p.variant == .alternate ? longX : !longX, true, p.r2)] }
         if count == 4 { cuts = [(longX, false, p.r1), (!longX, true, p.r2)] }
         var a = p.r1, b = p.r2
+        var changedA = false, changedB = false
         for cut in cuts {
             let origin = cut.x ? area.x : area.y
             let length = cut.x ? area.width : area.height
@@ -154,10 +165,10 @@ extension Engine {
                 : [(original.y, frame.y, -config.gaps / 2), (original.maxY, frame.maxY, config.gaps / 2)]
             for (old, new, correction) in edges where abs(old + correction - position) <= 1.1 && abs(old - new) > 3 {
                 let ratio = (new + correction - origin) / length
-                if cut.second { b = ratio } else { a = ratio }
+                if cut.second { b = ratio; changedB = true } else { a = ratio; changedA = true }
             }
         }
-        setRatios(at, a, b)
+        setRatios(at, a, b, preserveFirst: !changedA, preserveSecond: !changedB)
     }
 
     mutating func dragEnded(_ id: WindowID, frame: Rect, cursor: Point, output: inout Output) {

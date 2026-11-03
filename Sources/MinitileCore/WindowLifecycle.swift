@@ -69,12 +69,68 @@ extension Engine {
         focus(id, action: true, output: &output)
     }
 
-    mutating func loadConfig(_ config: Config, output: inout Output) {
-        for id in state.windows.keys.sorted() {
+    mutating func loadConfig(output: inout Output) {
+        let focused = state.focus
+        let oldPage = focused.flatMap(location).map { page($0).id }
+        let removed = Set(state.windows.filter { !allows($0.value.info) }.keys)
+        state.windows = state.windows.filter { !removed.contains($0.key) }
+        for id in state.windows.keys {
             guard let window = state.windows[id] else { continue }
-            if !allows(window.info) { gone(id, output: &output) }
-            else { updateFloating(id, value: floating(window.info, override: window.floatingOverride), output: &output) }
+            let value = floating(window.info, override: window.floatingOverride)
+            state.windows[id]?.floating = value
+        }
+        for d in state.displays.indices {
+            for w in state.displays[d].workspaces.indices {
+                for p in state.displays[d].workspaces[w].pages.indices {
+                    state.displays[d].workspaces[w].pages[p].windows.removeAll { removed.contains($0) }
+                }
+            }
+        }
+        output.events += removed.sorted().map { Event(type: "window_removed", data: .number(Double($0))) }
+        output.events += repackOverflow().map { Event(type: "window_moved", data: .number(Double($0))) }
+        if let focused, let at = location(focused), page(at).id != oldPage {
+            show(at, focusWindow: false, output: &output)
+            focus(focused, action: true, output: &output)
+        } else if let focused, removed.contains(focused) {
+            if let d = currentDisplay(), let at = currentLocation(display: d) { show(at, output: &output) }
+            else { focus(nil, action: false, output: &output) }
         }
         output.events.append(Event(type: "config_reloaded"))
+    }
+
+    // Only overflow moves; each workspace's existing valid slots retain their pages.
+    mutating func repackOverflow() -> [WindowID] {
+        var moved: [WindowID] = []
+        for d in state.displays.indices {
+            for w in state.displays[d].workspaces.indices {
+                var p = 0, consumed = 0
+                var overflow: [WindowID] = []
+                while p < state.displays[d].workspaces[w].pages.count || consumed < overflow.count {
+                    if p == state.displays[d].workspaces[w].pages.count {
+                        let page = PageState(id: nextSerial())
+                        state.displays[d].workspaces[w].pages.append(page)
+                    }
+                    let at = Location(display: d, workspace: w, page: p)
+                    let all = page(at).windows
+                    var count = 0
+                    state.displays[d].workspaces[w].pages[p].windows = all.filter { id in
+                        if state.windows[id]?.floating == true { return true }
+                        count += 1
+                        if count > 4 { overflow.append(id); moved.append(id); return false }
+                        return true
+                    }
+                    while count < 4 && consumed < overflow.count {
+                        state.displays[d].workspaces[w].pages[p].windows.append(overflow[consumed])
+                        consumed += 1
+                        count += 1
+                    }
+                    if let last = page(at).lastFocus, !page(at).windows.contains(last) {
+                        state.displays[d].workspaces[w].pages[p].lastFocus = nil
+                    }
+                    p += 1
+                }
+            }
+        }
+        return moved
     }
 }

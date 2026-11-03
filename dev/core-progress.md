@@ -6,16 +6,16 @@ Deliver the core, IPC and mntl described in `agent-1-core.md`, with Swift 6 conc
 
 - [x] 0: Bootstrap SwiftPM; build and test; commit on main, then branch core.
 - [x] 1: Publish documented value types and IPC API; build; tag contract-v1.
-- [ ] 2: IPC and mntl implemented and compiled; real socket tests are blocked by sandbox bind EPERM. User asked asynchronously to run `swift test --filter MinitileIPCTests`. Do not tag ipc-v1 until verified.
+- [x] 2: IPC and mntl implemented; all 17 IPC tests pass in the user's unrestricted run. Tag ipc-v1 with the final verified source.
 - [x] 3: Model, placement and navigation; behavioral tests.
 - [x] 4: Layout; exact geometry tests across orientations and variants.
 - [x] 5: Moves, resize and drag handling; boundary and nudge tests.
 - [x] 6: Floating, minimized and hidden windows; ownership and slot tests.
 - [x] 7: Displays; merge/unmerge and unmanaged display tests.
-- [ ] 8: Commands, replies and events; grammar and data shape tests/documentation.
-- [ ] 9: Config; defaults, bindings and invalid input tests.
-- [ ] 10: Saved state and adoption; JSON round trip, stale identity and ordering tests.
-- [ ] 11: Final review, build and tests; document interpretations; tag core-v1.
+- [x] 8: Commands, replies and events; grammar and data shape tests/documentation.
+- [x] 9: Config; defaults, bindings and invalid input tests.
+- [x] 10: Saved state and adoption; JSON round trip, stale identity and ordering tests.
+- [x] 11: Final review, documentation and build are complete. All 74 core and 17 IPC tests pass without warnings, verified in separate target runs. Tag ipc-v1 and core-v1 with the final commit.
 
 ## Decisions and integration notes
 
@@ -25,9 +25,11 @@ Deliver the core, IPC and mntl described in `agent-1-core.md`, with Swift 6 conc
 
 ## Current checkpoint
 
-The user initialized Git after the first session could not. Commands starting with an approved Git prefix work; putting a non-Git command before them can cause sandbox index.lock failures. The initial main commit includes the draft interfaces prepared before Git was available. contract-v1 is tagged, and the user was told to start agent 2. Core steps 3-7 now pass 42 tests, including 16 parameterized geometry cases. IPC runtime checks remain pending; its real-socket tests cannot bind under the session sandbox. No app or window operations have run.
+The user initialized Git after the first session could not. Run Git writes as standalone approved commands; combining them with read-only helpers can cause sandbox index.lock failures for the whole command chain. The initial main commit includes the draft interfaces prepared before Git was available. contract-v1 is tagged, and the user was told to start agent 2. All requested core, IPC and mntl source is implemented and committed on core. No app or window operations have run.
 
-Continue with the full command grammar and JSON data shapes, config parsing, and saved-state restoration. `Action.setFrame` is an additive shell requirement recorded in contract-changes.md. DESIGN.md still needs the final grammar, data shapes and implementation interpretations. The lifecycle commit initially had an inaccessible config setter; this is corrected in the display commit, along with activation test fixtures that had changed pid through windowUpdated (now correctly treated as replacement identity).
+Final checks: SwiftPM build passes with no warnings; 74 core tests pass locally. The user ran `swift test --filter MinitileIPCTests` outside the socket-restricting sandbox and supplied the complete passing output: all 17 IPC tests passed in 0.541 seconds, including streaming, concurrent clients, stale/live paths, 64 KiB framing, slow watchers, half-closed requests, large replies and CLI exit codes. Together these target runs cover all 91 tests. The local non-socket IPC subset also passed. Parameterized tests include every layout count/variant/orientation, bad commands, invalid config values and chords. Invariant checks exercise 600 mixed operations, 2,000-window startup, and 500-window config changes. Tests cover focused-display disconnection, reused IDs, and preserving the other three-slice cut during resize.
+
+No agent-1 implementation work remains. Both ipc-v1 and core-v1 identify the final verified source; agent 2 can merge core-v1 directly. Agent 2 must handle `Action.setFrame` and `Action.openConfig`, and complete config reload before replying; see contract-changes.md. DESIGN.md documents the final grammar, JSON shapes and implementation interpretations. Live app and display testing remains agent 2's scope.
 
 SwiftPM uses workspace-local caches to accommodate the session sandbox. TOMLDecoder 0.4.5 was fetched into its cache using git clone; the dependency is pinned by Package.resolved. Commands:
 
@@ -35,3 +37,5 @@ SwiftPM uses workspace-local caches to accommodate the session sandbox. TOMLDeco
 CLANG_MODULE_CACHE_PATH="$PWD/.build/clang-cache" swift build --disable-sandbox --cache-path .build/cache --config-path .build/config --security-path .build/security
 CLANG_MODULE_CACHE_PATH="$PWD/.build/clang-cache" swift test --disable-sandbox --cache-path .build/cache --config-path .build/config --security-path .build/security
 ```
+
+The passing sandbox-compatible subset uses `--filter 'MinitileCoreTests|replyAlwaysEncodesData|jsonValueRoundTripsNestedValues|socketPathHonorsOverride|invalidSocketPathsFail|regularFileAtSocketPathIsPreserved'`. Build and subset logs are `.build/final-build.log` and `.build/final-tests.log` (ignored by Git).

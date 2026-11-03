@@ -2,7 +2,7 @@
 
 minitile is a tiling window manager for macOS. It runs with SIP enabled and aims for a small core that blends with macOS: a handful of keys that reuse the native desktop shortcuts, mouse gestures where macOS users already use the mouse, and every function scriptable from the `mntl` command line tool. HyprMac (github.com/zacharytgray/HyprMac) is a source of macOS behaviour to respect, not a feature list to copy.
 
-Status: designed, not yet built. Remaining undecided items are listed under "Open".
+Status: core, IPC and mntl are implemented and verified with 74 core tests and 17 IPC tests. The macOS shell integration and live checks remain separate; remaining macOS checks are listed under "Open".
 
 ## Model
 
@@ -18,6 +18,8 @@ Display
 - One page per display is visible at a time.
 - A page tiles at most 4 windows. At default ratios every tile is at least a quarter of the usable screen, which avoids most minimum-size conflicts. Floating windows do not count toward the limit.
 - Empty pages disappear. Empty workspaces disappear, except a freshly opened one while it is being viewed.
+
+The currently viewed empty page/workspace is retained until the view leaves it, including when its last window closes. This leaves a destination for the next window. Other empty pages/workspaces are removed. Focus outside the managed window set clears the default window command target while retaining the last display context.
 
 ### Placement
 
@@ -68,10 +70,14 @@ Geometry:
 - Defaults are 0.5, except three slices at 1/3 and 2/3. Ratios are clamped to 0.2-0.8, and the cuts of three slices stay at least 0.2 apart.
 - Ratios reset to the defaults when the page's window count or variant changes.
 
+The count for ratio resets is the number of non-minimized, non-app-hidden tiled windows. A square visible frame uses width as its long axis. Cuts are centered in gaps; frame edges are rounded individually and width/height are the differences of rounded edges. Insets and unusually large gaps never produce negative sizes. A single-cut edit preserves the other cut when enforcing three-slice spacing; setting both ratios clamps r1 first, then brings r2 above it, moving r1 back if necessary to fit within 0.8.
+
 Mouse:
 
 - Each inner edge of a tile lies on one cut. Dragging a tiled window's edge moves that cut: the new ratio is the edge's position across the layout area, clamped. A corner drag moves both cuts. Edges on the border of the layout area are not cuts, and dragging them snaps back.
 - A drag that ends with the size unchanged (within a few points) is a move. If the cursor is over another tiled window on the same page, the two swap slots; otherwise the window snaps back.
+
+The move tolerance is 3 points per dimension. Edge drags are converted from the tile edge to the gap center before computing a ratio. A drag can update the inner cut of a corner while its border edge snaps back. Three-slice middle-window resize holds the right cut fixed and moves the left cut to obtain the requested share.
 
 ## Keys
 
@@ -96,6 +102,8 @@ Nudging B to the right three times:
 ```
 
 Nudging a window that is alone on the first or last page toward the edge does nothing.
+
+Sharing a page includes floating and reserved minimized/app-hidden windows. Joining a full neighbor scans right using normal placement; a left nudge can therefore remain on its original page if that is the first free page after the full neighbor.
 
 Mouse:
 
@@ -200,6 +208,8 @@ Every response has `ok`, `text` and `data`. Errors and successful mutations use 
 
 Watch events have `{type, data}`. Types `focus`, `window_added`, `window_removed` and `window_moved` carry a window ID; `focus` can carry null. `page_shown` carries `{display, workspace, page}` with indices after empty-page cleanup. `display_changed` carries the supplied array of `DisplayInfo` objects using their Swift Codable field names. `config_reloaded` carries null. A watcher is disconnected if its pending output exceeds 4 MiB; ordinary command replies can be larger. The CLI prints the initial watch reply using its usual text/data choice, followed by JSON event lines.
 
+Each connection carries one request. Ordinary replies close the connection after their bytes are written; accepted watch connections remain open. The 64 KiB request limit excludes the terminating newline. The client uses 5-second send/reply timeouts and disables the receive timeout after a successful watch reply. Socket startup preserves regular files and symlinks at the requested path, removes only stale owned sockets, and stop removes only the inode this server bound. `mntl --help` is local; no command arguments request server help and print local usage if transport fails. Invalid local options or an oversized request exit 1; transport or response-decoding failures exit 2.
+
 ## Displays
 
 - A grid's home display is identified by its display UUID (`CGDisplayCreateUUIDFromDisplayID`), the key native Spaces use. `CGDirectDisplayID` can change across sleep and wake.
@@ -211,12 +221,16 @@ Watch events have `{type, data}`. Types `focus`, `window_added`, `window_removed
 - Workspaces created while merged belong to the display they were created on.
 - macOS moves a vanished display's windows on its own. minitile ignores where they land and places them from its own state.
 
+If the focused display disappears, focus moves to the primary display's currently shown page after merging. When several returning workspaces precede the viewed one, the host selects the nearest preceding workspace that remains; if none remains above, it selects its first remaining workspace or creates an empty one. If no display can be managed, grids are retained with no scene placement until a managed display returns. A physically present unmanaged display retains its grid but receives no scene and adopts no new windows. Explicitly hidden windows retain their last workspace's home UUID so they use the merged host's stash and can return home later.
+
 ## Floating windows
 
 - minitile tiles standard windows: role `AXWindow`, subrole `AXStandardWindow`, not modal, with a settable size.
 - Everything else floats, along with windows set floating through `mntl window float` or the menu bar, and apps on the always-float list in the config.
 - A floating window belongs to the page that was visible when it appeared, and is hidden and shown with that page. Sheets already travel with their parent window.
 - minitile does not try to keep floating windows above tiled ones. Without SIP it cannot set another app's window level, and HyprMac's attempts turned into a running fight with the window server.
+
+An explicit floating toggle overrides `float_apps` for tileable windows; windows that cannot be tiled cannot be forced into tiling. Floating windows attach directly to the current page without consuming a tiled slot. Turning floating off on a full page spills right, following the window if it had focus. Config reload applies app rules to existing windows; the shell must rediscover windows when `only_apps` expands because ignored windows are absent from core state. Unminimizing a tracked window shows its page and emits a focus action; unhiding an app restores its tiles without changing the viewed page.
 
 ## Hiding pages: stash desktop
 
@@ -371,6 +385,8 @@ The shell also:
 - bounces back from the stash (see "Rules minitile must follow"), which needs no core input;
 - answers `debug` commands itself and passes every other command to the core as `.command(argv)`.
 
+Scene visible/stashed lists express desktop ownership, including minimized and app-hidden windows. Frame targets cover active tiled windows on both shown and stashed pages; minimized, app-hidden, floating and explicitly hidden windows have no tiled frame target. `Action.setFrame` is a one-shot floating resize using the normal AX frame-write safeguards. `Action.openConfig` opens the config file. Both run before focus actions. IPC handlers supplied on `.main` use `MainActor.assumeIsolated` to access the shell's main-actor state.
+
 ## State and lifecycle
 
 - The grid is saved to `~/.local/state/minitile/state.json` on every change (`MINITILE_STATE` overrides the path). It records each window's ID and pid, its slot or hidden state, the page variants and ratios, and each workspace's home display UUID.
@@ -378,6 +394,8 @@ The shell also:
 - Windows found at start that are not in the state are adopted:
   - windows on the visible desktop fill pages of the first workspace;
   - windows on the stash follow on further pages.
+
+Adoption preserves discovery order within the visible and stash groups. Stash adoption begins after the first workspace's last populated page, even if a visible page has free slots. Unknown windows join the first workspace without changing a valid saved view; the shell's startup focus observation can show a different page. Known windows keep their saved placement regardless of macOS's observed display position. Repeated observations of the same ID are ignored after the first. Unsupported or structurally invalid saved snapshots fall back to adoption. A changed pid in a later appearance/update is treated as a new window identity. Persistent JSON defaults additive fields when absent; the script-facing `state` shape is documented separately above.
 - On quit, stashed windows stay on the stash, where Mission Control can reach them.
 - Startup checks, in order: Accessibility permission (prompt, explain in the menu bar, and wait until granted); the SkyLight functions (refuse to run if missing); "Displays have separate Spaces"; a desktop pair per display (unmanaged displays are listed in the menu bar). If the current desktop of a display is its stash, minitile switches to the visible one.
 

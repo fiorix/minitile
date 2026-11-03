@@ -162,3 +162,60 @@ func malformedRequestsReceiveAnErrorAndClose(_ input: String) throws {
     #expect(throws: IPCError.self) { try Client(path: String(repeating: "x", count: 104)).request([]) }
     #expect(throws: IPCError.self) { try Client(path: "/tmp/a\0b").request([]) }
 }
+
+@Test func halfClosedRequestStillReceivesItsReply() throws {
+    let fixture = try Fixture()
+    defer { fixture.server.stop() }
+    let fd = try rawConnect(fixture.path)
+    defer { Darwin.close(fd) }
+    try writeAll(Data("{\"argv\":[\"done\"]}\n".utf8), to: fd)
+    #expect(shutdown(fd, SHUT_WR) == 0)
+    var reader = LineReader()
+    let line = try reader.next(from: fd)
+    let reply = try JSONDecoder().decode(Reply.self, from: #require(line))
+    #expect(reply.text == "done")
+}
+
+@Test func largeReplyHandlesPartialWrites() throws {
+    let payload = String(repeating: "x", count: 1024 * 1024)
+    let fixture = try Fixture { _, done in done(Reply(text: payload)) }
+    defer { fixture.server.stop() }
+    #expect(try fixture.client.request(["large"]).text == payload)
+}
+
+private func runCLI(_ args: [String]) throws -> (Int32, String, String) {
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    let candidates = [".build/out/Products/Debug/mntl", ".build/debug/mntl"].map { root.appendingPathComponent($0) }
+    let executable = try #require(candidates.first { FileManager.default.isExecutableFile(atPath: $0.path) })
+    let process = Process()
+    let stdout = Pipe(), stderr = Pipe()
+    process.executableURL = executable
+    process.arguments = args
+    process.standardOutput = stdout
+    process.standardError = stderr
+    try process.run()
+    process.waitUntilExit()
+    return (process.terminationStatus,
+            String(decoding: stdout.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self),
+            String(decoding: stderr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self))
+}
+
+@Test func cliPrintsTextAndJSONAndUsesAllExitStatuses() throws {
+    let fixture = try Fixture { argv, done in
+        done(Reply(ok: argv != ["bad"], text: argv.joined(separator: " "), data: .object(["value": .number(42)])))
+    }
+    defer { fixture.server.stop() }
+    let plain = try runCLI(["--socket", fixture.path, "window", "list"])
+    #expect(plain.0 == 0)
+    #expect(plain.1 == "window list\n")
+    let json = try runCLI(["--json", "--socket", fixture.path, "state"])
+    #expect(json.0 == 0)
+    #expect(json.1 == "{\"value\":42}\n")
+    let help = try runCLI(["--socket", fixture.path])
+    #expect(help.0 == 0)
+    #expect(help.1 == "help\n")
+    #expect(try runCLI(["--socket", fixture.path, "bad"]).0 == 1)
+    let missing = try runCLI(["--socket", fixture.path + ".missing"])
+    #expect(missing.0 == 2)
+    #expect(missing.2.contains("Usage: mntl"))
+}

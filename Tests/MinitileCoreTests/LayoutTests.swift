@@ -20,8 +20,7 @@ private let layouts: [LayoutCase] = [
 @Test(arguments: layouts, [false, true])
 private func exactFrames(_ item: LayoutCase, portrait: Bool) {
     let frame = Rect(x: 120, y: 80, width: portrait ? 800 : 1000, height: portrait ? 1000 : 800)
-    let (a, b) = Layout.defaults(count: item.count, variant: item.variant)
-    let frames = Layout.frames(frame: frame, count: item.count, variant: item.variant, r1: a, r2: b, gaps: 10, padding: 10)
+    let frames = Layout.frames(frame: frame, count: item.count, variant: item.variant, gaps: 10, padding: 10)
     let expected = portrait ? item.expected.map { Rect(x: 130 + $0.y - 90, y: 90 + $0.x - 130, width: $0.height, height: $0.width) } : item.expected
     #expect(frames == expected)
 }

@@ -66,6 +66,11 @@ extension Engine {
         }
         if let active = state.activeDisplay, let host = hostChanges[active] { state.activeDisplay = host }
         if let focusAfter, let d = displayIndex(focusAfter), let at = currentLocation(display: d) { show(at, output: &output) }
+        else if let id = state.focus, let at = location(id), !isShown(at) {
+            if state.displays[at.display].info.unmanagedReason == nil, let current = currentLocation(display: at.display) {
+                show(current, output: &output)
+            } else { focus(nil, action: false, output: &output) }
+        }
         output.events.append(Event(type: "display_changed", data: (try? .encoding(infos)) ?? .null))
     }
 }

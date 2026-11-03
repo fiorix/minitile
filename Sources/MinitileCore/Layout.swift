@@ -23,13 +23,14 @@ public enum Layout {
     }
 
     public static func frames(frame: Rect, count: Int, variant: Variant = .standard,
-                              r1: Double = 0.5, r2: Double = 0.5, gaps: Double = 8, padding: Double = 8) -> [Rect] {
+                              r1: Double? = nil, r2: Double? = nil, gaps: Double = 8, padding: Double = 8) -> [Rect] {
         guard (1...4).contains(count) else { return [] }
         let area = area(frame: frame, padding: padding)
         let landscape = frame.width >= frame.height
         let long = landscape ? area.width : area.height
         let short = landscape ? area.height : area.width
-        let (a, b) = ratios(r1, r2, count: count, variant: variant)
+        let defaults = defaults(count: count, variant: variant)
+        let (a, b) = ratios(r1 ?? defaults.0, r2 ?? defaults.1, count: count, variant: variant)
         let gap = max(0, gaps)
         func rect(_ u0: Double, _ u1: Double, _ v0: Double, _ v1: Double) -> Rect {
             let left = u0 * long + (u0 > 0 ? gap / 2 : 0)
@@ -66,6 +67,10 @@ extension Engine {
                         state.displays[d].workspaces[w].pages[p].r2 = b
                         state.displays[d].workspaces[w].pages[p].layoutCount = count
                     }
+                    let current = page(at)
+                    let (a, b) = Layout.ratios(current.r1, current.r2, count: count, variant: current.variant)
+                    state.displays[d].workspaces[w].pages[p].r1 = a
+                    state.displays[d].workspaces[w].pages[p].r2 = b
                 }
             }
         }
@@ -86,8 +91,14 @@ extension Engine {
         setRatios(at, a, b)
     }
 
-    mutating func setRatios(_ at: Location, _ a: Double, _ b: Double) {
-        let (first, second) = Layout.ratios(a, b, count: tiled(page(at), activeOnly: true).count, variant: page(at).variant)
+    mutating func setRatios(_ at: Location, _ a: Double, _ b: Double, preserveFirst: Bool = false, preserveSecond: Bool = false) {
+        let count = tiled(page(at), activeOnly: true).count
+        var a = a, b = b
+        if count == 3 && page(at).variant == .alternate {
+            if preserveSecond { a = min(a, b - 0.2) }
+            if preserveFirst { b = max(b, a + 0.2) }
+        }
+        let (first, second) = Layout.ratios(a, b, count: count, variant: page(at).variant)
         state.displays[at.display].workspaces[at.workspace].pages[at.page].r1 = first
         state.displays[at.display].workspaces[at.workspace].pages[at.page].r2 = second
     }

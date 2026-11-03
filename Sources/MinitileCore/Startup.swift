@@ -21,35 +21,9 @@ extension Engine {
             }
         }
         changeDisplays(displays, output: &output)
-        // Repack only overflow caused by changed floating rules; existing valid slots keep their pages.
-        for d in state.displays.indices {
-            for w in state.displays[d].workspaces.indices {
-                var p = 0
-                var overflow: [WindowID] = []
-                var consumed = 0
-                while p < state.displays[d].workspaces[w].pages.count || consumed < overflow.count {
-                    if p == state.displays[d].workspaces[w].pages.count {
-                        let page = PageState(id: nextSerial())
-                        state.displays[d].workspaces[w].pages.append(page)
-                    }
-                    let at = Location(display: d, workspace: w, page: p)
-                    let all = page(at).windows
-                    var count = 0
-                    state.displays[d].workspaces[w].pages[p].windows = all.filter { id in
-                        if state.windows[id]?.floating == true { return true }
-                        count += 1
-                        if count > 4 { overflow.append(id); return false }
-                        return true
-                    }
-                    while count < 4 && consumed < overflow.count {
-                        state.displays[d].workspaces[w].pages[p].windows.append(overflow[consumed])
-                        consumed += 1
-                        count += 1
-                    }
-                    p += 1
-                }
-            }
-        }
+        output.actions.removeAll()
+        state.focus = nil
+        _ = repackOverflow()
         let assigned = Set(locations().keys)
         state.windows = state.windows.filter { $0.value.hidden || assigned.contains($0.key) }
         var adopted = Set<WindowID>()

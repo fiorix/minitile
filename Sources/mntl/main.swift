@@ -54,6 +54,9 @@ func run() -> Int32 {
         let reply = try client.request(args)
         try printReply(reply, json: json)
         return reply.ok ? 0 : 1
+    } catch IPCError.requestTooLarge {
+        fputs("mntl: Request exceeds 64 KiB\n", stderr)
+        return 1
     } catch {
         fputs("mntl: \(error.localizedDescription)\n", stderr)
         if noArguments { fputs("\(usage)\n", stderr) }

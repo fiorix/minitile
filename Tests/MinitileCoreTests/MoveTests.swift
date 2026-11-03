@@ -108,3 +108,33 @@ import Testing
     #expect(e.handle(.command(["window", "move", "1", "page", "99"])).reply?.ok == false)
     #expect(e.savedState() == before)
 }
+
+@Test func middleSliceResizeUsesItsShareAndKeepsOtherCut() {
+    var e = engine(3)
+    command(&e, "page variant")
+    command(&e, "window resize 2 0.2")
+    let page = e.page(e.currentLocation(display: 0)!)
+    #expect(abs(page.r2 - 2.0 / 3) < 0.00001)
+    #expect(abs(page.r2 - page.r1 - 0.2) < 0.00001)
+    command(&e, "page ratio 0.8")
+    #expect(abs(e.page(e.currentLocation(display: 0)!).r2 - page.r2) < 0.00001)
+}
+
+@Test func singleSliceEdgeClampsWithoutMovingOtherCut() {
+    var e = engine(3, config: Config(gaps: 0, padding: 0))
+    command(&e, "page variant")
+    var frame = e.makeScene().displays["primary"]!.frames[1]!
+    frame.width = 900
+    _ = e.handle(.dragEnded(1, frame: frame, cursor: frame.center))
+    let page = e.page(e.currentLocation(display: 0)!)
+    #expect(abs(page.r2 - 2.0 / 3) < 0.00001)
+    #expect(abs(page.r1 - (2.0 / 3 - 0.2)) < 0.00001)
+}
+
+@Test func twoDimensionalResizeMapsPhysicalAxesForLowerTile() {
+    var e = engine(4)
+    command(&e, "window resize 3 0.6x0.7")
+    let page = e.page(e.currentLocation(display: 0)!)
+    #expect(abs(page.r1 - 0.6) < 0.00001)
+    #expect(abs(page.r2 - 0.3) < 0.00001)
+}

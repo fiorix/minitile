@@ -6,7 +6,7 @@ extension Engine {
     func windowRecord(_ id: WindowID, positions: [WindowID: Location]) -> JSONValue {
         guard let window = state.windows[id] else { return .null }
         let at = positions[id]
-        let slot = at.flatMap { tiled(page($0)).firstIndex(of: id) }
+        let slot = at?.tiledSlot
         return .object([
             "id": json(id), "pid": json(window.info.pid), "bundle_id": json(window.info.bundleID),
             "app": .string(window.info.appName), "title": .string(window.info.title), "frame": json(window.info.frame),

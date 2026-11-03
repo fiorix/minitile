@@ -17,14 +17,14 @@ public struct Engine: Sendable {
         case .windowUpdated(let info): updateWindow(info, output: &output)
         case .focusChanged(let id):
             if let id, let at = location(id) { show(at, focusWindow: false, output: &output); focus(id, action: false, output: &output) }
-            else if id == nil { focus(nil, action: false, output: &output) }
+            else { focus(nil, action: false, output: &output) }
         case .appActivated(let pid): appActivated(pid, output: &output)
         case .command(let argv):
             do { output.reply = try command(argv, output: &output) }
             catch { state = previous; output = Output(reply: Reply(ok: false, text: String(describing: error))) }
         case .configLoaded(let config):
             self.config = config
-            loadConfig(config, output: &output)
+            loadConfig(output: &output)
         case .dragEnded(let id, let frame, let cursor): dragEnded(id, frame: frame, cursor: cursor, output: &output)
         case .displaysChanged(let displays): changeDisplays(displays, output: &output)
         }
