@@ -24,6 +24,7 @@ if pgrep -x TextEdit >/dev/null; then textedit_was_running=1; fi
 app_pid=""
 textedit_pid=""
 cleaning=0
+documents_opened=0
 mntl="$PWD/build/mntl"
 
 cleanup() {
@@ -48,8 +49,12 @@ cleanup() {
         "$mntl" --json debug timings > "$report/timings.json"
         "$mntl" quit >/dev/null
     elif [ -n "$app_pid" ]; then
-        remaining=1
-        echo "Lost contact with minitile; stopping it. Test windows may be on the stash in Mission Control." >&2
+        if [ "$documents_opened" = 0 ]; then
+            echo "Stopping minitile before any test documents were opened." >&2
+        else
+            remaining=1
+            echo "Lost contact with minitile; stopping it. Test windows may be on the stash in Mission Control." >&2
+        fi
         kill -TERM "$app_pid" 2>/dev/null
     fi
     if [ -n "$app_pid" ]; then
@@ -103,6 +108,7 @@ launch() {
         sleep 0.1
     done
     echo "Minitile did not start. Inspect its menu warning and $testdir/stderr.log." >&2
+    cat "$testdir/stderr.log" >&2
     return 1
 }
 
@@ -152,6 +158,7 @@ jq -e 'length > 0 and all(.[]; .info.unmanagedReason == null)' "$report/initial-
 for ((index=1; index<=5; index++)); do
     printf 'minitile smoke document %s\n' "$index" > "$testdir/$prefix-$index.txt"
     open -a TextEdit "$testdir/$prefix-$index.txt"
+    documents_opened=$index
     wait_state ".windows | length == $index"
 done
 "$mntl" --json debug windows > "$report/initial-windows.json"

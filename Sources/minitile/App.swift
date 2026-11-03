@@ -7,9 +7,15 @@ import OSLog
 
 let logger = Logger(subsystem: "minitile", category: "shell")
 
+func startupLog(_ message: String) {
+    logger.notice("\(message, privacy: .public)")
+    FileHandle.standardError.write(Data("minitile: \(message)\n".utf8))
+}
+
 @main
 enum MinitileMain {
     @MainActor static func main() {
+        startupLog("Process launched from \(Bundle.main.bundlePath)")
         let application = NSApplication.shared
         let delegate = AppDelegate()
         application.setActivationPolicy(.accessory)
@@ -49,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var suspendedReasons: Set<String> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        startupLog("Application launched; Accessibility trusted: \(AXIsProcessTrusted())")
         status.command = { [weak self] in self?.command($0) ?? Reply(ok: false, text: "Starting") }
         if !AXIsProcessTrusted() {
             warnings["accessibility"] = "Grant Accessibility to Minitile.app in System Settings > Privacy & Security"
@@ -71,6 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !started, !starting else { return }
         starting = true
         warnings.removeValue(forKey: "startup")
+        startupLog("Checking SkyLight and display setup")
         var error = [CChar](repeating: 0, count: 1024)
         guard csl_init(&error, error.count) else {
             fail(error.withUnsafeBufferPointer { String(cString: $0.baseAddress!) }); return
@@ -84,12 +92,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             engine = Engine(config: try Config.parse(lastConfig))
         }
         catch { fail("Config: \(error)"); return }
+        startupLog("Config loaded; only_apps: \(engine.config.onlyApps)")
         do {
             let server = Server(path: try socketPath(), handlerQueue: .main) { [weak self] argv, complete in
                 MainActor.assumeIsolated { complete(self?.command(argv) ?? Reply(ok: false, text: "Stopping")) }
             }
             try server.start()
             self.server = server
+            startupLog("Listening on \(try socketPath())")
         } catch { fail(String(describing: error)); NSApp.terminate(nil); return }
         displays.refresh()
         displays.bounceFromStash()
@@ -149,12 +159,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         watcher.start()
         configWatcher = watcher
         observeLifecycle()
+        startupLog("Ready; \(displays.infos.count) displays, \(discovery.windows.count) windows")
         updateMenu()
     }
 
     func fail(_ message: String) {
         starting = false
-        logger.error("\(message, privacy: .public)")
+        startupLog("Startup failed: \(message)")
         warnings["startup"] = message
         updateMenu()
     }

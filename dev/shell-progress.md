@@ -40,6 +40,8 @@ Bridge validation: a separate read-only C probe resolved every SkyLight symbol a
 
 ## Resume
 
+The user ran the smoke script from Terminal: signing succeeded, but startup never exposed its socket within 60 seconds. The run opened no TextEdit documents. The user has since confirmed granting Accessibility. Direct app launch and unified-log access are also blocked by the session sandbox; the next run must again start from Terminal. Startup now writes its stage and any failure to stderr as well as unified logging, and the smoke script prints those diagnostics on timeout.
+
 From a normal Terminal, run `./.build-shell/scripts/smoke.sh` in the repository root. This rebuilds/signs, launches only with temporary config/state/socket paths and TextEdit restrictions, then validates and cleans up its own documents. Grant Accessibility to that `Minitile.app` when prompted; the script waits up to 60 seconds and can be rerun after granting. If signing still fails outside the sandbox, inspect `security find-identity -v -p codesigning` and supply the installed identity through `MINITILE_SIGN_IDENTITY`.
 
 After automatic smoke passes, run the user-assisted checks from `agent-2-shell.md`: physical Ctrl+arrows, Cmd-Tab pre-emption, drag resize/swap/carry, trackpad stash bounce, and external-display unplug/replug. Update DESIGN.md only with observed results. The first unrestricted run and merge into main still require explicit approval.
