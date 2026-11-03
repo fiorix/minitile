@@ -4,8 +4,8 @@ Deliver the core, IPC and mntl described in `agent-1-core.md`, with Swift 6 conc
 
 ## Plan and completion evidence
 
-- [ ] 0: Bootstrap SwiftPM; build and test; commit on main, then branch core.
-- [ ] 1: Publish documented value types and IPC API; build; tag contract-v1.
+- [x] 0: Bootstrap SwiftPM; build and test; commit on main, then branch core.
+- [x] 1: Publish documented value types and IPC API; build; tag contract-v1.
 - [ ] 2: Implement sockets and mntl; real socket failure and streaming tests; tag ipc-v1.
 - [ ] 3: Model, placement and navigation; behavioral tests.
 - [ ] 4: Layout; exact geometry tests across orientations and variants.
@@ -21,21 +21,15 @@ Deliver the core, IPC and mntl described in `agent-1-core.md`, with Swift 6 conc
 
 - Reply, Event and JSONValue are defined in MinitileIPC and aliased by MinitileCore. Core depends on IPC to share the wire types without making mntl depend on the model or TOMLDecoder.
 - DisplayInfo includes optional visibleSpace and stashSpace IDs for display inspection commands.
-- The contract is a draft with stub Engine and transport implementations. No milestone is tagged; agent 2 should not start yet.
+- The contract milestone has stub Engine and transport implementations. Agent 2 can start from contract-v1.
 
 ## Current checkpoint
 
-Bootstrap files and the initial public contract have been written. MinitileIPC and MinitileCore compile directly with `swiftc -swift-version 6` without warnings. Full package verification and all commits remain pending.
+The user initialized Git after the first session could not. Git add/commit/branch now work. The initial main commit includes the draft interfaces prepared before Git was available. The core branch adds contract checks; SwiftPM build and all 7 tests pass without source warnings. Continue with IPC and mntl.
 
-The session's filesystem policy makes `.git` read-only. `git init -b main` failed with `Operation not permitted`; requesting escalation was rejected because sandbox approvals are disabled. There is still no Git repository, branch, commit or tag.
-
-SwiftPM cannot fetch TOMLDecoder because this session cannot resolve github.com. Redirecting caches into `.build` and disabling SwiftPM's nested subprocess sandbox resolved its earlier cache and sandbox-launch errors, but dependency resolution still fails. The outer session sandbox remains active.
-
-Resume with Git writes and dependency access enabled. Separate the bootstrap from the draft contract when creating the first two commits, verify with SwiftPM, create branch core, then tag contract-v1 and tell the user to start agent 2. Do not claim that steps 0 or 1 have passed until the package checks and tags exist.
-
-Commands used to check the draft contract independently of the unavailable package dependency:
+SwiftPM uses workspace-local caches to accommodate the session sandbox. TOMLDecoder 0.4.5 was fetched into its cache using git clone; the dependency is pinned by Package.resolved. Commands:
 
 ```sh
-CLANG_MODULE_CACHE_PATH="$PWD/.build/clang-cache" swiftc -swift-version 6 -emit-library -emit-module -module-name MinitileIPC Sources/MinitileIPC/*.swift -o .build/libMinitileIPC.dylib -emit-module-path .build/MinitileIPC.swiftmodule
-CLANG_MODULE_CACHE_PATH="$PWD/.build/clang-cache" swiftc -swift-version 6 -emit-library -emit-module -module-name MinitileCore -I .build -L .build -lMinitileIPC Sources/MinitileCore/*.swift -o .build/libMinitileCore.dylib -emit-module-path .build/MinitileCore.swiftmodule
+CLANG_MODULE_CACHE_PATH="$PWD/.build/clang-cache" swift build --disable-sandbox --cache-path .build/cache --config-path .build/config --security-path .build/security
+CLANG_MODULE_CACHE_PATH="$PWD/.build/clang-cache" swift test --disable-sandbox --cache-path .build/cache --config-path .build/config --security-path .build/security
 ```
