@@ -144,13 +144,11 @@ extension Engine {
 
     mutating func gone(_ id: WindowID, output: inout Output) {
         guard state.windows[id] != nil else { return }
-        let at = location(id)
         removeFromPage(id)
         state.windows.removeValue(forKey: id)
         output.events.append(Event(type: "window_removed", data: .number(Double(id))))
         if state.focus == id {
-            if let at, isShown(at) { show(at, output: &output) }
-            else { focus(nil, action: false, output: &output) }
+            focus(nil, action: false, output: &output)
         }
     }
 

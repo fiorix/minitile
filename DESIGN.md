@@ -32,6 +32,7 @@ The currently viewed empty page/workspace is retained until the view leaves it, 
 ### Navigation and focus
 
 - Showing a page focuses the window that last had focus on it, or its first window. An empty page focuses nothing.
+- When the focused window closes or is minimized, or its app is hidden, minitile does not focus another window. macOS picks the next one, and minitile follows it.
 - Showing a workspace shows the page last viewed in it.
 - Ctrl+Left on the first page and Ctrl+Up on the first workspace do nothing.
 - Ctrl+Right on the last page opens an empty page, and Ctrl+Down on the last workspace opens an empty workspace. Neither opens a second empty one next to an empty one.

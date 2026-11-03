@@ -118,11 +118,16 @@ func command(_ engine: inout Engine, _ args: String) -> Output {
     #expect(out.actions.isEmpty)
 }
 
-@Test func closingFocusedWindowChoosesRemainingWindow() {
+@Test func closingFocusedWindowWaitsForNativeFocus() {
     var e = engine(2)
     command(&e, "window focus 1")
     let out = e.handle(.windowGone(1))
-    #expect(out.actions == [.focus(2)])
+    #expect(out.actions.isEmpty)
+    #expect(e.savedState().focus == nil)
+    #expect(out.scene.displays["primary"]?.visible == [2])
+    #expect(out.events.allSatisfy { $0.type != "page_shown" })
+    let focused = e.handle(.focusChanged(2))
+    #expect(focused.actions.isEmpty)
     #expect(e.savedState().focus == 2)
     #expect(!e.handle(.windowGone(999)).stateChanged)
 }
