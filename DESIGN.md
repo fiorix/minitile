@@ -90,7 +90,7 @@ Default bindings:
 |---|---|---|
 | Ctrl+Left/Right | Show the previous or next page. | Move left/right a space |
 | Ctrl+Up/Down | Show the workspace above or below. | Mission Control, App Expose |
-| Ctrl+Shift+Left/Right | Nudge the focused window. If it shares its page, it moves onto a new page of its own on that side. If it is alone, it joins the neighbouring page, spilling if that page is full. Focus follows. | Select to line start or end in text fields, which Cmd+Shift+arrows also does |
+| Ctrl+Shift+Left/Right | Nudge the focused window. If it shares its page, it moves onto a new page of its own on that side. If it is alone, it joins the neighbouring page; if that page is full, it joins the next page with room in the same direction, or a new page at that end of the workspace. Focus follows. | Select to line start or end in text fields, which Cmd+Shift+arrows also does |
 | Ctrl+Shift+Up/Down | Carry the focused window to the workspace above or below, placed by the placement rules. Past the last workspace, it carries the window into a new one. Focus follows. | - |
 
 Nudging B to the right three times:
@@ -102,9 +102,16 @@ Nudging B to the right three times:
 [A C D] [E] [B]    B shared again, so it gets its own
 ```
 
-Nudging a window that is alone on the first or last page toward the edge does nothing.
+Nudging E to the left, past a full page:
 
-Sharing a page includes floating and reserved minimized/app-hidden windows. Joining a full neighbor scans right using normal placement; a left nudge can therefore remain on its original page if that is the first free page after the full neighbor.
+```
+[A B C D] [E]      start
+[E] [A B C D]      E was alone and no page to its left has room, so it gets a new first page
+```
+
+Nudging a window that is alone on the first or last page toward the edge does nothing, and a nudge that does nothing emits no event or focus action.
+
+Sharing a page includes floating and reserved minimized/app-hidden windows. A nudge always moves the window in its direction: it never lands back on the page it left.
 
 Mouse:
 
