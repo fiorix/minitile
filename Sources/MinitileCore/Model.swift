@@ -80,6 +80,7 @@ extension Engine {
         state.displays[at.display].workspaces[at.workspace].pages[at.page].windows.append(id)
         state.windows[id]?.display = state.displays[at.display].info.id
         state.windows[id]?.hidden = false
+        state.windows[id]?.hiddenHome = nil
         return at
     }
 

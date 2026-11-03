@@ -48,6 +48,7 @@ extension Engine {
     mutating func hideWindow(_ id: WindowID, output: inout Output) {
         guard state.windows[id]?.hidden == false else { return }
         let at = location(id)
+        state.windows[id]?.hiddenHome = at.map { state.displays[$0.display].workspaces[$0.workspace].home }
         removeFromPage(id)
         state.windows[id]?.hidden = true
         if state.focus == id {
@@ -69,7 +70,6 @@ extension Engine {
     }
 
     mutating func loadConfig(_ config: Config, output: inout Output) {
-        self.config = config
         for id in state.windows.keys.sorted() {
             guard let window = state.windows[id] else { continue }
             if !allows(window.info) { gone(id, output: &output) }

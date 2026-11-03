@@ -95,12 +95,9 @@ func command(_ engine: inout Engine, _ args: String) -> Output {
 }
 
 @Test func activationChoosesMostRecentWindowWithoutFocusAction() {
-    var e = engine(9)
-    for id: WindowID in [5, 9] {
-        var info = window(id, pid: 500)
-        info.appName = "Shared"
-        _ = e.handle(.windowUpdated(info))
-    }
+    var e = Engine()
+    let windows = (1...9).map { window(WindowID($0), pid: [5, 9].contains($0) ? 500 : nil) }
+    _ = e.handle(.started(saved: nil, windows: windows, displays: [testDisplay], focus: nil))
     command(&e, "window focus 9")
     command(&e, "window focus 5")
     command(&e, "window focus 1")
@@ -113,8 +110,9 @@ func command(_ engine: inout Engine, _ args: String) -> Output {
 }
 
 @Test func activationWithoutFocusHistoryChoosesGridOrder() {
-    var e = engine(9)
-    for id: WindowID in [5, 9] { _ = e.handle(.windowUpdated(window(id, pid: 500))) }
+    var e = Engine()
+    let windows = (1...9).map { window(WindowID($0), pid: [5, 9].contains($0) ? 500 : nil) }
+    _ = e.handle(.started(saved: nil, windows: windows, displays: [testDisplay], focus: nil))
     let out = e.handle(.appActivated(pid: 500))
     #expect(out.scene.displays["primary"]?.visible == [5, 6, 7, 8])
     #expect(out.actions.isEmpty)

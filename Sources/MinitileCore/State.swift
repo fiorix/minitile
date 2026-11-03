@@ -42,6 +42,7 @@ public struct WindowState: Codable, Sendable, Equatable {
     public var floating: Bool
     public var floatingOverride: Bool?
     public var hidden: Bool = false
+    public var hiddenHome: DisplayID?
     public var lastFocused: UInt64 = 0
     public init(info: WindowInfo, display: DisplayID, floating: Bool) {
         self.info = info; self.display = display; self.floating = floating
@@ -55,6 +56,7 @@ public struct SavedState: Codable, Sendable, Equatable {
     public var windows: [WindowID: WindowState] = [:]
     public var focus: WindowID?
     public var activeDisplay: DisplayID?
+    public var displayViews: [DisplayID: UInt64] = [:]
     public var serial: UInt64 = 0
     public init() {}
 }

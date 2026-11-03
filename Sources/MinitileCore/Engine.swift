@@ -36,9 +36,11 @@ public struct Engine: Sendable {
         case .command(let argv):
             do { output.reply = try command(argv, output: &output) }
             catch { state = previous; output = Output(reply: Reply(ok: false, text: String(describing: error))) }
-        case .configLoaded(let config): loadConfig(config, output: &output)
+        case .configLoaded(let config):
+            self.config = config
+            loadConfig(config, output: &output)
         case .dragEnded(let id, let frame, let cursor): dragEnded(id, frame: frame, cursor: cursor, output: &output)
-        case .displaysChanged: break
+        case .displaysChanged(let displays): changeDisplays(displays, output: &output)
         }
         cleanup()
         resetLayouts()
