@@ -273,8 +273,8 @@ if [ "$display_test" = 1 ] && ! jq -e 'length == 1' "$report/initial-spaces.json
     echo 'Start --displays with the external monitor unplugged and the laptop display active.' >&2
     exit 1
 fi
-if [ "$display_test" = 1 ] && ! jq -e '.grid_indicator_displays == 1' "$report/health.json" >/dev/null; then
-    echo 'The position grid is unavailable. Rebuild by omitting --no-build.' >&2
+if [ "$display_test" = 1 ] && ! jq -e '.grid_indicator_displays == 1 and .grid_indicator_duration_ms == 1500' "$report/health.json" >/dev/null; then
+    echo 'Transient position indicators are unavailable. Rebuild by omitting --no-build.' >&2
     exit 1
 fi
 echo 'This run manages only its five test files; unsaved Cmd+N documents are ignored.'
@@ -352,7 +352,14 @@ Further checks, starting on the four-window page:
      Ctrl+Right. That document should move to its own page. Release, then
      Ctrl+Shift+Left should return it to the four-window page.
   6. Trackpad: swipe toward the second native desktop. Minitile should
-     return to the first desktop with the same page visible.
+     return to the first desktop with the same page visible. Immediately press
+     Ctrl+Right, then Cmd+Tab away and back; commands must remain responsive.
+  7. Immediate drag: flip pages, then start a title-bar drag within one second.
+     Hold it past two seconds. It must not snap back until release.
+  8. Held binding: hold Ctrl+Right for two seconds. It must advance only once.
+  9. Indicator: change pages or workspaces. The grid should show for 1.5 seconds;
+     a second change restarts that interval. Clicking another window on the
+     same page must not show it again.
 If a check fails, stop the sequence and report its number and what happened.
 Report skipped checks as skipped. Leave monitor unplug/replug for a separate run.
 Ctrl+arrow traces are saved in the smoke report's stderr.log.

@@ -2,6 +2,45 @@ import MinitileCore
 import Testing
 @testable import minitile
 
+@Test func indicatorExpiresAndOnlyPositionChangesRestartIt() {
+    var clock = GridIndicatorTiming()
+    let first = GridPosition(workspace: 1, page: 2)
+    let initial = clock.update(first, now: 10)
+    #expect(initial)
+    #expect(clock.visible(now: 11.49))
+    #expect(!clock.visible(now: 11.5))
+    let same = clock.update(first, now: 11.6)
+    #expect(!same)
+    #expect(!clock.visible(now: 11.6))
+    let changed = clock.update(GridPosition(workspace: 1, page: 3), now: 12)
+    #expect(changed)
+    _ = clock.update(GridPosition(workspace: 4, page: 5), now: 13)
+    #expect(clock.visible(now: 14.49))
+    #expect(!clock.visible(now: 14.5))
+    _ = clock.update(nil, now: 14)
+    #expect(!clock.visible(now: 14))
+}
+
+@Test func indicatorPositionUsesIdentityInsteadOfRenumberedIndicesOrCounts() {
+    var display = DisplayState(info: DisplayInfo(id: "a", frame: .init(x: 0, y: 0, width: 1000, height: 800)),
+                               workspaces: [WorkspaceState(id: 4, home: "a", pages: [PageState(id: 1), PageState(id: 2)], currentPage: 2)],
+                               currentWorkspace: 4)
+    let original = GridPosition(display: display)
+    display.workspaces[0].pages.removeFirst()
+    display.workspaces[0].pages[0].windows = [42]
+    #expect(GridPosition(display: display) == original)
+    display.info.unmanagedReason = "No desktop pair"
+    #expect(GridPosition(display: display) == nil)
+}
+
+@Test func displayIndicatorsHaveIndependentExpiryTimes() {
+    var first = GridIndicatorTiming(), second = GridIndicatorTiming()
+    _ = first.update(GridPosition(workspace: 1, page: 2), now: 1)
+    _ = second.update(GridPosition(workspace: 3, page: 4), now: 2)
+    #expect(!first.visible(now: 2.5))
+    #expect(second.visible(now: 2.5))
+}
+
 @Test func gridIndicatorUsesVisibleIndicesAndIncludesEmptyPages() {
     var first = PageState(id: 70)
     first.windows = [1, 2]

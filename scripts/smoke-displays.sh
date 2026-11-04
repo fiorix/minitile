@@ -19,9 +19,9 @@ home_display=$display_id
 d=${ids[3]}
 "$mntl" --json watch > "$report/display-events.jsonl" &
 watch_pid=$!
-printf '%s\n' 'Each screen shows its workspace/page grid in the upper-right; the blue cell is the current page.'
+printf '%s\n' 'Page/workspace changes show the display grid in the upper-right for 1.5 seconds; the blue cell is the current page.'
 printf '%s\n' 'Connect the external monitor. On that display, ensure Mission Control has two native desktops.'
-printf '%s\n' 'After adding a desktop, exit Mission Control and allow about five seconds for its grid to appear.'
+printf '%s\n' 'After adding a desktop, exit Mission Control and allow about five seconds for setup. The grid is transient; health does not require it to stay visible.'
 read -r -p 'Return to this Terminal and press Return when ready: '
 wait_state '.displays | length == 2 and all(.[]; .unmanaged_reason == null)'
 external_display=$(jq -r --arg home "$home_display" '.displays[] | select(.id != $home) | .id' "$report/state.json")

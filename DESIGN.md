@@ -25,6 +25,8 @@ The currently viewed empty page/workspace is retained until the view leaves it, 
 
 When a display's shown page or workspace changes, that display shows a read-only grid in the upper-right corner of its usable area for 1.5 s, then hides it. Another change within that time shows the new position and restarts the 1.5 s.
 
+The first managed view after startup or display attachment also shows the indicator. Changes to focus, window counts or page indices alone do not restart it: the comparison uses workspace and page identities. Unmanaged-display warnings remain in the menu.
+
 - The header names the display and the current workspace and page.
 - Workspaces are rows labeled W1, W2, and so on; pages are columns labeled P1, P2, and so on. The shown page's cell is highlighted, including an empty page, and each cell holds its window count.
 - At most six rows and eight columns are drawn, centered on the current position where possible. A cropped grid keeps its full indices and says it is cropped.
@@ -138,7 +140,7 @@ Notes:
 - Arrow keys carry the fn and keypad flags, so binding matches ignore them.
 - A held binding fires once. Key repeats of a bound chord are swallowed without running the command again.
 - Mission Control stays reachable through its own key and trackpad gesture. It shows the stash desktop with every hidden page's windows, which makes it an escape hatch rather than a view of the grid.
-- The event tap also swallows Desktop N shortcuts that would lead into the stash.
+- The event tap also swallows Desktop N shortcuts and native Move left/right a Space shortcuts that would lead into any managed display's stash. Directional blockers follow native adjacency, including fullscreen Spaces, and remain active when the corresponding minitile binding is unbound.
 
 ## Command line: mntl
 
@@ -153,6 +155,8 @@ Every minitile function is a command. Key bindings, the menu bar, mouse gestures
 - `mntl debug <verb>` commands are answered by the app shell and expose internals: raw desktops per display, the last applied scene, timings. Debug verbs can be added freely. Every other command is answered by the core.
 
 The shell provides `debug spaces`, `debug windows`, `debug scene`, `debug timings` and `debug health`. Spaces include the native display identifier, every native Space and its type, current Space, and core display metadata. The desktop list comes from the last catalog refresh; current Space is read for each request. Windows include allowed apps' raw layer-0 windows, AX observation status, current spaces, frames and tileability. Scene frame keys are decimal window-ID strings. Health includes process ID, startup/suspension state and reasons, secure input, tap availability, paths and warnings. The menu can open config, retry startup after a config error, or quit while normal command handling is still unavailable.
+
+`grid_indicator_displays` counts physical displays whose indicator state is tracked, including hidden indicators; `grid_indicator_visible_displays` counts currently visible panels, and `grid_indicator_duration_ms` is 1500. Timing diagnostics include full-scan counts/duration, recheck requests/passes, and the latest 128 activation-triggered first move submissions. Activation latency runs from delivery of the workspace or AX notification callback through return of the bridged move submission; it does not measure time before notification delivery or completion in WindowServer.
 
 Commands are noun then verb. Windows are addressed by window ID and default to the focused window. Pages and workspaces are addressed by index or `next`/`prev`, and default to the display with the focused window.
 
@@ -239,6 +243,7 @@ Each connection carries one request. Ordinary replies close the connection after
 - minitile requires "Displays have separate Spaces". Without it there is no desktop pair per display, and minitile refuses to manage and says why.
 - Display changes are debounced: about 2 s, or 5 s after wake. False display-change notifications (calls, colour profile changes) are filtered by comparing a fingerprint of the display set.
 - While active, the shell also probes native desktop topology every three seconds. Changes to display identifiers or desktop IDs, types and order schedule the same debounced refresh, so creating a second desktop does not require switching to it. The probe ignores the current Space and does not update the catalog before the debounce completes; failed or empty reads retain the last catalog.
+- Native desktop switches bounce from the stash, refresh window membership and shortcut blockers, and schedule presence checks without suspending the shell. When the final sleep, session, lock or display interruption ends, the shell refreshes topology, rereads focus and reapplies the current scene.
 - When a display goes away, its workspaces are appended below those of the primary display, the one with the menu bar after the change. Each workspace keeps its home display UUID.
 - When the home display returns, every workspace tagged with it moves back, including windows opened into it in the meantime. If one of those workspaces is being viewed, the primary display switches to the workspace above it.
 - Workspaces created while merged belong to the display they were created on.
@@ -469,6 +474,8 @@ Frame writes:
 - Read back once after the window settles, with loose tolerance (about 20 pt, since Terminal snaps to its cell grid). If a window refuses its slot, adjust once; never fight the app.
 - Ignore move and resize notifications caused by minitile's own writes for about 1-1.5 s, since AX reads lag on macOS 26 and 27. Otherwise they look like user drags.
 
+While the left mouse button is down, an AX frame differing from the last write by more than 20 points identifies a user drag even during suppression. Delayed frame verification skips held mouse buttons and dragged windows. The 30 ms release poll runs only while a drag is active.
+
 Discovery:
 
 - One `AXObserver` per app. App-level notifications: window created, focused window changed, main window changed, application activated. Window-level notifications: element destroyed, moved, resized, title changed, miniaturized, deminiaturized.
@@ -480,7 +487,7 @@ Discovery:
 - Some apps (Teams, Mail) reuse window IDs on close and reopen.
 - While the session is locked or the displays sleep, the on-screen window list empties. Freeze lifecycle changes until the interruption ends.
 
-The shell confirms disappearance after three WindowServer snapshots no longer contain the same window ID and pid. Event-triggered rechecks run at 150, 400 and 900 ms; a three-second scan catches missed notifications. An empty or failed WindowServer snapshot is unknown. Background agents with prohibited activation policy are excluded from AX observation. Sleep, session inactivity, lock and pending display reconfiguration suspend lifecycle changes.
+The shell confirms disappearance after three WindowServer snapshots no longer contain the same window ID and pid. Event-triggered rechecks share one pending sequence at 150, 400 and 900 ms, scoped to affected pids; later notifications extend the affected pid's confirmations without duplicating timers. Focus and destroy rechecks read WindowServer presence only, while creation rechecks inspect the supplied new-window elements. A three-second full AX scan catches missed notifications and retries incomplete observer registrations. An app is recorded as observed only after its app-level registrations succeed; individual failed window registrations remain eligible for retry. An empty or failed WindowServer snapshot is unknown. Background agents with prohibited activation policy are excluded from AX observation. Sleep, session inactivity, lock and pending display reconfiguration suspend lifecycle changes.
 
 Responsiveness:
 
@@ -492,6 +499,7 @@ Focus and closing:
 
 - Set AX main and focused (plus raise), then call `activate`, then use SkyLight `_SLPSSetFrontProcessWithOptions` with the two key-window event records. On macOS 27, `activate` from an accessory app is dropped.
 - Keep our own record of the focused window; `kAXFocusedWindow` lags in some apps.
+- Forward focus/main-window notifications only from the frontmost app. For 1.2 s after a minitile focus action, suppress all focus notifications from that pid and reread once after the interval. A failed AX focus read is unknown and preserves the current focus.
 - Close a window by pressing its `kAXCloseButton`.
 
 ## Implementation
@@ -527,6 +535,7 @@ The shell uses the Swift 6 language mode. AX observer callbacks run on the main 
 - default: drives minitile through `mntl`, compares the requested scene with raw WindowServer spaces and AX frames (20 pt tolerance), and checks invalid-config retention and restart persistence;
 - `--interactive`: pauses for physical keys, mouse and trackpad input, with key tracing (`MINITILE_TRACE_KEYS=1` writes `minitile: key` JSON records to stderr for Ctrl+arrow events only);
 - `--displays`: starts with the external monitor unplugged, then checks display independence, cross-display activation, and unplug and reconnect restoring the original grids;
+- `--activation`: measures ten isolated TextEdit activation cycles after focus-notification bursts, including native desktop assertions;
 - `--cleanup TEST_DIRECTORY`: reopens a preserved test session and closes its documents;
 - `--no-build`: reuses the signed bundle.
 
