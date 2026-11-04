@@ -2,7 +2,7 @@
 
 minitile is a tiling window manager for macOS. It runs with SIP enabled and aims for a small core that blends with macOS: a handful of keys that reuse the native desktop shortcuts, mouse gestures where macOS users already use the mouse, and every function scriptable from the `mntl` command line tool. HyprMac (github.com/zacharytgray/HyprMac) is a source of macOS behaviour to respect, not a feature list to copy.
 
-Status: the core, IPC, `mntl` and the macOS shell are implemented and verified live on one display. Multiple displays and the items under "Open" are not yet verified. Page transitions, Cmd+\` window cycling and page miniatures in the position indicator are implemented and unit tested but not yet tried on screen; the transition mechanism was validated in a spike. Trackpad swipes are implemented and unit tested; the swipe mechanism was validated in a spike. The Cmd+Tab window switcher is designed but not yet implemented.
+Status: the core, IPC, `mntl` and the macOS shell are implemented and verified live on one display. Multiple displays and the items under "Open" are not yet verified. Page transitions, Cmd+\` window cycling and page miniatures in the position indicator are implemented and unit tested but not yet tried on screen; the transition mechanism was validated in a spike. Trackpad swipes are implemented and unit tested; the swipe mechanism was validated in a spike. The Cmd+Tab window switcher, keyboard resizing and the mirrored and stacked three-window layouts are designed but not yet implemented.
 
 ## Model
 
@@ -92,18 +92,19 @@ The mechanism and its measurements are under "Transition mechanism".
 
 ### Layout
 
-Each page holds an ordered list of windows, its slots. The layout is a fixed function of the window count and the page's variant:
+Each page holds an ordered list of windows, its slots. The layout is a fixed function of the window count and the page's variant. Ctrl+Shift+Space (`mntl page variant`) cycles a page through its count's layouts in this order:
 
-| Windows | Default variant | Alternate variant |
-|---|---|---|
-| 1 | full | - |
-| 2 | two halves across the long axis | two halves across the short axis |
-| 3 | one large plus two stacked | three slices across the long axis |
-| 4 | 2x2 | - |
+| Windows | Layouts, in cycling order |
+|---|---|
+| 1 | full |
+| 2 | `standard`: two halves across the long axis; `alternate`: two halves across the short axis |
+| 3 | `standard`: one large plus two stacked, large first; `mirrored`: one large plus two stacked, large last; `alternate`: three slices across the long axis; `stacked`: three slices across the short axis |
+| 4 | 2x2 |
 
-- On a landscape display the long axis is the width: two windows sit side by side, and the large window of three is on the left. On a portrait display the axes swap.
-- Slot 0 is the large tile. A closed window's slot disappears and later windows move up.
-- `mntl page variant` toggles the variant.
+- On a landscape display the long axis is the width: two windows sit side by side, the large window of three is on the left (on the right when mirrored), `alternate` three are columns and `stacked` three are rows. On a portrait display the axes swap.
+- Slot 0 is the large tile. Slices are in order along their axis. A closed window's slot disappears and later windows move up.
+- With one or four windows, cycling does nothing. A page keeps its variant when its window count changes; with a count the variant does not define (`mirrored` or `stacked` with two windows), the page uses its count's `standard` layout, and cycling continues from there.
+- `mirrored` and `stacked` are not yet implemented.
 
 Geometry:
 
@@ -111,12 +112,21 @@ Geometry:
 - Each page has two ratios, r1 and r2, each a position across the layout area:
   - 2 windows: r1 is the cut.
   - 3, large plus two: r1 cuts the large tile from the pair along the long axis; r2 cuts the pair along the short axis.
+  - 3, large plus two, mirrored: r1 cuts the pair from the large tile along the long axis; r2 cuts the pair along the short axis.
   - 3, slices: r1 and r2 are the two cuts along the long axis.
+  - 3, stacked slices: r1 and r2 are the two cuts along the short axis.
   - 4: r1 is the cut along the long axis, r2 the cut along the short axis.
-- Defaults are 0.5, except three slices at 1/3 and 2/3. Ratios are clamped to 0.2-0.8, and the cuts of three slices stay at least 0.2 apart.
+- Defaults are 0.5, except both three-slice layouts at 1/3 and 2/3. Ratios are clamped to 0.2-0.8, and the cuts of three slices stay at least 0.2 apart.
 - Ratios reset to the defaults when the page's window count or variant changes.
 
 The count for ratio resets is the number of non-minimized, non-app-hidden tiled windows. A square visible frame uses width as its long axis. Cuts are centered in gaps; frame edges are rounded individually and width/height are the differences of rounded edges. Insets and unusually large gaps never produce negative sizes. A single-cut edit preserves the other cut when enforcing three-slice spacing; setting both ratios clamps r1 first, then brings r2 above it, moving r1 back if necessary to fit within 0.8.
+
+Keyboard (not yet implemented):
+
+- Ctrl+Option+arrows resize the focused window by moving its edges, the keyboard version of dragging an edge. If the window's edge on the arrow's side is a cut, that cut moves in the arrow's direction and the window grows. If that side lies on the layout area's border, the window's cut on the opposite side moves in the arrow's direction instead and the window shrinks. So a divider always moves the way the arrow points, whichever side of it has focus.
+- Each press moves a cut by 0.05 of the layout area, clamped as above. Holding the keys repeats.
+- A window with no cut in that axis (a lone window, or the large tile for Up and Down) does not change. The middle of three slices has cuts on both sides, so the arrows only grow it; its neighbours shrink it.
+- A floating window grows or shrinks by 0.05 of the layout area per press: Right and Left change its width, Down and Up its height, keeping its top-left corner.
 
 Mouse:
 
@@ -137,6 +147,7 @@ Default bindings:
 | Ctrl+Up/Down | Show the workspace above or below. | Mission Control, App Expose |
 | Cmd+\` / Cmd+Shift+\` | Focus the next or previous window on the shown page: tiles in slot order, then floating windows, wrapping around. | Move focus to next window, which cycles the frontmost app's windows |
 | Ctrl+Shift+Space | Toggle the shown page between its standard and alternate layout (see Layout). | Nothing by default; Ctrl+Space and Ctrl+Option+Space switch input sources |
+| Ctrl+Option+arrows | Resize the focused window: the divider on that side moves the way the arrow points (see Layout). Not yet implemented. | Nothing by default; VoiceOver uses Ctrl+Option as its modifier |
 | Cmd+Tab / Cmd+Shift+Tab | Open the window switcher and step through windows (see "Window switcher"). Not yet implemented. | App switcher |
 | Ctrl+Shift+Left/Right | Nudge the focused window. If it shares its page, it moves onto a new page of its own on that side. If it is alone, it joins the neighbouring page; if that page is full, it joins the next page with room in the same direction, or a new page at that end of the workspace. Focus follows. | Select to line start or end in text fields, which Cmd+Shift+arrows also does |
 | Ctrl+Shift+Up/Down | Carry the focused window to the workspace above or below, placed by the placement rules. Past the last workspace, it carries the window into a new one. Focus follows. | - |
@@ -181,7 +192,7 @@ Notes:
 
 - Validated with physical keys: the session-level event tap receives Ctrl+Left/Right/Up/Down before the Dock, and swallowing them keeps desktops from switching and Mission Control and App Expose from opening. Ctrl+Up/Down are system shortcuts 32 and 33, and Ctrl+Left/Right are 79 and 81.
 - Arrow keys carry the fn and keypad flags, so binding matches ignore them.
-- A held binding fires once. Key repeats of a bound chord are swallowed without running the command again. The open window switcher is the exception.
+- A held binding fires once. Key repeats of a bound chord are swallowed without running the command again. The open window switcher and keyboard resizing are the exceptions.
 - Validated with physical keys (`dev/spikes/gesture`, `cmdtab` mode): swallowing Tab at the session-level event tap while Cmd is held keeps the native app switcher (system shortcuts 1 and 2) from appearing, and Cmd presses arrive as flags-changed events. A quick Cmd+Tab, Shift+Tab and the Cmd release were not part of that test.
 - The \` key is whichever key macOS assigns to Move focus to next window (system shortcut 27), so Cmd+\` follows non-US layouts. Only the shortcut's keycode is used; binding modifiers come from the config. On this Mac it is keycode 50 with Cmd, and keycode 50 is the fallback when the shortcut cannot be read. It is reread whenever the key map is rebuilt. A key that already has another name, such as a letter, keeps it, and \` then names no key. In apps minitile does not manage, chords on the \` key keep their native meaning: the tap passes them through while the frontmost app is not allowed by the config, a flag the shell updates on every app activation and config reload. A press swallowed in a managed app stays swallowed until its key-up. Not yet validated with physical keys: swallowing it must stop the app's own window cycling, including in apps that handle Cmd+\` themselves.
 - Mission Control stays reachable through its own key and the Dock, and through the trackpad when `trackpad_swipes` is false. It shows the stash desktop with every hidden page's windows, which makes it an escape hatch rather than a view of the grid.
@@ -244,7 +255,7 @@ window move [ID] left|right|up|down
 window move [ID] page|workspace INDEX|next|prev
 window move [ID] display UUID|next|prev
 window swap [ID] OTHER_ID
-window resize [ID] SHARE|WIDTHxHEIGHT
+window resize [ID] SHARE|WIDTHxHEIGHT|left|right|up|down
 page list
 page info|show|variant [INDEX|next|prev]
 page next|prev [display UUID]
@@ -263,7 +274,7 @@ Page and workspace addresses are 1-based; tiled slots are 0-based. Floating and 
 
 Window moves and swaps follow the addressed source window. A move to its existing page does nothing. Left/right moves are nudges; up/down moves carry between workspaces. Explicit moves to a full page use placement spill. Spatial focus chooses the nearest window center in the requested half-plane on the same page, with grid order breaking ties; it does not wrap. Minimized and app-hidden windows are excluded from spatial focus. Next and previous focus walk the focused window's page in grid order, tiles by slot and then floating windows, and wrap; they skip minimized and app-hidden windows. With no managed window focused, both focus the first window of the shown page in the current display context. Like `window focus ID`, they emit a focus action. When no other window on the page can take focus, including on an empty page, they do nothing.
 
-For tiled resize, a single share applies along the layout's split axis; `WIDTHxHEIGHT` supplies physical-axis fractional shares. Cuts are clamped by the layout rules. Floating resize requires `WIDTHxHEIGHT` in positive points and emits an explicit frame-write action. `page ratio R1` leaves r2 unchanged. Config reload is completed by the shell before its socket reply; failures keep the previous config. `config open` opens the config file in the user's editor.
+Directional resize (planned) moves the window's cuts by 0.05 as described under Layout, or grows or shrinks a floating window by 0.05 of the layout area. For tiled resize, a single share applies along the layout's split axis; `WIDTHxHEIGHT` supplies physical-axis fractional shares. Cuts are clamped by the layout rules. Floating resize requires `WIDTHxHEIGHT` in positive points and emits an explicit frame-write action. `page ratio R1` leaves r2 unchanged. Config reload is completed by the shell before its socket reply; failures keep the previous config. `config open` opens the config file in the user's editor.
 
 ### JSON data contract
 
@@ -273,7 +284,7 @@ Every response has `ok`, `text` and `data`. Errors and successful mutations use 
 |---|---|
 | `help` | Grammar string. |
 | `window list`, `window info` | Array of window objects, or one window object. Fields: `id`, `pid`, `bundle_id`, `app`, `title`, `frame`, `display`, `workspace`, `page`, `slot`, `floating`, `hidden`, `focused`, `shown`, `minimized`, `app_hidden`, `tileable`. `frame` is the latest observed or explicitly resized frame. `hidden` means explicitly hidden by mntl; `shown` also excludes minimized/app-hidden windows and pages not being viewed. |
-| `page list`, `page info` | Array of page objects, or one page object. Fields: `id` (persistent identity), `index`, `display`, `workspace`, `shown`, `variant` (`standard` or `alternate`), `r1`, `r2`, `windows` (all assigned IDs in order), `tiled` (including reserved minimized/app-hidden slots), `floating`, `last_focus`. |
+| `page list`, `page info` | Array of page objects, or one page object. Fields: `id` (persistent identity), `index`, `display`, `workspace`, `shown`, `variant` (`standard`, `alternate`, `mirrored` or `stacked`), `r1`, `r2`, `windows` (all assigned IDs in order), `tiled` (including reserved minimized/app-hidden slots), `floating`, `last_focus`. |
 | `workspace list`, `workspace info` | Array of workspace objects, or one workspace object. Fields: `id` (persistent identity), `index`, `display` (current host), `home`, `shown`, `page` (last-viewed page index), `pages` (page objects). |
 | `display list`, `display info` | Array of display objects, or one display object. Fields: `id` (UUID), `frame`, `visible_frame`, `primary`, `unmanaged_reason`, `visible_space`, `stash_space`, `workspace` (current index), `workspaces` (workspace objects), `home_workspaces`, `merged_workspaces` (workspace index arrays). |
 | `config list`, `config info` | Object with `gaps`, `padding`, `float_apps`, `only_apps`, `transition_ms`, `trackpad_swipes`, `bindings`. Binding keys are canonical chords and values are command strings. |
@@ -554,6 +565,10 @@ trackpad_swipes = true  # swipes navigate pages and workspaces; false leaves the
 "ctrl+shift+space" = "page variant"
 "cmd+tab" = "switcher next"           # planned
 "cmd+shift+tab" = "switcher prev"     # planned
+"ctrl+alt+left" = "window resize left"    # planned
+"ctrl+alt+right" = "window resize right"  # planned
+"ctrl+alt+up" = "window resize up"        # planned
+"ctrl+alt+down" = "window resize down"    # planned
 ```
 
 The command strings above use the final grammar. A chord is modifiers (`ctrl`, `shift`, `alt`, `cmd`) and one key (a letter, a digit, `left`, `right`, `up`, `down`, `return`, `space`, `tab`, `escape`, `f1` to `f20`, and `` ` `` for the key of macOS's Move focus to next window shortcut), joined with `+`.
@@ -659,7 +674,8 @@ First version:
 - activation pre-emption;
 - page transitions: slides and edge bounces;
 - trackpad swipes for pages and workspaces;
-- the Cmd+Tab window switcher.
+- the Cmd+Tab window switcher;
+- keyboard resizing and the mirrored and stacked three-window layouts.
 
 Not planned:
 
