@@ -48,7 +48,8 @@ struct GridMetrics: Equatable {
 }
 
 /// Panel layout in flipped view coordinates, sized from the number of drawn cells and scaled down to fit the usable
-/// area less `PanelStyle.inset` on each side.
+/// area less `PanelStyle.inset` on each side. The header, labels, cells and footer form the inner layout, which sits at
+/// `inset` in the panel, past the bands that hold monitor markers.
 struct GridIndicatorGeometry: Equatable {
     var metrics: GridMetrics
     var cell: CGSize
@@ -56,28 +57,33 @@ struct GridIndicatorGeometry: Equatable {
     var columns: Int
     var cropped: Bool
     var warning: Bool
+    /// Edges with a monitor marker, each in a band the panel adds on that side.
+    var markers: Set<SwitcherDirection>
 
     init(content: GridIndicatorContent) {
         self.init(area: content.area, rows: content.rows.count, columns: content.columns.count, cropped: content.cropped,
-                  warning: content.warning != nil, metrics: .indicator)
+                  warning: content.warning != nil, markers: Set(content.markers.map(\.side)), metrics: .indicator)
     }
 
-    init(area: Rect, rows: Int, columns: Int, cropped: Bool, warning: Bool = false, metrics: GridMetrics) {
+    init(area: Rect, rows: Int, columns: Int, cropped: Bool, warning: Bool = false, markers: Set<SwitcherDirection> = [],
+         metrics: GridMetrics) {
         func layout(_ metrics: GridMetrics) -> GridIndicatorGeometry {
             GridIndicatorGeometry(metrics: metrics, cell: Self.cellSize(area: area, metrics: metrics), rows: rows, columns: columns,
-                                  cropped: cropped, warning: warning)
+                                  cropped: cropped, warning: warning, markers: markers)
         }
         let room = CGSize(width: area.width - 2 * PanelStyle.inset, height: area.height - 2 * PanelStyle.inset)
         self = layout(metrics.fitted(to: room) { layout($0).size })
     }
 
-    private init(metrics: GridMetrics, cell: CGSize, rows: Int, columns: Int, cropped: Bool, warning: Bool) {
+    private init(metrics: GridMetrics, cell: CGSize, rows: Int, columns: Int, cropped: Bool, warning: Bool,
+                 markers: Set<SwitcherDirection>) {
         self.metrics = metrics
         self.cell = cell
         self.rows = rows
         self.columns = columns
         self.cropped = cropped
         self.warning = warning
+        self.markers = markers
     }
 
     /// Constant area in the display's proportions, so portrait displays get tall cells and wide ones stay legible.
@@ -99,11 +105,56 @@ struct GridIndicatorGeometry: Equatable {
 
     var origin: CGPoint { CGPoint(x: margin + labelWidth + 4 * metrics.scale, y: gridTop + labelHeight + metrics.labelGap) }
 
-    var size: CGSize {
+    /// The inner layout's size, without the marker bands.
+    var inner: CGSize {
         if warning { return CGSize(width: metrics.minWidth + 28 * metrics.scale, height: 116 * metrics.scale) }
         let width = origin.x + span(columns, cell.width) + margin
         let height = origin.y + span(rows, cell.height) + (cropped ? metrics.spacing + footerHeight : 0) + margin
         return CGSize(width: max(metrics.minWidth, width), height: height)
+    }
+
+    var size: CGSize {
+        CGSize(width: inner.width + band(.left) + band(.right), height: inner.height + band(.up) + band(.down))
+    }
+
+    /// Where the inner layout's origin sits in the panel.
+    var inset: CGPoint { CGPoint(x: band(.left), y: band(.up)) }
+
+    /// How far the panel reaches past the inner layout on `side` to hold a marker there: a marker's row on the top
+    /// and bottom edges, and on the sides room for the name under the screen outline.
+    func band(_ side: SwitcherDirection) -> CGFloat {
+        guard markers.contains(side) else { return 0 }
+        return (side == .up || side == .down ? 24 : 56) * metrics.scale
+    }
+
+    /// A monitor marker's parts in panel coordinates: the screen outline with its stand, centered on the edge; the
+    /// chevron between it and the edge; and the name, right of the outline on the top and bottom edges and centered
+    /// under it on the sides, where the band is narrow.
+    func marker(_ side: SwitcherDirection) -> (screen: CGRect, chevron: CGRect, name: CGRect) {
+        let s = metrics.scale, size = size, glyph = CGSize(width: 16 * s, height: 12 * s)
+        func whole(_ rect: CGRect) -> CGRect {
+            CGRect(x: rect.minX.rounded(), y: rect.minY.rounded(), width: rect.width.rounded(), height: rect.height.rounded())
+        }
+        let screen: CGRect, chevron: CGRect, name: CGRect
+        switch side {
+        case .up, .down:
+            let top = side == .up ? 10 * s : size.height - band(.down) + 2 * s
+            screen = whole(CGRect(x: (size.width - glyph.width) / 2, y: top, width: glyph.width, height: glyph.height))
+            // Below, the stand's base is nearest the chevron, so it keeps a little more room.
+            chevron = whole(CGRect(x: screen.midX - 4 * s, y: side == .up ? screen.minY - 6 * s : screen.maxY + 3 * s, width: 8 * s,
+                                   height: 4 * s))
+            name = CGRect(x: screen.maxX + 4 * s, y: screen.minY - 1.5 * s, width: max(0, size.width - margin - screen.maxX - 4 * s),
+                          height: 12 * s)
+        case .left, .right:
+            // The chevron, a 2 pt gap and the outline, 22 pt at scale 1, centered in the band.
+            let edge = side == .left ? 0 : size.width - band(.right)
+            screen = whole(CGRect(x: edge + (side == .left ? 23 : 17) * s, y: size.height / 2 - 6 * s, width: glyph.width,
+                                  height: glyph.height))
+            chevron = whole(CGRect(x: side == .left ? screen.minX - 6 * s : screen.maxX + 2 * s, y: screen.minY + 0.5 * s,
+                                   width: 4 * s, height: 8 * s))
+            name = CGRect(x: edge + 2 * s, y: screen.maxY + 3 * s, width: 52 * s, height: 12 * s)
+        }
+        return (screen, chevron, name)
     }
 
     private func span(_ count: Int, _ length: CGFloat) -> CGFloat {
@@ -125,7 +176,7 @@ struct GridIndicatorGeometry: Equatable {
     }
 
     var footerRect: CGRect {
-        CGRect(x: margin, y: size.height - margin - footerHeight, width: size.width - 2 * margin, height: footerHeight)
+        CGRect(x: margin, y: inner.height - margin - footerHeight, width: inner.width - 2 * margin, height: footerHeight)
     }
 
     /// The page's usable area inside a cell, inset so tiles clear the cell outline.
@@ -269,6 +320,43 @@ struct GridPainter {
         plate(bounds, radius: PanelStyle.radius, fill: PanelStyle.tint, stroke: PanelStyle.border)
     }
 
+    /// A monitor marker in unlit wire, since it shows where Ctrl+arrows cross rather than state: a small screen on a
+    /// stand, a chevron pointing out of the panel, and the display's name in dim monospace.
+    static func marker(_ marker: MonitorMarker, geometry: GridIndicatorGeometry) {
+        let s = geometry.metrics.scale, parts = geometry.marker(marker.side), stroke = PanelStyle.marker
+        let glyph = parts.screen, screen = NSRect(x: glyph.minX, y: glyph.minY, width: glyph.width, height: (9 * s).rounded())
+        stroke.draw(inside: screen, radius: 1.5 * s)
+        let base = glyph.maxY - stroke.width / 2, stand = NSBezierPath()
+        stand.move(to: NSPoint(x: glyph.midX, y: screen.maxY))
+        stand.line(to: NSPoint(x: glyph.midX, y: base))
+        stand.move(to: NSPoint(x: glyph.midX - 3.5 * s, y: base))
+        stand.line(to: NSPoint(x: glyph.midX + 3.5 * s, y: base))
+        stroke.draw(stand)
+        let c = parts.chevron
+        let points = switch marker.side {
+        case .up: [NSPoint(x: c.minX, y: c.maxY), NSPoint(x: c.midX, y: c.minY), NSPoint(x: c.maxX, y: c.maxY)]
+        case .down: [NSPoint(x: c.minX, y: c.minY), NSPoint(x: c.midX, y: c.maxY), NSPoint(x: c.maxX, y: c.minY)]
+        case .left: [NSPoint(x: c.maxX, y: c.minY), NSPoint(x: c.minX, y: c.midY), NSPoint(x: c.maxX, y: c.maxY)]
+        case .right: [NSPoint(x: c.minX, y: c.minY), NSPoint(x: c.maxX, y: c.midY), NSPoint(x: c.minX, y: c.maxY)]
+        }
+        let chevron = NSBezierPath()
+        chevron.move(to: points[0])
+        points.dropFirst().forEach(chevron.line(to:))
+        chevron.lineCapStyle = .round
+        chevron.lineJoinStyle = .round
+        stroke.draw(chevron)
+        let sideways = marker.side == .left || marker.side == .right
+        text(marker.name, rect: parts.name, size: 9 * s, color: PanelStyle.dim, alignment: sideways ? .center : .left, monospaced: true)
+    }
+
+    /// Draws `inner` with the inner layout's origin at `inset`, past the marker bands on the left and top.
+    static func inner(at inset: CGPoint, _ inner: () -> Void) {
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current?.cgContext.translateBy(x: inset.x, y: inset.y)
+        inner()
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
     static func label(_ string: String, rect: NSRect, size: CGFloat, current: Bool) {
         text(string, rect: rect, size: size, weight: current ? .semibold : .regular, color: current ? PanelStyle.ink : PanelStyle.dim,
              alignment: .center, monospaced: true)
@@ -314,8 +402,14 @@ final class GridIndicatorView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let geometry = GridIndicatorGeometry(content: content)
-        let s = geometry.metrics.scale, margin = geometry.margin, width = bounds.width - 2 * margin
         GridPainter.background(bounds)
+        for marker in content.markers { GridPainter.marker(marker, geometry: geometry) }
+        GridPainter.inner(at: geometry.inset) { drawInner(geometry) }
+    }
+
+    private func drawInner(_ geometry: GridIndicatorGeometry) {
+        let s = geometry.metrics.scale, margin = geometry.margin, bounds = NSRect(origin: .zero, size: geometry.inner)
+        let width = bounds.width - 2 * margin
         GridPainter.text(content.displayName, rect: NSRect(x: margin, y: 10 * s, width: width, height: 17 * s), size: 12 * s,
                          weight: .semibold)
         GridPainter.text(content.position, rect: NSRect(x: margin, y: 28 * s, width: width - 46 * s, height: 16 * s), size: 11 * s,

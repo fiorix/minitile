@@ -259,8 +259,14 @@ final class SwitcherView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let geometry = content.geometry
-        let s = geometry.metrics.scale, margin = geometry.margin, width = bounds.width - 2 * margin
         GridPainter.background(bounds)
+        for marker in content.markers { GridPainter.marker(marker, geometry: geometry) }
+        GridPainter.inner(at: geometry.inset) { drawInner(geometry) }
+    }
+
+    private func drawInner(_ geometry: GridIndicatorGeometry) {
+        let s = geometry.metrics.scale, margin = geometry.margin, bounds = NSRect(origin: .zero, size: geometry.inner)
+        let width = bounds.width - 2 * margin
         GridPainter.text(content.app, rect: NSRect(x: margin, y: 10 * s, width: width - 156 * s, height: 17 * s), size: 12 * s,
                          weight: .semibold)
         GridPainter.text(content.position, rect: NSRect(x: bounds.width - margin - 150 * s, y: 11 * s, width: 150 * s, height: 16 * s),

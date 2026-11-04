@@ -374,22 +374,6 @@ private func arrow(_ id: WindowID, _ direction: SwitcherDirection, in state: Sav
     #expect(!none)
 }
 
-/// Whether the view draws anything in `rect`, rendered offscreen at twice its point size.
-@MainActor private func draws(_ view: NSView, in rect: CGRect) throws -> Bool {
-    let rep = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
-    view.cacheDisplay(in: view.bounds, to: rep)
-    let scale = CGFloat(rep.pixelsWide) / view.bounds.width
-    for y in stride(from: rect.minY, to: rect.maxY, by: 1) {
-        for x in stride(from: rect.minX, to: rect.maxX, by: 1) {
-            // Bitmap rows run from the top, as the flipped view's y does.
-            if let color = rep.colorAt(x: Int(x * scale), y: Int(y * scale)), color.alphaComponent > 0.75, color.brightnessComponent > 0.3 {
-                return true
-            }
-        }
-    }
-    return false
-}
-
 @Test @MainActor func switcherHeaderDrawsTheDisplayNameBesideTheTitle() throws {
     let two = plus(["centre": [[[10]]], "above": [[[20]]]], focus: 10)
     let content = SwitcherContent(selection: try #require(open(two)), state: two, names: ["centre": "Laptop", "above": "External"])

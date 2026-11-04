@@ -64,6 +64,16 @@ struct Stroke: Equatable {
     /// How far the line's halo shows past it, so a panel drawing the line at its edge can leave room.
     var reach: CGFloat { glow?.reach ?? 0 }
 
+    /// Strokes an open path, such as a chevron.
+    func draw(_ path: NSBezierPath) {
+        path.lineWidth = width
+        if let glow { glow.light(path, core: paint) }
+        else {
+            paint.color.setStroke()
+            path.stroke()
+        }
+    }
+
     /// Strokes just inside `rect`, so a tile's line stays clear of its neighbours and a cell's of the panel around it.
     func draw(inside rect: NSRect, radius: CGFloat) {
         guard rect.width > width, rect.height > width else { return }
@@ -120,6 +130,9 @@ enum PanelStyle {
     /// Corner radii at a panel scale of 1; they grow and shrink with the panel.
     static let pageRadius: CGFloat = 4
     static let tileRadius: CGFloat = 2
+
+    /// The monitor markers' screen outlines and chevrons, a little brighter than pages since they are small.
+    static let marker = Stroke(paint: wire.opacity(0.6), width: 1)
 
     static let iconOpacity: CGFloat = 0.7
     static let reservedOpacity: CGFloat = 0.4

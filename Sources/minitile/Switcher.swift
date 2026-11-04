@@ -186,6 +186,7 @@ struct SwitcherContent: Equatable {
     var title: String
     /// The selection's display, named only when more than one display is managed.
     var displayName: String?
+    var markers: [MonitorMarker]
 
     /// `names` are the displays' names by ID, as `DisplayCatalog.names` gives them.
     init(selection: SwitcherSelection, state: SavedState, names: [DisplayID: String] = [:]) {
@@ -199,6 +200,7 @@ struct SwitcherContent: Equatable {
         title = state.windows[selected]?.info.title ?? ""
         let managed = state.displays.filter { $0.info.unmanagedReason == nil }.count
         displayName = managed > 1 ? names[grid.display] ?? "Display" : nil
+        markers = MonitorMarker.markers(for: grid.display, displays: state.displays.map(\.info), names: names)
     }
 
     var rows: Range<Int> {
@@ -210,7 +212,8 @@ struct SwitcherContent: Equatable {
     var cropped: Bool { rows.count < pages.count || columns.count < pageCount }
     var position: String { "Workspace \(cell.workspace + 1) / Page \(cell.page + 1)" }
     var geometry: GridIndicatorGeometry {
-        GridIndicatorGeometry(area: area, rows: rows.count, columns: columns.count, cropped: cropped, metrics: .switcher)
+        GridIndicatorGeometry(area: area, rows: rows.count, columns: columns.count, cropped: cropped,
+                              markers: Set(markers.map(\.side)), metrics: .switcher)
     }
 
     private var pageCount: Int { pages.map(\.count).max() ?? 0 }
