@@ -21,6 +21,7 @@ extension Engine {
     window move [ID] display UUID|next|prev
     window swap [ID] OTHER_ID
     window resize [ID] SHARE|WIDTHxHEIGHT|left|right|up|down
+    window place [ID] standard|alternate|mirrored|stacked SLOT
     page list
     page info|show|variant [INDEX|next|prev]
     page next|prev [display UUID]
@@ -39,6 +40,7 @@ extension Engine {
     Window IDs default to the focused window. Page/workspace context is its display.
     Tiled resize uses fractional shares; floating resize uses WIDTHxHEIGHT in points.
     Directional resize moves an edge by 0.05 of the layout area.
+    Place sets the page's layout and puts the window in that tile, counting active tiles.
     """
 
     mutating func command(_ argv: [String], output: inout Output) throws -> Reply {
@@ -137,9 +139,9 @@ extension Engine {
             return Reply(text: "OK")
         }
         var args = supplied
-        let needsTarget = ["move", "nudge", "swap", "resize"].contains(verb)
+        let operands = verb == "place" ? 2 : ["move", "nudge", "swap", "resize"].contains(verb) ? 1 : 0
         let id: WindowID
-        if args.count >= (needsTarget ? 2 : 1), let first = args.first, let explicit = WindowID(first) { id = explicit; args.removeFirst() }
+        if args.count > operands, let first = args.first, let explicit = WindowID(first) { id = explicit; args.removeFirst() }
         else if let focused = state.focus { id = focused }
         else { throw CommandError("Expected a window ID; no window is focused") }
         guard state.windows[id] != nil else { throw CommandError("Unknown window ID \(id)") }
@@ -171,7 +173,12 @@ extension Engine {
             guard args.count == 1 else { throw CommandError("Expected window resize [ID] SHARE|WIDTHxHEIGHT|left|right|up|down") }
             if ["left", "right", "up", "down"].contains(args[0]) { try resizeStep(id, direction: args[0], output: &output) }
             else { try resize(id, size: args[0], output: &output) }
-        default: throw CommandError("Expected window list|info|show|hide|focus|float|move|nudge|swap|resize|close")
+        case "place":
+            guard args.count == 2, let variant = Variant(rawValue: args[0]), let slot = Int(args[1]) else {
+                throw CommandError("Expected window place [ID] standard|alternate|mirrored|stacked SLOT")
+            }
+            try place(id, variant: variant, slot: slot, output: &output)
+        default: throw CommandError("Expected window list|info|show|hide|focus|float|move|nudge|swap|resize|place|close")
         }
         return Reply(text: "OK")
     }

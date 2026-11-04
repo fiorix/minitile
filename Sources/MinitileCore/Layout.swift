@@ -41,17 +41,26 @@ public enum Layout {
         }
     }
 
+    /// The layouts a count defines, in cycling order.
+    public static func variants(count: Int) -> [Variant] {
+        switch count {
+        case 1, 4: [.standard]
+        case 2: [.standard, .alternate]
+        case 3: [.standard, .mirrored, .alternate, .stacked]
+        default: []
+        }
+    }
+
+    /// The layout a count uses for `variant`: its own where the count defines it, otherwise `standard`.
+    public static func effective(_ variant: Variant, count: Int) -> Variant {
+        variants(count: count).contains(variant) ? variant : .standard
+    }
+
     /// The variant after `variant` in its count's cycling order, or nil when the count has one layout.
     static func next(_ variant: Variant, count: Int) -> Variant? {
-        switch (count, variant) {
-        case (2, .alternate): .standard
-        case (2, _): .alternate
-        case (3, .standard): .mirrored
-        case (3, .mirrored): .alternate
-        case (3, .alternate): .stacked
-        case (3, .stacked): .standard
-        default: nil
-        }
+        let order = variants(count: count)
+        guard order.count > 1, let index = order.firstIndex(of: effective(variant, count: count)) else { return nil }
+        return order[(index + 1) % order.count]
     }
 
     /// Three slices: both cuts lie on one axis and keep 0.2 apart.
