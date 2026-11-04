@@ -2,7 +2,7 @@
 
 minitile is a tiling window manager for macOS. It runs with SIP enabled and aims for a small core that blends with macOS: a handful of keys that reuse the native desktop shortcuts, mouse gestures where macOS users already use the mouse, and every function scriptable from the `mntl` command line tool. HyprMac (github.com/zacharytgray/HyprMac) is a source of macOS behaviour to respect, not a feature list to copy.
 
-Status: the core, IPC, `mntl` and the macOS shell are implemented and verified live on one display. Multiple displays and the items under "Open" are not yet verified. Page transitions and Cmd+\` window cycling are designed but not yet implemented; transitions are validated in a spike.
+Status: the core, IPC, `mntl` and the macOS shell are implemented and verified live on one display. Multiple displays and the items under "Open" are not yet verified. Page transitions, Cmd+\` window cycling and page miniatures in the position indicator are designed but not yet implemented; transitions are validated in a spike.
 
 ## Model
 
@@ -28,11 +28,15 @@ When a display's shown page or workspace changes, that display shows a read-only
 The first managed view after startup or display attachment also shows the indicator. Changes to focus, window counts or page indices alone do not restart it: the comparison uses workspace and page identities. Unmanaged-display warnings remain in the menu.
 
 - The header names the display and the current workspace and page.
-- Workspaces are rows labeled W1, W2, and so on; pages are columns labeled P1, P2, and so on. The shown page's cell is highlighted, including an empty page, and each cell holds its window count.
-- At most six rows and eight columns are drawn, centered on the current position where possible. A cropped grid keeps its full indices and says it is cropped.
+- Workspaces are rows labeled W1, W2, and so on; pages are columns labeled P1, P2, and so on.
+- Each cell is a miniature of its page, about 64x40 pt in the proportions of the display's usable area. Tiles are drawn at their real proportions (layout variant and ratios, with gaps scaled down), each holding its app's icon at 10-14 pt. Reserved slots of minimized and app-hidden windows are dimmed. Floating windows show as a count badge in the cell's corner. An empty page is an empty outline.
+- The shown page's cell is highlighted, including an empty page, and so is its focused tile.
+- At most four rows and five columns are drawn, centered on the current position where possible. A cropped grid keeps its full indices and says it is cropped.
 - The grid passes mouse input through, never takes focus, appears on whichever native desktop is current, and follows light and dark appearance.
 
 It is an orientation aid, not an interactive overview.
+
+Not yet implemented: the shell currently draws each cell as a window count, cropped to six rows and eight columns.
 
 ### Placement
 
