@@ -126,6 +126,7 @@ extension AppDelegate {
         let wasSuspended = !suspendedReasons.isEmpty
         let shouldResume = suspension.set(reason, enabled: enabled)
         discovery?.frozen = !suspendedReasons.isEmpty
+        if enabled { dropPanels.hide() }
         if shouldResume { resume() }
         else if wasSuspended != !suspendedReasons.isEmpty { updateSwipes() }
         updateSwitcherAvailability()
@@ -199,6 +200,7 @@ extension AppDelegate {
         reconciler.externalMove(id)
         if mouseDown, reconciler.dragging == nil {
             reconciler.dragging = id
+            dragTile = reconciler.scene.displays.values.lazy.compactMap { $0.frames[id] }.first
             updateDragTracking()
         }
     }
@@ -208,23 +210,50 @@ extension AppDelegate {
         guard reconciler?.dragging != nil else {
             dragTimer?.invalidate()
             dragTimer = nil
+            dragTile = nil
+            dropPanels.hide()
             return
         }
         guard dragTimer == nil else { return }
         let timer = Timer(timeInterval: 0.03, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.finishDragIfReleased() }
+            MainActor.assumeIsolated {
+                self?.finishDragIfReleased()
+                self?.updateDropPicker()
+            }
         }
         dragTimer = timer
         RunLoop.main.add(timer, forMode: .common)
     }
 
+    /// The picker for the dragged window's page, shown while the window is dragged as a move. The frame comes from the
+    /// window's move notifications, so polling reads no AX attributes.
+    func currentDropPicker() -> DropPicker? {
+        guard !quitting, discovery?.frozen == false, let id = reconciler?.dragging, let tile = dragTile,
+              let frame = discovery?.windows[id]?.info.frame, DragMove.isMove(frame, from: tile) else { return nil }
+        return DropPicker(state: engine.savedState(), config: engine.config, window: id)
+    }
+
+    func updateDropPicker() {
+        guard let picker = currentDropPicker() else { dropPanels.hide(); return }
+        let target = CGEvent(source: nil).flatMap { picker.target(at: $0.location) }
+        dropPanels.show(DropPickerContent(picker: picker, hovered: target), preview: target.flatMap(picker.preview))
+    }
+
     func finishDragIfReleased() {
         guard discovery?.frozen == false, let reconciler, let id = reconciler.dragging,
               NSEvent.pressedMouseButtons & 1 == 0 else { return }
+        let tile = dragTile
         reconciler.dragging = nil
         updateDragTracking()
-        guard let element = discovery?.windows[id]?.element, let frame = AX.frame(element),
-              let location = CGEvent(source: nil)?.location else { return }
-        handle(.dragEnded(id, frame: frame, cursor: Point(x: location.x, y: location.y)))
+        let frame = discovery?.windows[id].flatMap { AX.frame($0.element) }
+        let cursor = CGEvent(source: nil).map { Point(x: $0.location.x, y: $0.location.y) }
+        let picker = DropPicker(state: engine.savedState(), config: engine.config, window: id)
+        switch DropRoute.route(frame: frame, cursor: cursor, picker: picker, tile: tile) {
+        case .place(let target):
+            let reply = command(target.command(id))
+            if !reply.ok { logger.info("Drop \(id): \(reply.text, privacy: .public)") }
+        case .dragEnded(let frame, let cursor): handle(.dragEnded(id, frame: frame, cursor: cursor))
+        case .ignore: break
+        }
     }
 }

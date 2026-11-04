@@ -31,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let gridIndicator = GridIndicator()
     let switcherPanel = SwitcherPanel()
     lazy var windowSwitcher = WindowSwitcher(presenter: switcherPanel)
+    let dropPanels = DropPickerPanels()
     let transitions = Transitions()
     var screenRecordingRequested = false
     var permissionTimer: Timer?
@@ -52,6 +53,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var observers: [(NotificationCenter, NSObjectProtocol)] = []
     var healthTimer: Timer?
     var dragTimer: Timer?
+    /// The dragged window's tile when the drag began.
+    var dragTile: Rect?
     var displayWork: DispatchWorkItem?
     var wakeUntil: TimeInterval = 0
     var lastActivation: (pid: Int32, time: TimeInterval)?
@@ -122,7 +125,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let reconciler = Reconciler(discovery: discovery, displays: displays)
         self.reconciler = reconciler
         reconciler.warning = { [weak self] message in self?.warnings["reconcile"] = message; self?.updateMenu() }
-        discovery.suppressGeometry = { [weak reconciler] in reconciler?.suppresses($0) == true }
+        // A dragged window's frame is read as it moves, even right after a write, since the drop picker follows it.
+        discovery.suppressGeometry = { [weak reconciler] id in reconciler.map { $0.suppresses(id) && $0.dragging != id } == true }
         do { saved = try stateWriter.read() }
         catch { warnings["state"] = "Cannot restore saved state: \(error)" }
         discovery.prepareStash()
@@ -356,6 +360,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         gridIndicator.stop()
         windowSwitcher.cancel()
         switcherPanel.stop()
+        dropPanels.stop()
         transitions.stop()
         permissionTimer?.invalidate(); healthTimer?.invalidate(); dragTimer?.invalidate(); displayWork?.cancel(); activationFocusRead?.cancel()
         for (center, token) in observers { center.removeObserver(token) }
