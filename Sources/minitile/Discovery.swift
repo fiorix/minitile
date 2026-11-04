@@ -252,7 +252,8 @@ final class Discovery {
 
     private func discover(_ read: WindowRead, app: NSRunningApplication, record: CGWindowRecord?, register: Bool) {
         let id = read.id, element = read.element.element
-        guard let record, record.real, smokeScope.allows(document: read.attributes.document) else { return }
+        guard let record, record.real, read.attributes.popup != true,
+              smokeScope.allows(document: read.attributes.document) else { return }
         if let previous = windows[id] {
             if previous.info.pid == app.processIdentifier && CFEqual(previous.element, element) { return }
             remove(id)
@@ -283,6 +284,7 @@ final class Discovery {
 
     private func applyAttributes(_ attributes: WindowAttributes, to id: WindowID, app: NSRunningApplication) {
         guard let old = windows[id] else { return }
+        if attributes.popup == true { remove(id); return }
         if smokeScope.directory != nil, let document = attributes.document, !smokeScope.allows(document: document) { remove(id); return }
         var info = old.info
         info.apply(attributes, appHidden: app.isHidden, geometry: suppressGeometry?(id) != true)
