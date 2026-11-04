@@ -151,8 +151,15 @@ private func makeRouter(_ bindings: [Chord: [String]] = Config.defaultBindings) 
 @MainActor
 private final class FakePresenter: SwitcherPresenting {
     var shown: [WindowID] = []
+    /// Each show's display and the display it slides from.
+    var moves: [(display: DisplayID, from: DisplayID?)] = []
+    var contents: [SwitcherContent] = []
     var hides = 0
-    func show(_ content: SwitcherContent, display: DisplayID) { shown.append(content.selected) }
+    func show(_ content: SwitcherContent, display: DisplayID, from: DisplayID?) {
+        shown.append(content.selected)
+        moves.append((display, from))
+        contents.append(content)
+    }
     func hide() { hides += 1 }
 }
 
@@ -169,7 +176,9 @@ private final class FakeClock {
 @MainActor
 private func controller() -> (WindowSwitcher, FakePresenter, FakeClock) {
     let presenter = FakePresenter(), clock = FakeClock()
-    return (WindowSwitcher(presenter: presenter) { clock.pending.append(($0, $1)) }, presenter, clock)
+    let switcher = WindowSwitcher(presenter: presenter, schedule: { clock.pending.append(($0, $1)) },
+                                  names: { ["d": "Laptop", "e": "External"] })
+    return (switcher, presenter, clock)
 }
 
 private func switcherState() -> SavedState {
@@ -230,7 +239,9 @@ private func switcherState() -> SavedState {
 @Test @MainActor func switcherClosesWhenItHasNothingToOffer() {
     let (switcher, presenter, _) = controller()
     #expect(!switcher.open(session: 1, forward: true, held: false, state: SavedState(), display: "d", config: .default))
-    #expect(!switcher.open(session: 2, forward: true, held: false, state: switcherState(), display: nil, config: .default))
+    var unmanaged = switcherState()
+    unmanaged.displays[0].info.unmanagedReason = "No desktop pair"
+    #expect(!switcher.open(session: 2, forward: true, held: false, state: unmanaged, display: "d", config: .default))
     #expect(!switcher.isOpen)
     #expect(switcher.isStale(2) && !switcher.isStale(3))
     #expect(switcher.open(session: 3, forward: true, held: false, state: switcherState(), display: "d", config: .default))
@@ -257,4 +268,77 @@ private func switcherState() -> SavedState {
     #expect(Config.defaultBindings[Chord(modifiers: .cmd, key: "tab")] == ["switcher", "next"])
     #expect(Config.defaultBindings[Chord(modifiers: [.cmd, .shift], key: "tab")] == ["switcher", "prev"])
     #expect(Engine.help.contains("switcher next|prev|commit|cancel"))
+}
+
+/// Display "d" with windows 1 and 2, and display "e" above it with window 3, so the ring is 3, 1, 2.
+private func twoDisplayState(focus: WindowID = 2) -> SavedState {
+    var state = switcherState()
+    state.displays[0].workspaces[0].pages[0].windows = [1, 2]
+    var page = PageState(id: 20)
+    page.windows = [3]
+    state.displays.append(DisplayState(info: DisplayInfo(id: "e", frame: Rect(x: 0, y: -982, width: 1512, height: 982)),
+                                       workspaces: [WorkspaceState(id: 2, home: "e", pages: [page], currentPage: 20)], currentWorkspace: 2))
+    state.windows[3] = WindowState(info: WindowInfo(id: 3, pid: 3, display: "e"), display: "e", floating: false)
+    state.focus = focus
+    state.activeDisplay = "d"
+    return state
+}
+
+@Test @MainActor func switcherPanelStartsOnTheActiveDisplayAndSlidesToTheSelections() {
+    let (switcher, presenter, clock) = controller()
+    // The focused window is the last one on "d", so the selection starts on "e", the first display in the ring.
+    #expect(switcher.open(session: 1, forward: true, held: true, state: twoDisplayState(), display: "d", config: .default))
+    clock.fire()
+    #expect(presenter.shown == [3])
+    #expect(presenter.moves.map(\.display) == ["e"] && presenter.moves.map(\.from) == ["d"])
+    #expect(presenter.contents.last?.displayName == "External")
+    // Tab moves back to "d", sliding from "e"; another Tab stays there.
+    switcher.step(forward: true)
+    switcher.step(forward: true)
+    #expect(presenter.shown == [3, 1, 2])
+    #expect(presenter.moves.map(\.display) == ["e", "d", "d"] && presenter.moves.map(\.from) == ["d", "e", "d"])
+    #expect(presenter.contents.last?.displayName == "Laptop")
+    // Up crosses to "e" and Down comes back.
+    switcher.move(.up)
+    switcher.move(.down)
+    #expect(presenter.shown == [3, 1, 2, 3, 1])
+    #expect(presenter.moves.suffix(2).map(\.from) == ["d", "e"])
+    #expect(switcher.commit() == 1)
+}
+
+@Test @MainActor func switcherPanelMovesWhenTheSelectionsDisplayGoesAway() {
+    let (switcher, presenter, _) = controller()
+    #expect(switcher.open(session: 1, forward: true, held: false, state: twoDisplayState(), display: "d", config: .default))
+    #expect(presenter.moves.last?.display == "e")
+    // "e" is unplugged and its window closes: the selection moves on to 1, on "d", and the panel with it.
+    var gone = twoDisplayState()
+    gone.displays.removeLast()
+    gone.windows[3] = nil
+    #expect(switcher.update(state: gone, config: .default) == nil)
+    #expect(presenter.shown == [3, 1])
+    #expect(presenter.moves.last?.display == "d" && presenter.moves.last?.from == "e")
+    // With one managed display left, the header no longer names it.
+    #expect(presenter.contents.last?.displayName == nil)
+    #expect(switcher.isOpen)
+}
+
+@Test func panelSlideEasesFromTheMiddleOfOneDisplayToTheOther() {
+    let laptop = CGRect(x: 0, y: 0, width: 2056, height: 1290), external = CGRect(x: -908, y: 1329, width: 3840, height: 2135)
+    let size = CGSize(width: 1201, height: 701)
+    let start = PanelSlide.frame(size, centeredOn: CGPoint(x: laptop.midX, y: laptop.midY))
+    let end = PanelSlide.frame(size, centeredOn: CGPoint(x: external.midX, y: external.midY))
+    #expect(start == CGRect(x: 428, y: 295, width: 1201, height: 701))
+    #expect(end.size == size && abs(end.midX - external.midX) <= 0.5 && abs(end.midY - external.midY) <= 0.5)
+    #expect(PanelSlide.origin(from: start.origin, to: end.origin, elapsed: 0) == start.origin)
+    let middle = PanelSlide.origin(from: start.origin, to: end.origin, elapsed: PanelSlide.duration / 2)
+    #expect(abs(middle.x - (start.minX + end.minX) / 2) < 1e-9 && abs(middle.y - (start.minY + end.minY) / 2) < 1e-9)
+    #expect(PanelSlide.origin(from: start.origin, to: end.origin, elapsed: PanelSlide.duration) == end.origin)
+    #expect(PanelSlide.origin(from: start.origin, to: end.origin, elapsed: 5) == end.origin)
+    // Eased: slow at both ends, always moving on.
+    let steps = stride(from: 0.0, through: PanelSlide.duration, by: PanelSlide.duration / 10).map {
+        PanelSlide.origin(from: start.origin, to: end.origin, elapsed: $0).y
+    }
+    #expect(zip(steps, steps.dropFirst()).allSatisfy { $0 < $1 })
+    #expect(steps[1] - steps[0] < steps[6] - steps[5])
+    #expect(PanelSlide.duration == 0.25)
 }
