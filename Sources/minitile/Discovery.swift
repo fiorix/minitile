@@ -60,8 +60,9 @@ final class Discovery {
     private var adoption: [WindowID: (pid: Int32, display: NativeDisplay)] = [:]
     private var ledger = DiscoveryLedger()
     private var passes = ScanPasses()
-    /// Snapshots and app reads run here, one task per app, so a hung app delays only its own results.
-    private let background = DispatchQueue(label: "minitile.discovery", qos: .utility, attributes: .concurrent)
+    /// Snapshots and app reads run here, one task per app, so a hung app delays only its own results. New windows are
+    /// read here too, so the queue is not a low priority one.
+    private let background = DispatchQueue(label: "minitile.discovery", qos: .userInitiated, attributes: .concurrent)
     var config: Config
     let displays: DisplayCatalog
     let smokeScope = SmokeScope()
