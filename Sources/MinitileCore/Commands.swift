@@ -13,7 +13,7 @@ extension Engine {
     watch
     window list
     window info|show|hide|close [ID]
-    window focus [ID|left|right|up|down]
+    window focus [ID|left|right|up|down|next|prev]
     window float [ID] [on|off]
     window nudge [ID] left|right
     window move [ID] left|right|up|down
@@ -120,8 +120,9 @@ extension Engine {
             return listReply(state.windows.keys.sorted().map { windowRecord($0, positions: positions) },
                              columns: ["id", "app", "title", "display", "workspace", "page", "slot", "floating"])
         }
-        if verb == "focus", supplied.count == 1, ["left", "right", "up", "down"].contains(supplied[0]) {
-            try spatialFocus(supplied[0], output: &output)
+        if verb == "focus", supplied.count == 1, ["left", "right", "up", "down", "next", "prev"].contains(supplied[0]) {
+            if supplied[0] == "next" || supplied[0] == "prev" { try cycleFocus(supplied[0] == "next" ? 1 : -1, output: &output) }
+            else { try spatialFocus(supplied[0], output: &output) }
             return Reply(text: "OK")
         }
         var args = supplied
@@ -176,5 +177,22 @@ extension Engine {
             if inDirection && candidate < distance { best = other; distance = candidate }
         }
         if let best { focus(best, action: true, output: &output) }
+    }
+
+    /// Walks the focused window's page, or the shown page when no managed window has focus.
+    mutating func cycleFocus(_ step: Int, output: inout Output) throws {
+        let current = state.focus.flatMap { id in location(id).map { (id: id, at: $0) } }
+        guard let at = current?.at ?? currentDisplay().flatMap({ currentLocation(display: $0) }) else {
+            throw CommandError("No managed display")
+        }
+        let order = tiled(page(at)) + page(at).windows.filter { state.windows[$0]?.floating == true }
+        if let target = Self.cycle(order, from: current?.id, step: step, focusable: canFocus) { try showWindow(target, output: &output) }
+    }
+
+    /// Wraps around `order`; without a current window in it, picks the first focusable one.
+    static func cycle(_ order: [WindowID], from current: WindowID?, step: Int, focusable: (WindowID) -> Bool) -> WindowID? {
+        guard let current, let start = order.firstIndex(of: current) else { return order.first(where: focusable) }
+        let n = order.count
+        return (1..<n).lazy.map { order[((start + $0 * step) % n + n) % n] }.first(where: focusable)
     }
 }
