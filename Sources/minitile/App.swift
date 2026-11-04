@@ -36,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let dropPanels = DropPickerPanels()
     let grabPanel = GrabPanel()
     lazy var grabHighlight = GrabHighlight(presenter: grabPanel)
+    let desktopNotice = DesktopNotice()
     let transitions = Transitions()
     var screenRecordingRequested = false
     var permissionTimer: Timer?
@@ -106,7 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             fail(error.withUnsafeBufferPointer { String(cString: $0.baseAddress!) }); return
         }
         guard NSScreen.screensHaveSeparateSpaces else {
-            fail("Displays have separate Spaces must be enabled"); return
+            fail(SetupAdvice.separateSpaces.title); return
         }
         AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 1)
         do {
@@ -214,18 +215,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func updateMenu() {
         updateModalAvailability()
-        for key in warnings.keys where key.hasPrefix("display:") { warnings.removeValue(forKey: key) }
-        for display in displays.infos {
-            if let reason = display.unmanagedReason { warnings["display:\(display.id)"] = "\(display.id): \(reason)" }
-        }
         let snapshot = engine.savedState()
         gridIndicator.update(state: snapshot, config: engine.config)
         if let closed = windowSwitcher.update(state: snapshot, config: engine.config) { keyboard?.close(closed) }
         updateGrab()
+        desktopNotice.update(needing: started && !quitting ? DesktopNoticeTiming.needing(displays.infos) : [])
         let active = snapshot.activeDisplay ?? displays.infos.first(where: \.isPrimary)?.id
         let label = active.flatMap { reconciler?.scene.displays[$0]?.label } ?? "minitile"
-        status.update(label: label, warnings: warnings.values.sorted(),
+        status.update(label: label, warnings: statusWarnings,
                       state: started ? "\(snapshot.windows.count) windows, \(displays.infos.count) displays" : "Starting")
+    }
+
+    /// The menu's warnings, with advice for each display setup minitile cannot make itself.
+    var statusWarnings: StatusWarnings {
+        let advice = SetupAdvice.list(displays: displays.infos, names: DisplayCatalog.names(),
+                                      separateSpaces: NSScreen.screensHaveSeparateSpaces)
+        return StatusWarnings(warnings.values, advice: advice)
     }
 
     /// `grab` is the key router's session of a binding whose modifiers hold a grab; commands without one grab for a
@@ -394,6 +399,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         helpPanel.stop()
         dropPanels.stop()
         grabPanel.stop()
+        desktopNotice.stop()
         transitions.stop()
         permissionTimer?.invalidate(); healthTimer?.invalidate(); dragTimer?.invalidate(); displayWork?.cancel(); activationFocusRead?.cancel()
         for (center, token) in observers { center.removeObserver(token) }

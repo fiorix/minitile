@@ -128,7 +128,8 @@ extension AppDelegate {
                                 "startup_stash_windows": .number(Double(startupStashCount)),
                                 "startup_immediate_stash_handles": .number(Double(startupImmediateHandles)),
                                 "config": .string(paths.config.path), "state": .string(paths.state.path),
-                                "warnings": .array(warnings.values.sorted().map(JSONValue.string))])
+                                "desktop_notice_visible_displays": .number(Double(desktopNotice.visibleCount)),
+                                "warnings": .array(statusWarnings.titles.map(JSONValue.string))])
             default: return Reply(ok: false, text: "debug spaces|windows|scene|timings|health")
             }
             let encoder = JSONEncoder()

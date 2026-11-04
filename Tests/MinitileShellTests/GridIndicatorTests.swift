@@ -216,10 +216,10 @@ func miniaturesMirrorTheCoreLayoutOnShownAndStashedPages(portrait: Bool) {
 
 @Test func gridIndicatorExplainsUnmanagedDisplay() {
     let display = DisplayState(info: DisplayInfo(id: "external", frame: .init(x: 0, y: 0, width: 1200, height: 900),
-                                                unmanagedReason: "Create two desktops in Mission Control"))
+                                                unmanagedReason: DisplayNeed.secondDesktop.reason))
     let content = GridIndicatorContent(display: display, state: SavedState(), config: .default, name: "External")
     #expect(content.position == "Display not managed")
-    #expect(content.warning == "Create two desktops in Mission Control")
+    #expect(content.warning == DisplayNeed.secondDesktop.reason)
     #expect(content.workspace == nil)
     #expect(content.page == nil)
     #expect(content.rows.isEmpty)

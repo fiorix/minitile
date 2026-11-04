@@ -54,7 +54,7 @@ private func swipe(_ tracker: inout SwipeTracker, axis: Int64 = SwipeEvent.sidew
     // A fullscreen Space or an extra desktop between the visible desktop and the stash.
     #expect(!SwipePolicy.Display(info, currentSpace: 5).owned)
     var unmanaged = info
-    unmanaged.unmanagedReason = "Create two desktops in Mission Control"
+    unmanaged.unmanagedReason = DisplayNeed.secondDesktop.reason
     #expect(!SwipePolicy.Display(unmanaged, currentSpace: 1).owned)
     let unknown = DisplayInfo(id: "b", frame: info.frame)
     #expect(!SwipePolicy.Display(unknown, currentSpace: 0).owned)

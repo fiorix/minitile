@@ -49,7 +49,7 @@ The script creates `build/Minitile.app` and `build/mntl`. It signs the app using
 
 ## Getting started
 
-1. In Mission Control, create two desktops per display.
+1. In Mission Control, give every display a second desktop: click + at the top of each display. minitile keeps hidden pages on the second desktop, and macOS does not let apps create desktops, so this step is yours. Until a display has one, minitile leaves it alone, and minitile's menu bar item names the display and shows how to add the desktop.
 2. In System Settings > Desktop & Dock, keep **Displays have separate Spaces** enabled, turn off **Automatically rearrange Spaces based on most recent use**, and turn off macOS drag-to-tile options.
 3. Launch minitile and grant Accessibility permission when prompted. Allow Screen Recording for page transitions, or set `transition_ms = 0` to turn transitions off.
 4. Open a few windows. Use Control+Left/Right for pages and Control+Up/Down for workspaces. Control+Down past the last workspace opens a new one. Hold Cmd+H to see every shortcut.

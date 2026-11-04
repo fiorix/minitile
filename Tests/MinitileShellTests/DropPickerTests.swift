@@ -92,7 +92,7 @@ func pickerOffersTheCountsLayoutsInARowAtTheBottomCentre(_ count: Int, _ variant
     #expect(picker(five, 3) == nil)
     #expect(picker(five, 1)?.options.map(\.variant) == [.standard, .alternate])
     var unmanaged = display
-    unmanaged.unmanagedReason = "Create two desktops in Mission Control"
+    unmanaged.unmanagedReason = DisplayNeed.secondDesktop.reason
     _ = five.handle(.displaysChanged([unmanaged]))
     #expect(picker(five, 1) == nil)
 }
