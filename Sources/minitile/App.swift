@@ -50,6 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var displayWork: DispatchWorkItem?
     var wakeUntil: TimeInterval = 0
     var lastActivation: (pid: Int32, time: TimeInterval)?
+    var activationFocusRead: DispatchWorkItem?
     var lastConfig: String?
     var quitting = false
     var signalSources: [DispatchSourceSignal] = []
@@ -278,7 +279,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         quitting = true
         keyboard?.stop(); server?.stop(); configWatcher?.stop(); discovery?.finishAdoption(restoreAll: true); discovery?.stop()
         gridIndicator.stop()
-        permissionTimer?.invalidate(); healthTimer?.invalidate(); dragTimer?.invalidate(); displayWork?.cancel()
+        permissionTimer?.invalidate(); healthTimer?.invalidate(); dragTimer?.invalidate(); displayWork?.cancel(); activationFocusRead?.cancel()
         for (center, token) in observers { center.removeObserver(token) }
         signalSources.forEach { $0.cancel() }
         stateWriter.flush()

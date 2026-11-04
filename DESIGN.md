@@ -500,6 +500,7 @@ Focus and closing:
 - Set AX main and focused (plus raise), then call `activate`, then use SkyLight `_SLPSSetFrontProcessWithOptions` with the two key-window event records. On macOS 27, `activate` from an accessory app is dropped.
 - Keep our own record of the focused window; `kAXFocusedWindow` lags in some apps.
 - Forward focus/main-window notifications only from the frontmost app. For 1.2 s after a minitile focus action, suppress all focus notifications from that pid and reread once after the interval. A failed AX focus read is unknown and preserves the current focus.
+- Activating an app does not necessarily send a focus notification. When another app is activated, clear a recorded focus owned by a different app at once, without AX reads, then read the activated app's focus about 150 ms later, after macOS has settled its key window. An earlier read can return a stale key window on a hidden page.
 - Close a window by pressing its `kAXCloseButton`.
 
 ## Implementation

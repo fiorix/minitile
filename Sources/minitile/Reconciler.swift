@@ -28,6 +28,13 @@ enum ReconcilePlan {
     }
 }
 
+enum ActivationFocus {
+    static let readDelay: TimeInterval = 0.15
+
+    /// A recorded focus owned by another app is stale once `pid` is activated.
+    static func clears(owner: Int32?, activated pid: Int32) -> Bool { owner.map { $0 != pid } ?? false }
+}
+
 struct FocusEcho {
     var pid: Int32
     var until: TimeInterval

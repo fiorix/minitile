@@ -152,7 +152,21 @@ extension AppDelegate {
         // No AX reads before this input: Cmd-Tab's desktop switch has a narrow race.
         handle(.appActivated(pid: pid))
         if let app = NSRunningApplication(processIdentifier: pid), discovery?.allows(app) == false { handle(.focusChanged(nil)) }
+        else { followActivatedFocus(pid) }
         discovery?.recheckSoon(pids: [pid])
+    }
+
+    /// Activation does not necessarily send a focus notification. Drop a focus owned by another app at once, then
+    /// read the activated app's focus after macOS has settled its key window; an earlier read can return a stale one.
+    func followActivatedFocus(_ pid: Int32) {
+        let owner = engine.savedState().focus.flatMap { discovery?.windows[$0]?.info.pid }
+        if ActivationFocus.clears(owner: owner, activated: pid) { handle(.focusChanged(nil)) }
+        activationFocusRead?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated { self?.discovery?.refreshFocus(pid: pid) }
+        }
+        activationFocusRead = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + ActivationFocus.readDelay, execute: work)
     }
 
     func windowMoved(_ id: WindowID) {

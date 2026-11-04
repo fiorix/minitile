@@ -14,3 +14,9 @@ import Testing
     #expect(FocusObservation.unknown != .known(nil))
     #expect(FocusObservation.known(42).window == 42)
 }
+
+@Test func activationDropsFocusOwnedByAnotherApp() {
+    #expect(ActivationFocus.clears(owner: 20, activated: 10))
+    #expect(!ActivationFocus.clears(owner: 10, activated: 10))
+    #expect(!ActivationFocus.clears(owner: nil, activated: 10))
+}
