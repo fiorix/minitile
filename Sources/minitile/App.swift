@@ -28,6 +28,7 @@ enum MinitileMain {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let paths = ShellPaths()
     let status = StatusMenu()
+    let gridIndicator = GridIndicator()
     var permissionTimer: Timer?
     var engine = Engine()
     var started = false
@@ -178,6 +179,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let reason = display.unmanagedReason { warnings["display:\(display.id)"] = "\(display.id): \(reason)" }
         }
         let snapshot = engine.savedState()
+        gridIndicator.update(state: snapshot)
         let active = snapshot.activeDisplay ?? displays.infos.first(where: \.isPrimary)?.id
         let label = active.flatMap { reconciler?.scene.displays[$0]?.label } ?? "minitile"
         status.update(label: label, warnings: warnings.values.sorted(),
@@ -276,6 +278,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         quitting = true
         keyboard?.stop(); server?.stop(); configWatcher?.stop(); discovery?.finishAdoption(restoreAll: true); discovery?.stop()
+        gridIndicator.stop()
         permissionTimer?.invalidate(); healthTimer?.invalidate(); dragTimer?.invalidate(); displayWork?.cancel()
         for (center, token) in observers { center.removeObserver(token) }
         signalSources.forEach { $0.cancel() }

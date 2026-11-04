@@ -33,6 +33,12 @@ final class DisplayCatalog {
     private(set) var desktopNumbers: [UInt64: Int] = [:]
     var infos: [DisplayInfo] { displays.map(\.info) }
 
+    static func id(for screen: NSScreen) -> DisplayID? {
+        guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
+              let uuid = CGDisplayCreateUUIDFromDisplayID(number.uint32Value)?.takeRetainedValue() else { return nil }
+        return CFUUIDCreateString(nil, uuid) as String
+    }
+
     /// Compare topology and usable geometry, excluding which desktop is currently showing.
     @discardableResult func refresh() -> Bool {
         guard let raw = csl_copy_managed_display_spaces() as? [[String: Any]], !raw.isEmpty else { return false }
@@ -47,9 +53,7 @@ final class DisplayCatalog {
         let screens = NSScreen.screens
         let height = screens.first?.frame.height ?? 0
         let fresh: [NativeDisplay] = screens.enumerated().compactMap { index, screen in
-            guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
-                  let uuid = CGDisplayCreateUUIDFromDisplayID(number.uint32Value)?.takeRetainedValue() else { return nil }
-            let id = CFUUIDCreateString(nil, uuid) as String
+            guard let id = Self.id(for: screen) else { return nil }
             let native = raw.first { ($0["Display Identifier"] as? String) == id }
                 ?? (index == 0 ? raw.first { ($0["Display Identifier"] as? String) == "Main" } : nil)
             let spaces = (native?["Spaces"] as? [[String: Any]] ?? []).compactMap { row -> NativeSpace? in

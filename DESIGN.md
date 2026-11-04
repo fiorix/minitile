@@ -2,7 +2,7 @@
 
 minitile is a tiling window manager for macOS. It runs with SIP enabled and aims for a small core that blends with macOS: a handful of keys that reuse the native desktop shortcuts, mouse gestures where macOS users already use the mouse, and every function scriptable from the `mntl` command line tool. HyprMac (github.com/zacharytgray/HyprMac) is a source of macOS behaviour to respect, not a feature list to copy.
 
-Status: core, IPC and mntl are implemented and verified with 84 core tests and 17 IPC tests. The macOS shell builds with 15 helper/fixture tests and has passed the single-display TextEdit command smoke test, including native placement, config-error retention and restart persistence. Signing and Accessibility work when launched from Terminal. Physical Ctrl and Ctrl+Shift arrows, Mission Control/App Expose suppression, tiled resize, swap, Ctrl+Right during a drag, Cmd+Tab pre-emption and trackpad stash bounce are verified on one display. Multiple-display behavior still needs live validation.
+Status: core, IPC and mntl are implemented and verified with 84 core tests and 17 IPC tests. The macOS shell builds with 18 helper/fixture tests and has passed the single-display TextEdit command smoke test, including native placement, config-error retention and restart persistence. Signing and Accessibility work when launched from Terminal. Physical Ctrl and Ctrl+Shift arrows, Mission Control/App Expose suppression, tiled resize, swap, Ctrl+Right during a drag, Cmd+Tab pre-emption and trackpad stash bounce are verified on one display. A persistent position grid is implemented and rendered offscreen; its live placement and multiple-display behavior still need validation.
 
 ## Model
 
@@ -20,6 +20,12 @@ Display
 - Empty pages disappear. Empty workspaces disappear, except a freshly opened one while it is being viewed.
 
 The currently viewed empty page/workspace is retained until the view leaves it, including when its last window closes. This leaves a destination for the next window. Other empty pages/workspaces are removed. Focus outside the managed window set clears the default window command target while retaining the last display context.
+
+### Position indicator
+
+Each display has a persistent, read-only grid in the upper-right corner of its usable area. The header names the display and states the current workspace and page. Workspaces are rows labeled W1, W2, and so on; pages are columns labeled P1, P2, and so on. The blue cell marks the shown page, including an empty page, and each cell contains its window count. "Active" identifies the remembered display used for navigation when focus is outside the managed windows.
+
+The indicator shows at most six rows and eight columns, centered around the current position where possible. Cropped grids retain their full indices and say they are cropped. An unmanaged display shows its reason instead of a grid. The panel follows its physical display through topology changes, passes mouse input through, cannot become the key or main window, and stays present across native desktop switches. Light and dark appearances are supported. This is an orientation aid, not an interactive overview.
 
 ### Placement
 
@@ -417,7 +423,7 @@ Adoption preserves discovery order within the visible and stash groups. Stash ad
 - A config error keeps the previous config and shows the error in the menu bar and in the reply to `mntl config reload`.
 
 An initial config error leaves the app inactive with a menu warning; Reload Config retries startup after correction. The watcher observes both the directory for atomic replacements and the file for in-place writes, debounced by 150 ms. A missing directory is watched through its nearest existing ancestor. Config reloads are deferred while the session or display topology is suspended and retried after display recovery.
-- There is no settings GUI. The menu bar icon shows the current workspace and page (the scene label), any warnings, and offers floating, layout variant, reload, open config and quit, each a command.
+- There is no settings GUI. The menu bar icon shows the current workspace and page (the scene label), any warnings, and offers floating, layout variant, reload, open config and quit, each a command. Each display also has the read-only position indicator described above.
 
 Schema, with the defaults:
 
@@ -514,7 +520,7 @@ The automatic smoke run passed with five TextEdit documents on one 2056x1329-poi
 
 Interactive runs enable `MINITILE_TRACE_KEYS=1`. The app writes `minitile: key` JSON records to stderr for Ctrl+arrow events and their releases, including raw modifier flags, routing decisions, commands, engine focus, suspension reasons and command results. Other typing is excluded, and logging runs on the main queue rather than the event-tap thread. `debug health` exposes `key_trace_enabled`; an interactive run rejects an older bundle without tracing. The report saves the effective bindings in `config.json`. A run with only one native desktop exited before opening documents; the runner now prints each display's unmanaged reason instead of failing silently. The traced retry passed without a shortcut behavior change; an earlier reported failure was not reproduced.
 
-`scripts/smoke.sh --displays` starts with the external monitor unplugged and five isolated TextEdit documents on the laptop. It prompts for connection and two desktops on the new display, then places two documents on the laptop and three across two external pages. It checks that flipping either display preserves the other's scene, asks for Cmd+Tab activation with both displays' TextEdit pages hidden, and captures native placement throughout unplug and reconnect. The original grids, including page views, must compare equal after reconnect. The model fixture passes; the native multi-display run is pending.
+`scripts/smoke.sh --displays` starts with the external monitor unplugged and five isolated TextEdit documents on the laptop. It requires the position indicator and rejects older bundles that lack it; `debug health` reports its display count as `grid_indicator_displays`. It prompts for connection and two desktops on the new display, then places two documents on the laptop and three across two external pages. It checks that flipping either display preserves the other's scene, asks for Cmd+Tab activation with both displays' TextEdit pages hidden, and captures native placement throughout unplug and reconnect. The original grids, including page views, must compare equal after reconnect. The model fixture passes; the native multi-display run is pending.
 
 Unified logs show a menu action followed by normal application termination before the keyboard run's final response, matching Quit Minitile; the resulting missing socket prevented final capture and cleanup. The prompt now makes clear that minitile must remain running until cleanup finishes. `--cleanup TEST_DIRECTORY` reopens a preserved test session to close its documents, retaining files if known windows remain or the manager is unavailable. It accepts only saved smoke directories directly inside TMPDIR and restricts stash recovery to saved window ID/pid pairs. A live recovery run succeeded after the test windows were already closed: both managed and raw window lists were empty, the temporary directory was removed, and desktop 1 remained current. Recovery with still-open stashed windows remains unverified live. `--no-build` reuses an already signed bundle when no application code has changed.
 - Running minitile over every app rearranges the user's desktops, so the first such run needs the user's go-ahead.
@@ -540,7 +546,7 @@ Not planned:
 
 - focus-follows-mouse;
 - focus borders and dimming;
-- an overview;
+- an interactive overview;
 - live drag previews;
 - saved layouts;
 - a URL scheme (status bars can use `mntl watch`);

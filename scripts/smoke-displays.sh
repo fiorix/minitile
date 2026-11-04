@@ -19,6 +19,7 @@ home_display=$display_id
 d=${ids[3]}
 "$mntl" --json watch > "$report/display-events.jsonl" &
 watch_pid=$!
+printf '%s\n' 'Each screen shows its workspace/page grid in the upper-right; the blue cell is the current page.'
 printf '%s\n' 'Connect the external monitor. On that display, ensure Mission Control has two native desktops.'
 read -r -p 'Return to this Terminal and press Return when ready: '
 wait_state '.displays | length == 2 and all(.[]; .unmanaged_reason == null)'
