@@ -16,7 +16,7 @@ import Testing
     #expect(Config.default.bindings[Chord(modifiers: [.ctrl, .shift], key: "down")] == ["window", "move", "workspace", "next"])
     #expect(Config.default.bindings[Chord(modifiers: .cmd, key: "`")] == ["window", "focus", "next"])
     #expect(Config.default.bindings[Chord(modifiers: [.cmd, .shift], key: "`")] == ["window", "focus", "prev"])
-    #expect(Config.default.bindings.count == 10)
+    #expect(Config.default.bindings.count == 11)
 }
 
 @Test func displayMetadataDefaultsToFullFrame() {

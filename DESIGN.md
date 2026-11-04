@@ -120,6 +120,7 @@ Default bindings:
 | Ctrl+Left/Right | Show the previous or next page. | Move left/right a space |
 | Ctrl+Up/Down | Show the workspace above or below. | Mission Control, App Expose |
 | Cmd+\` / Cmd+Shift+\` | Focus the next or previous window on the shown page: tiles in slot order, then floating windows, wrapping around. | Move focus to next window, which cycles the frontmost app's windows |
+| Ctrl+Shift+Space | Toggle the shown page between its standard and alternate layout (see Layout). | Nothing by default; Ctrl+Space and Ctrl+Option+Space switch input sources |
 | Ctrl+Shift+Left/Right | Nudge the focused window. If it shares its page, it moves onto a new page of its own on that side. If it is alone, it joins the neighbouring page; if that page is full, it joins the next page with room in the same direction, or a new page at that end of the workspace. Focus follows. | Select to line start or end in text fields, which Cmd+Shift+arrows also does |
 | Ctrl+Shift+Up/Down | Carry the focused window to the workspace above or below, placed by the placement rules. Past the last workspace, it carries the window into a new one. Focus follows. | - |
 
@@ -157,7 +158,7 @@ Trackpad (not yet implemented; the mechanism is under "Trackpad swipe mechanism"
 - minitile leaves the whole swipe to macOS when, as it begins, the display under the pointer is unmanaged or not showing its visible desktop (for example a fullscreen app's Space), when minitile is not started or is suspended, or when `trackpad_swipes` is false.
 - Mission Control and App Expose stay reachable through their keys and the Dock.
 
-Everything else (floating, layout variant, spatial focus, exact ratios) is a command: reachable from `mntl`, from the menu bar where it makes sense, and bindable to keys in the config.
+Everything else (floating, spatial focus, exact ratios) is a command: reachable from `mntl`, from the menu bar where it makes sense, and bindable to keys in the config.
 
 Notes:
 
@@ -518,6 +519,7 @@ trackpad_swipes = true  # swipes navigate pages and workspaces; false leaves the
 "ctrl+shift+down" = "window move workspace next"
 "cmd+`" = "window focus next"
 "cmd+shift+`" = "window focus prev"
+"ctrl+shift+space" = "page variant"
 ```
 
 The command strings above use the final grammar. A chord is modifiers (`ctrl`, `shift`, `alt`, `cmd`) and one key (a letter, a digit, `left`, `right`, `up`, `down`, `return`, `space`, `tab`, `escape`, `f1` to `f20`, and `` ` `` for the key of macOS's Move focus to next window shortcut), joined with `+`.
