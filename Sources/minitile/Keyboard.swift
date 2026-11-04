@@ -116,7 +116,9 @@ struct KeyRouter {
         }
         command = command ?? chord.flatMap { bindings[$0] }
         if let argv = command, argv.count == 2, argv[0] == "switcher", argv[1] == "next" || argv[1] == "prev" {
-            if switcherAvailable { return switcherBinding(code, forward: argv[1] == "next", held: modifiers.subtracting(.shift), autorepeat: autorepeat) }
+            if switcherAvailable {
+                return switcherBinding(code, forward: argv[1] == "next", held: modifiers.subtracting(.shift), autorepeat: autorepeat)
+            }
             command = nil
         }
         if let command, !command.isEmpty {

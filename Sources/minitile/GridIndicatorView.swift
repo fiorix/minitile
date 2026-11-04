@@ -285,7 +285,8 @@ final class GridIndicatorView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let margin = GridIndicatorGeometry.margin
         GridPainter.background(bounds)
-        GridPainter.text(content.displayName, rect: NSRect(x: margin, y: 10, width: bounds.width - 2 * margin, height: 17), size: 12, weight: .semibold)
+        GridPainter.text(content.displayName, rect: NSRect(x: margin, y: 10, width: bounds.width - 2 * margin, height: 17), size: 12,
+                         weight: .semibold)
         GridPainter.text(content.position, rect: NSRect(x: margin, y: 28, width: bounds.width - 2 * margin - 46, height: 16), size: 11)
         if content.active {
             GridPainter.text("Active", rect: NSRect(x: bounds.width - margin - 42, y: 28, width: 42, height: 16), size: 10,
