@@ -26,7 +26,7 @@ extension Chord {
             modifiers.insert(modifier)
         }
         let single = key.utf8.count == 1 && key.utf8.allSatisfy { (97...122).contains($0) || (48...57).contains($0) }
-        let named = ["left", "right", "up", "down", "return", "space", "tab", "escape"].contains(key)
+        let named = ["left", "right", "up", "down", "return", "space", "tab", "escape", "`"].contains(key)
         let function = key.first == "f" && Int(key.dropFirst()).map { (1...20).contains($0) && key == "f\($0)" } == true
         guard single || named || function else { throw ConfigError(key: "bindings.\(text)", message: "Unknown key \(key)") }
         self.init(modifiers: modifiers, key: key)
