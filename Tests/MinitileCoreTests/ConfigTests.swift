@@ -105,3 +105,9 @@ func configErrorsNameTheKey(_ test: (String, String)) {
     guard case .object(let fields)? = command(&e, "config info").reply?.data else { Issue.record("Expected config object"); return }
     #expect(fields["trackpad_swipes"] == .bool(false))
 }
+
+@Test func unbindingCmdTabLeavesTheOtherSwitcherBinding() throws {
+    let config = try Config.parse("[bindings]\n\"cmd+tab\" = \"\"\n")
+    #expect(config.bindings[Chord(modifiers: .cmd, key: "tab")] == nil)
+    #expect(config.bindings[Chord(modifiers: [.cmd, .shift], key: "tab")] == ["switcher", "prev"])
+}
