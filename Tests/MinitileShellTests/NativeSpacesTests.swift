@@ -1,4 +1,5 @@
 import Foundation
+import MinitileCore
 import Testing
 @testable import minitile
 
@@ -40,4 +41,22 @@ private func nativeRow(_ identifier: String, _ spaces: [(UInt64, Int)], current:
     switched["unrelated"] = "metadata"
     #expect(NativeDisplaySpaces.parse([switched]) == before)
     #expect(before[0].spaces.map(\.id) == [1, 2, 3])
+}
+
+@Test func wakingNeedsSettlingOnlyWhenTheDisplaysChanged() {
+    let info = DisplayInfo(id: "a", frame: .init(x: 0, y: 0, width: 1512, height: 982))
+    let spaces = [NativeSpace(id: 1, type: 0), NativeSpace(id: 2, type: 0)]
+    let before = [NativeDisplay(info: info, identifier: "a", spaces: spaces, current: 1)]
+    var showingStash = before
+    showingStash[0].current = 2
+    #expect(!DisplayCatalog.changed(showingStash, from: before))
+    var resized = before
+    resized[0].info.visibleFrame = .init(x: 0, y: 24, width: 1512, height: 900)
+    #expect(DisplayCatalog.changed(resized, from: before))
+    var extraDesktop = before
+    extraDesktop[0].spaces.append(NativeSpace(id: 3, type: 0))
+    #expect(DisplayCatalog.changed(extraDesktop, from: before))
+    let plugged = before + [NativeDisplay(info: DisplayInfo(id: "b", frame: .init(x: 1512, y: 0, width: 1920, height: 1080)),
+                                          identifier: "b", spaces: spaces, current: 1)]
+    #expect(DisplayCatalog.changed(plugged, from: before))
 }

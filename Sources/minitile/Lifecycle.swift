@@ -49,13 +49,20 @@ extension AppDelegate {
             observe(workspace, name) { [weak self] _ in
                 guard let self else { return }
                 self.wakeUntil = ProcessInfo.processInfo.systemUptime + 5
-                self.scheduleDisplays()
+                // Displays almost always come back as they were. Settling only for a real change keeps the first
+                // shortcuts after the screen wakes from being rejected; a monitor that arrives later still
+                // reports a screen change, which settles then.
+                let unchanged = self.displays.unchanged()
+                logger.notice("Woke; displays unchanged: \(unchanged)")
+                if !unchanged { self.scheduleDisplays() }
                 self.suspend("sleep", enabled: false)
             }
         }
         observe(workspace, NSWorkspace.sessionDidResignActiveNotification) { [weak self] _ in self?.suspend("session", enabled: true) }
         observe(workspace, NSWorkspace.sessionDidBecomeActiveNotification) { [weak self] _ in
-            self?.scheduleDisplays(); self?.suspend("session", enabled: false)
+            guard let self else { return }
+            if !self.displays.unchanged() { self.scheduleDisplays() }
+            self.suspend("session", enabled: false)
         }
         var ticks = 0
         healthTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
@@ -135,22 +142,32 @@ extension AppDelegate {
 
     func resume() {
         guard started, !quitting, let discovery, let reconciler else { return }
+        let start = ProcessInfo.processInfo.systemUptime
+        func since(_ time: TimeInterval) -> Double { (ProcessInfo.processInfo.systemUptime - time) * 1000 }
         let changed = displays.refresh()
         displays.bounceFromStash()
         reconciler.refreshSpaces(invalidateFrames: true)
+        let displaysMs = since(start)
         if changed { transitions.displaysChanged(); handle(.displaysChanged(displays.infos)) }
         else { transitions.warm() }
         do {
             if try paths.configContents() != lastConfig { _ = reloadConfig() }
         } catch { warnings["config"] = "Config: \(error)" }
+        let scanStart = ProcessInfo.processInfo.systemUptime
         discovery.scan()
+        let scanMs = since(scanStart)
         discovery.recheckSoon()
         finishDragIfReleased()
         discovery.refreshFocus()
+        let applyStart = ProcessInfo.processInfo.systemUptime
         reconciler.apply(Output(scene: reconciler.scene))
+        let applyMs = since(applyStart)
         keyboard?.update(config: engine.config, displays: displays, dragged: reconciler.dragging)
         updateSwipes()
         updateMenu()
+        lastResumeMilliseconds = since(start)
+        // Input waits behind this work on the main thread, so its cost is worth seeing in the log.
+        logger.notice("Resume took \(Int(self.lastResumeMilliseconds)) ms: displays \(Int(displaysMs)), scan \(Int(scanMs)), reconcile \(Int(applyMs))")
     }
 
     func scheduleDisplays() {

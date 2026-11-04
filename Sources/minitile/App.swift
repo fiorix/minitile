@@ -65,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var activationFocusRead: DispatchWorkItem?
     /// Keeps App Nap away: a windowless accessory app looks idle, and a napping one handles keys and gestures late.
     var napActivity: NSObjectProtocol?
+    var lastResumeMilliseconds = 0.0
     var viewEchoUntil: TimeInterval = 0
     var lastConfig: String?
     var quitting = false

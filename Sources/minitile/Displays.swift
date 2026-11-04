@@ -76,13 +76,31 @@ final class DisplayCatalog {
 
     /// Compare topology and usable geometry, excluding which desktop is currently showing.
     @discardableResult func refresh() -> Bool {
-        guard let raw = readSpaces() else { return false }
+        guard let (raw, fresh) = read() else { return false }
         desktopNumbers = [:]
         for display in raw {
             for space in display.spaces where space.type == 0 {
                 desktopNumbers[space.id] = desktopNumbers.count + 1
             }
         }
+        let changed = Self.changed(fresh, from: displays)
+        displays = fresh
+        nativeSpaces = raw
+        return changed
+    }
+
+    /// True when the displays read now match the catalog, so waking needs no reconfiguration settling.
+    func unchanged() -> Bool {
+        guard let (_, fresh) = read() else { return false }
+        return !Self.changed(fresh, from: displays)
+    }
+
+    nonisolated static func changed(_ fresh: [NativeDisplay], from old: [NativeDisplay]) -> Bool {
+        fresh.map(\.info) != old.map(\.info) || fresh.map(\.spaces) != old.map(\.spaces) || fresh.map(\.identifier) != old.map(\.identifier)
+    }
+
+    private func read() -> (raw: [NativeDisplaySpaces], fresh: [NativeDisplay])? {
+        guard let raw = readSpaces() else { return nil }
         let screens = NSScreen.screens
         let height = screens.first?.frame.height ?? 0
         let fresh: [NativeDisplay] = screens.enumerated().compactMap { index, screen in
@@ -101,11 +119,7 @@ final class DisplayCatalog {
             return NativeDisplay(info: info, identifier: identifier, spaces: spaces,
                                  current: csl_current_space(identifier as CFString))
         }.sorted { $0.info.id < $1.info.id }
-        let changed = fresh.map(\.info) != infos || fresh.map(\.spaces) != displays.map(\.spaces)
-            || fresh.map(\.identifier) != displays.map(\.identifier)
-        displays = fresh
-        nativeSpaces = raw
-        return changed
+        return (raw, fresh)
     }
 
     func owner(spaces: [UInt64]) -> NativeDisplay? {

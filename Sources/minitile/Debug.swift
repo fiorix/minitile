@@ -29,7 +29,10 @@ extension AppDelegate {
         if case .help(let key, let session) = decision { helpKey(key, session: session) }
         if case .grabReleased(let session) = decision { grabHighlight.released(session); updateGrab() }
         if case .command(let argv, let grab) = decision {
+            let start = ProcessInfo.processInfo.systemUptime
             let reply = command(argv, grab: grab)
+            let ms = (ProcessInfo.processInfo.systemUptime - start) * 1000
+            if ms > 100 { logger.notice("Slow key command \(argv.joined(separator: " "), privacy: .public) took \(Int(ms)) ms") }
             if let trace {
                 logKey(["phase": .string("result"), "event_time": .number(trace.time),
                         "ok": .bool(reply.ok), "text": .string(reply.text),
@@ -87,6 +90,7 @@ extension AppDelegate {
             case "timings":
                 data = .object(["reconcile_ms": .number(reconciler?.lastMilliseconds ?? 0),
                                 "focus_ms": .number(reconciler?.lastFocusMilliseconds ?? 0),
+                                "resume_ms": .number(lastResumeMilliseconds),
                                 "activation_moves": try .encoding(reconciler?.activationTimings ?? []),
                                 "full_scans": .number(Double(discovery?.fullScans ?? 0)),
                                 "full_scan_ms": .number(discovery?.fullScanMilliseconds ?? 0),
