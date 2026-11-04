@@ -28,6 +28,24 @@ enum ReconcilePlan {
     }
 }
 
+/// Right after a command changes the shown page, the app that was frontmost can still report the window minitile
+/// just hid as focused. Following that report would undo the navigation, so it is treated as an echo.
+enum ViewChangeEcho {
+    static let interval: TimeInterval = 1.2
+
+    static func ignores(_ id: WindowID?, state: SavedState, now: TimeInterval, until: TimeInterval) -> Bool {
+        guard now < until, let id else { return false }
+        for display in state.displays {
+            for workspace in display.workspaces {
+                for page in workspace.pages where page.windows.contains(id) {
+                    return display.currentWorkspace != workspace.id || workspace.currentPage != page.id
+                }
+            }
+        }
+        return false
+    }
+}
+
 enum ActivationFocus {
     static let readDelay: TimeInterval = 0.15
 

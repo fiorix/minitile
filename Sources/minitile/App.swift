@@ -53,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var wakeUntil: TimeInterval = 0
     var lastActivation: (pid: Int32, time: TimeInterval)?
     var activationFocusRead: DispatchWorkItem?
+    var viewEchoUntil: TimeInterval = 0
     var lastConfig: String?
     var quitting = false
     var signalSources: [DispatchSourceSignal] = []
@@ -150,7 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         discovery.input = { [weak self] in self?.handle($0) }
         discovery.activated = { [weak self] pid, received in self?.activate(pid, received: received, source: "ax") }
         discovery.acceptsFocus = { [weak reconciler] in reconciler?.acceptsFocus($0) == true }
-        discovery.focused = { [weak self] in self?.handle(.focusChanged($0)) }
+        discovery.focused = { [weak self] in self?.focusReported($0) }
         discovery.moved = { [weak self] in self?.windowMoved($0) }
         transitions.commit = { [weak self] in self?.commitHeld($0) }
         transitions.model = { [weak self] in self?.engine.savedState() ?? SavedState() }
@@ -230,6 +231,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let before = argv.map { _ in engine.savedState() }
         let context = argv.flatMap { _ in engine.commandDisplay }
         let output = engine.handle(input)
+        if case .command = input, output.events.contains(where: { $0.type == "page_shown" }) {
+            viewEchoUntil = ProcessInfo.processInfo.systemUptime + ViewChangeEcho.interval
+        }
         var plan: [DisplayID: TransitionKind] = [:]
         if let argv, let before, output.reply?.ok == true {
             plan = TransitionPlan.plan(before: before, after: engine.savedState(), argv: argv, context: context)
@@ -260,6 +264,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         updateMenu()
         return reply
+    }
+
+    /// A focus report from discovery, minus echoes of a command having just hidden the reported window.
+    func focusReported(_ id: WindowID?) {
+        let now = ProcessInfo.processInfo.systemUptime
+        if ViewChangeEcho.ignores(id, state: engine.savedState(), now: now, until: viewEchoUntil) { return }
+        handle(.focusChanged(id))
     }
 
     /// Apply a reconcile that waited for a transition capture, with the same ordering as `handle`.

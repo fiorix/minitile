@@ -43,7 +43,7 @@ Cells keep the area of 64x40 pt at any aspect ratio, clamped to 3:1 either way. 
 - A new window goes to the workspace being viewed. It takes the first free slot, scanning from the current page to the right; if none is free, it goes onto a new page at the end of the workspace.
 - If a new window from the frontmost app lands on a page that is not shown, that page is shown, since macOS focuses such windows. Windows from background apps are placed without changing the view.
 - When a window closes, the remaining windows on its page re-tile, and the freed slot is reused by the next new window. Windows never flow back from later pages.
-- When focus moves to a window on a hidden page by any means (the Dock, a notification, `mntl window focus`), that page is shown.
+- When focus moves to a window on a hidden page by any means (the Dock, a notification, `mntl window focus`), that page is shown. For 1.2 s after a command changes the shown page, such reports are ignored: the app that was frontmost can still report the window minitile just hid as focused, and following it would undo the navigation. Activation still shows an app's page during that time.
 - When an app with no window on a shown page is activated (Cmd-Tab, the Dock), the page holding its most recently focused window is shown. macOS does the focusing. Minimized windows do not count as being on a shown page; windows of a hidden app do, since activation unhides them. See "Rules minitile must follow" for the timing.
 
 ### Navigation and focus
