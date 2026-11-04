@@ -42,12 +42,19 @@ enum SwitcherKey: Equatable, Sendable {
     case cancel
 }
 
-/// A switcher decision carries the session it belongs to, so the main thread can drop ones for a closed switcher. A
-/// command from a grabbing binding carries the grab's session, which `grabReleased` ends.
+enum HelpKey: Equatable, Sendable {
+    /// `held` are the opening binding's modifiers other than Shift; releasing one closes it. Empty closes it on a timer.
+    case open(held: Modifiers)
+    case close
+}
+
+/// A switcher or help decision carries the session it belongs to, so the main thread can drop ones for a screen that
+/// has closed. A command from a grabbing binding carries the grab's session, which `grabReleased` ends.
 enum KeyDecision: Equatable, Sendable {
     case pass, swallow
     case command([String], grab: Int? = nil)
     case switcher(SwitcherKey, session: Int)
+    case help(HelpKey, session: Int)
     case grabReleased(Int)
 }
 
@@ -70,8 +77,13 @@ struct KeyTraceFilter {
 }
 
 struct KeyRouter {
-    struct OpenSwitcher: Equatable {
+    /// The screens that take the keyboard while open. At most one is open: opening one replaces the other.
+    enum Modal: Equatable, Sendable { case switcher, help }
+
+    struct OpenModal: Equatable {
+        var kind: Modal
         var session: Int
+        /// The opening binding's modifiers other than Shift; releasing one closes the screen. Empty keeps it open.
         var held: Modifiers
     }
 
@@ -88,9 +100,15 @@ struct KeyRouter {
     var frontmostManaged = true
     /// Started and not suspended. Otherwise the switcher's bindings pass, so Cmd+Tab reaches macOS.
     var switcherAvailable = false {
-        didSet { if !switcherAvailable { switcher = nil } }
+        didSet { if !switcherAvailable, modal?.kind == .switcher { modal = nil } }
     }
-    private(set) var switcher: OpenSwitcher?
+    /// Started and not suspended. Otherwise `help show` bindings pass, so Cmd+H hides the app.
+    var helpAvailable = false {
+        didSet { if !helpAvailable, modal?.kind == .help { modal = nil } }
+    }
+    private(set) var modal: OpenModal?
+    var switcher: OpenModal? { modal?.kind == .switcher ? modal : nil }
+    var help: OpenModal? { modal?.kind == .help ? modal : nil }
     private(set) var grab: HeldGrab?
     private var sessions = 0
     private var grabSessions = 0
@@ -120,8 +138,13 @@ struct KeyRouter {
         // The open switcher takes its keys whatever the modifiers, repeats included.
         if let open = switcher, let key = Self.switcherKey(names[code], shift: modifiers.contains(.shift)) {
             swallowed.insert(code)
-            if key == .commit || key == .cancel { switcher = nil }
+            if key == .commit || key == .cancel { modal = nil }
             return .switcher(key, session: open.session)
+        }
+        if let open = help, names[code] == "escape" {
+            swallowed.insert(code)
+            modal = nil
+            return .help(.close, session: open.session)
         }
         if autorepeat, swallowed.contains(code), !repeating.contains(code) { return .swallow }
         if !autorepeat { swallowed.remove(code); repeating.remove(code) }
@@ -145,9 +168,13 @@ struct KeyRouter {
             }
             command = nil
         }
-        // Every other key and binding goes nowhere while the switcher is open, so Cmd+Q or Cmd+W never hits the app
-        // behind it.
-        if switcher != nil {
+        if command == ["help", "show"] {
+            if helpAvailable { return helpBinding(code, held: modifiers.subtracting(.shift), autorepeat: autorepeat) }
+            command = nil
+        }
+        // Every other key and binding goes nowhere while the switcher or the help screen is open, so Cmd+Q or Cmd+W
+        // never hits the app behind it.
+        if modal != nil {
             swallowed.insert(code)
             return .swallow
         }
@@ -167,12 +194,12 @@ struct KeyRouter {
         return .pass
     }
 
-    /// A switcher opened by a binding commits once one of the binding's modifiers other than Shift is released.
-    /// Modifier changes themselves always pass.
+    /// A switcher opened by a binding commits, and a help screen closes, once one of the binding's modifiers other
+    /// than Shift is released. Modifier changes themselves always pass.
     mutating func flags(_ modifiers: Modifiers) -> KeyDecision {
-        guard let open = switcher, !open.held.isEmpty, !modifiers.isSuperset(of: open.held) else { return .pass }
-        switcher = nil
-        return .switcher(.commit, session: open.session)
+        guard let open = modal, !open.held.isEmpty, !modifiers.isSuperset(of: open.held) else { return .pass }
+        modal = nil
+        return open.kind == .switcher ? .switcher(.commit, session: open.session) : .help(.close, session: open.session)
     }
 
     /// A grab started by a binding ends once any of the binding's modifiers, Shift included, is released.
@@ -192,16 +219,17 @@ struct KeyRouter {
         return grabSessions
     }
 
-    /// The main thread opened the switcher without a key, as `mntl switcher next` does; it stays open until closed.
-    mutating func openSwitcher() -> Int {
+    /// The main thread opened a screen without a key, as `mntl switcher next` and `mntl help show` do; it stays open
+    /// until closed.
+    mutating func open(_ kind: Modal) -> Int {
         sessions += 1
-        switcher = OpenSwitcher(session: sessions, held: [])
+        modal = OpenModal(kind: kind, session: sessions, held: [])
         return sessions
     }
 
-    /// The main thread closed the switcher. A newer session a key opened meanwhile stays open.
-    mutating func closeSwitcher(_ session: Int) {
-        if switcher?.session == session { switcher = nil }
+    /// The main thread closed a screen. A newer session a key opened meanwhile stays open.
+    mutating func close(_ session: Int) {
+        if modal?.session == session { modal = nil }
     }
 
     /// A bound `switcher next|prev` opens the switcher, or steps it when it is already open. Repeats of a press that
@@ -211,8 +239,19 @@ struct KeyRouter {
         if let open = switcher { return .switcher(.step(forward: forward), session: open.session) }
         if autorepeat { return .swallow }
         sessions += 1
-        switcher = OpenSwitcher(session: sessions, held: held)
+        modal = OpenModal(kind: .switcher, session: sessions, held: held)
         return .switcher(.open(forward: forward, held: held), session: sessions)
+    }
+
+    /// A bound `help show` opens the help screen, replacing an open switcher. Pressed again while the screen is open,
+    /// it reopens it under a new session, which restarts a timed screen's timer or holds it with the new modifiers;
+    /// key repeats never do.
+    private mutating func helpBinding(_ code: UInt16, held: Modifiers, autorepeat: Bool) -> KeyDecision {
+        swallowed.insert(code)
+        if autorepeat { return .swallow }
+        sessions += 1
+        modal = OpenModal(kind: .help, session: sessions, held: held)
+        return .help(.open(held: held), session: sessions)
     }
 
     private static func switcherKey(_ name: String?, shift: Bool) -> SwitcherKey? {
@@ -269,14 +308,16 @@ final class KeyboardTap: @unchecked Sendable {
 
     func frontmost(managed: Bool) { lock.withLock { router.frontmostManaged = managed } }
 
-    func switcher(available: Bool) { lock.withLock { router.switcherAvailable = available } }
+    func availability(switcher: Bool, help: Bool) {
+        lock.withLock { router.switcherAvailable = switcher; router.helpAvailable = help }
+    }
 
-    func openSwitcher() -> Int { lock.withLock { router.openSwitcher() } }
+    func open(_ kind: KeyRouter.Modal) -> Int { lock.withLock { router.open(kind) } }
 
-    func closeSwitcher(_ session: Int) { lock.withLock { router.closeSwitcher(session) } }
+    func close(_ session: Int) { lock.withLock { router.close(session) } }
 
     /// Catches a modifier release the tap missed, as while macOS had it disabled.
-    func checkSwitcherModifiers() -> KeyDecision {
+    func checkModalModifiers() -> KeyDecision {
         let modifiers = KeyRouter.modifiers(CGEventSource.flagsState(.combinedSessionState))
         return lock.withLock { router.flags(modifiers) }
     }
@@ -364,7 +405,7 @@ final class KeyboardTap: @unchecked Sendable {
             return (decision, trace)
         }
         switch decision {
-        case .command, .switcher, .grabReleased:
+        case .command, .switcher, .help, .grabReleased:
             DispatchQueue.main.async { [handle] in handle(decision, trace) }
         case .pass, .swallow:
             if trace != nil { DispatchQueue.main.async { [handle] in handle(decision, trace) } }

@@ -48,7 +48,7 @@ Cmd+Tab opens a window switcher in place of the native app switcher. It shows th
 - A quick Cmd+Tab, released within about 150 ms, switches straight to the next window in the ring without showing the switcher.
 - The switcher covers the managed windows of the active display, the one a command without an address acts on: tiled and floating windows, without minimized and app-hidden ones. Running apps with no managed window are not in it; the Dock and Spotlight reach them. With no window to offer, Cmd+Tab does nothing.
 - Cells are about twice the size of the position indicator's (128x80 pt in the usable area's proportions), with app icons in the tiles. Floating windows show as icons in a tray along the cell's top edge, so they can be selected. The selected window is highlighted, as is the page holding the current focus. The header names the selected window's app and title and its workspace and page. At most four rows and five columns are drawn, centered on the selection; a cropped grid keeps its full indices and says it is cropped.
-- The switcher never takes focus. While it is open, the key event tap swallows Tab, the arrows, Return and Esc and routes them to it, whatever modifiers are held; Tab, Shift+Tab and the arrows repeat while held. Every other key and binding is swallowed while it is open, so Cmd+Q or Cmd+W never reaches the app behind it; switcher bindings still step it.
+- The switcher never takes focus. While it is open, the key event tap swallows Tab, the arrows, Return and Esc and routes them to it, whatever modifiers are held; Tab, Shift+Tab and the arrows repeat while held. Every other key and binding is swallowed while it is open, so Cmd+Q or Cmd+W never reaches the app behind it; switcher bindings still step it, and a `help show` binding replaces it with the help screen.
 - It is opened by the `switcher next` and `switcher prev` commands, bound to Cmd+Tab and Cmd+Shift+Tab. Through a key binding it stays open while the binding's modifiers other than Shift are held. Opened without a held modifier (from `mntl`), it stays open until Return or Esc, or `switcher commit` or `switcher cancel`. While it is open, `switcher next` and `switcher prev` step it, from a binding or `mntl`.
 - When minitile is not started or is suspended, or the active display has no window to offer, Cmd+Tab passes to macOS and shows the native app switcher. Binding `"cmd+tab"` to `""` restores the native app switcher. Suspension and quitting close an open switcher without changing anything.
 
@@ -68,7 +68,7 @@ Untested in minitile: the panel on screen, key routing with physical keys, the q
 
 When a key binding moves or resizes the focused window (Ctrl+Shift+arrows to nudge or carry it, Cmd+Option+\` to swap it with a neighbouring slot, Ctrl+Option+arrows to resize it), minitile outlines that window so it reads as held.
 
-- The outline is a rounded border in the system accent colour, drawn by a click-through panel around the window's tile, or around its frame when it floats. It never takes focus, shows on whichever desktop is current, follows light and dark appearance, and sits above normal windows but below the page-transition overlays, the position indicator, the window switcher and the drop picker.
+- The outline is a rounded border in the system accent colour, drawn by a click-through panel around the window's tile, or around its frame when it floats. It never takes focus, shows on whichever desktop is current, follows light and dark appearance, and sits above normal windows but below the page-transition overlays, the position indicator, the window switcher, the help screen and the drop picker.
 - It stays while every modifier of the binding that started it is held, and goes when one is released, so holding Ctrl+Shift is holding the window. Further moves and resizes while it is held keep it on the same window.
 - It follows the window to its new tile after each move. When a move shows another page with a slide, it hides during the slide and returns on the window's new tile when the slide ends.
 - A move or resize from `mntl` or the menu, with no modifier held, shows it for about 1 s.
@@ -86,15 +86,24 @@ Untested in minitile: the outline on screen, its placement and look during and a
 
 ### Help screen
 
-Not yet implemented.
-
 Cmd+H shows a help screen in place of hiding the frontmost app. Hiding an app keeps its windows' slots reserved, so its pages stay but look empty; taking over the shortcut avoids that in the common case. Hiding through the app menu or the Dock still works and still reserves the slots. Cmd+Option+H (Hide Others) is swallowed and does nothing.
 
-- The screen lists the current key bindings, read from the merged config so it matches any rebinding, grouped by what they do (pages and workspaces, windows, layout, switcher, help), with a plain description for each known command and the command text for others. A short section lists the mouse and trackpad gestures: swipes, edge and corner drags, swaps, the drop picker and Ctrl+arrow while dragging.
+- The screen lists the current key bindings, read from the merged config so it matches any rebinding, grouped by what they do (pages and workspaces, windows, layout, switcher, help, other), with a plain description for each known command and the command text for others. A short section lists the mouse and trackpad gestures: swipes, edge and corner drags, swaps, the drop picker and Ctrl+arrow while dragging.
 - Chords appear as macOS menus show them, with modifier symbols; source files spell those symbols with Unicode escapes so they stay ASCII.
 - It opens in the middle of the active display's usable area, in the same style as the window switcher, never takes focus, passes the mouse through, shows on whichever desktop is current and follows light and dark appearance.
 - Through a key binding it stays while the binding's modifiers other than Shift are held and closes when one is released, so it can never be left on screen. While it is open, every other key is swallowed, and Esc closes it. From `mntl help show`, with no modifier held, it stays for about 5 s or until Esc.
 - Cmd+H is swallowed in every app while minitile runs, managed or not, so it always means help. When minitile is not started or is suspended, Cmd+H passes to macOS. Binding `"cmd+h"` to `""` restores hiding.
+- The help screen and the window switcher are never open together: opening one closes the other.
+
+Content: groups appear in the order above, without empty ones. The known commands are, in the order they are listed within their group: for pages and workspaces, `page prev` and `page next` (Previous page, Next page) and `workspace prev` and `workspace next` (Workspace above, Workspace below); for windows, `window focus next|prev|left|right|up|down` (Focus next window, Focus previous window, Focus window to the left, and so on), `window nudge left|right` and `window move left|right` (Nudge window left or right), `window move workspace prev|next` and `window move up|down` (Carry to workspace above or below), `window swap next|prev` (Swap with next or previous slot) and `window float` (Toggle floating); for layout, `page variant` (Cycle page layout) and `window resize left|right|up|down` (Resize window left, and so on); for the switcher, `switcher next` and `switcher prev` (Window switcher, Window switcher, backwards); for help, `help show` (Show this help); and for other, `ignore` (Blocked). Every other command, including a known one with arguments such as a window ID, is under other and shows its command text. Within a group, entries follow the known commands' order, then the other commands by command text, and the chords of one command follow each other by their canonical spelling (ctrl, shift, alt, cmd, then key). A chord shows the control, option, shift and command symbols, in that order, then its key: arrows as arrow symbols, \` as is, letters and function keys in capitals, and Return, Space, Tab and Esc as words. The gesture section comes last and lists the swipes only while `trackpad_swipes` is true; edge and corner drags, swaps, the drop picker and Ctrl+arrow while dragging are always on. The content is read from the config each time the screen opens.
+
+Panel: a "minitile" title, then each group as a heading over rows of chord and description, in the window switcher's panel style. It is sized to its content: one column when that fits the usable area less 16 pt on each side, otherwise as few columns as fit, with their heights balanced. A group moves to the next column whole when it fits there, a taller one splits between rows, and a heading always keeps a row below it. Content that does not fit even in columns, such as a long list of custom bindings on a small display, is clipped to the usable area. The active display is the one a command without an address acts on, as for the switcher; without a managed display, the panel goes on the main screen. The panel is borderless, non-activating and click-through, cannot become key or main, joins all Spaces including fullscreen ones, and redraws when the appearance changes. Its level is the window switcher's, the pop-up menu level.
+
+Keys: the keyboard tap's router holds at most one open screen, the window switcher or the help screen, with sessions from one counter, so opening either replaces the other in the router, and the main thread then closes the one replaced without changing anything. A bound `help show` opens a session that remembers the binding's modifiers other than Shift, and a flags-changed event without one of them closes it. Key repeats of the binding are swallowed without reopening it, so a held Cmd+H never flickers. Pressing the binding again while the screen is open opens a new session on the panel without hiding it, which holds a screen `mntl` opened with the binding's modifiers; a binding without modifiers opens it like `mntl`. While it is open, Esc closes it, and every other key, binding and shortcut is swallowed with its key-up, except that a switcher binding opens the window switcher in its place when the switcher has a window to offer; a `help show` binding while the switcher is open likewise cancels the switcher and opens the help screen. Every second while a binding holds the screen, the shell rereads the modifier state (`CGEventSource.flagsState`), so a release the tap missed still closes it. The router keeps the help screen's availability flag (started and not suspended) beside the switcher's, and the main thread updates both at start, on every suspension change and on quit; suspension and quitting close an open help screen.
+
+`mntl help show` is answered by the shell: it opens the screen for 5 s, or until Esc, and another `mntl help show` restarts the 5 s. It fails while minitile is suspended. `mntl debug health` reports `help_open` (see "Command line: mntl").
+
+Untested in minitile: the panel on screen and its columns, light and dark appearance, swallowing Cmd+H and Cmd+Option+H in real apps, including apps that handle them themselves, and detecting the modifier release with physical keys.
 
 ### Placement
 
@@ -129,7 +138,7 @@ The mechanism and its measurements are under "Transition mechanism".
 ### Minimized and hidden windows
 
 - A minimized window keeps its slot, and its page re-tiles without it. When it is unminimized, it returns to its slot and its page is shown.
-- Windows of a hidden app (Cmd+H) keep their slots, and their pages re-tile without them until the app is unhidden.
+- Windows of a hidden app (hidden through its app menu or the Dock, since Cmd+H shows the help screen) keep their slots, and their pages re-tile without them until the app is unhidden.
 - `mntl window hide` takes a window off its page, freeing the slot, and keeps it on the stash. `mntl window show` places it like a new window on the current workspace and focuses it.
 
 ### Layout
@@ -207,8 +216,8 @@ Default bindings:
 | Ctrl+Up/Down | Show the page above or below: same position in the workspace above or below, an empty page when that workspace ends one page short, or its last page when it is shorter still. | Mission Control, App Expose |
 | Cmd+\` / Cmd+Shift+\` | Focus the next or previous window on the shown page: tiles in reading order (top to bottom, then left to right), then floating windows, wrapping around. | Move focus to next window, which cycles the frontmost app's windows |
 | Cmd+Option+\` / Cmd+Option+Shift+\` | Swap the focused window with the window in the next or previous slot on its page, wrapping around; focus stays with it. With two windows this swaps them. | Nothing by default |
-| Cmd+H | Show the help screen while Cmd is held (see "Help screen"). Not yet implemented. | Hide the frontmost app |
-| Cmd+Option+H | Nothing: swallowed so other apps are not hidden. Not yet implemented. | Hide other apps |
+| Cmd+H | Show the help screen while Cmd is held (see "Help screen"). | Hide the frontmost app |
+| Cmd+Option+H | Nothing: swallowed so other apps are not hidden. | Hide other apps |
 | Ctrl+Shift+Space | Cycle the shown page through its window count's layouts (see Layout). | Nothing by default; Ctrl+Space and Ctrl+Option+Space switch input sources |
 | Ctrl+Option+arrows | Resize the focused window: the divider on that side moves the way the arrow points (see Layout). | Nothing by default; VoiceOver uses Ctrl+Option as its modifier |
 | Cmd+Tab / Cmd+Shift+Tab | Open the window switcher and step through windows (see "Window switcher"). | App switcher |
@@ -271,14 +280,14 @@ Every minitile function is a command. Key bindings, the menu bar, mouse gestures
 - `mntl watch` gets one `ok` response, then one JSON event per line until the client disconnects.
 - `mntl` is a thin client. It sends its arguments, prints `text` (or `data` with `--json`) and exits 0 on success, 1 on a command error and 2 when minitile cannot be reached. New commands need no change to `mntl`.
 - Config bindings and menu items use the same command strings, for example `"ctrl+left" = "page prev"`.
-- `mntl help show` (planned) is answered by the app shell and opens the help screen; `mntl help` alone prints the grammar.
-- `mntl ignore` (planned) does nothing. Binding a chord to it swallows that chord, which is how Cmd+Option+H is blocked.
+- `mntl help show` is answered by the app shell and opens the help screen; `mntl help` alone prints the grammar.
+- `mntl ignore` does nothing and replies OK, without changing state or emitting events. Binding a chord to it swallows that chord, which is how Cmd+Option+H is blocked.
 - `mntl switcher next|prev|commit|cancel` commands are answered by the app shell, since the switcher is shell UI; committing runs `window focus ID` through the core.
 - `mntl debug <verb>` commands are answered by the app shell and expose internals: raw desktops per display, the last applied scene, timings. Debug verbs can be added freely. Every other command is answered by the core.
 
 The shell provides `debug spaces`, `debug windows`, `debug scene`, `debug timings` and `debug health`. Spaces include the native display identifier, every native Space and its type, current Space, and core display metadata. The desktop list comes from the last catalog refresh; current Space is read for each request. Windows include allowed apps' raw layer-0 windows, AX observation status, current spaces, frames and tileability. Scene frame keys are decimal window-ID strings. Health includes process ID, startup/suspension state and reasons, secure input, tap availability, paths and warnings. The menu can open config, retry startup after a config error, or quit while normal command handling is still unavailable.
 
-`grid_indicator_displays` counts physical displays whose indicator state is tracked, including hidden indicators; `grid_indicator_visible_displays` counts currently visible panels, and `grid_indicator_duration_ms` is 1500. `switcher_open` says whether the window switcher is open, and `switcher_selected` is its selected window ID, or null. `grab_window` is the window the grab highlight holds, or null; `grab_held` says whether a binding's held modifiers hold it, rather than the 1 s timeout; `grab_visible` says whether its outline is on screen. `transitions_enabled` says whether page transitions run, and `transitions_disabled_reason` says why not (`transition_ms` is 0, Reduce Motion is on, Screen Recording is not granted, or screen capture content is not loaded) or is null. `trackpad_swipes` is the configured setting; `swipe_tap_running` says whether the swipe tap exists and is enabled; `swipe_tap_unavailable` says it could not be created or its thread exited unexpectedly. `last_swipe` is the latest swipe that began, or null: its `location` in global points, the `display` minitile took it for (null when it went to macOS) and the `command` it ran (null when none). Timing diagnostics include full-scan counts/duration, recheck requests/passes, and the latest 128 activation-triggered first move submissions. Activation latency runs from delivery of the workspace or AX notification callback through return of the bridged move submission; it does not measure time before notification delivery or completion in WindowServer.
+`grid_indicator_displays` counts physical displays whose indicator state is tracked, including hidden indicators; `grid_indicator_visible_displays` counts currently visible panels, and `grid_indicator_duration_ms` is 1500. `switcher_open` says whether the window switcher is open, and `switcher_selected` is its selected window ID, or null. `help_open` says whether the help screen is open. `grab_window` is the window the grab highlight holds, or null; `grab_held` says whether a binding's held modifiers hold it, rather than the 1 s timeout; `grab_visible` says whether its outline is on screen. `transitions_enabled` says whether page transitions run, and `transitions_disabled_reason` says why not (`transition_ms` is 0, Reduce Motion is on, Screen Recording is not granted, or screen capture content is not loaded) or is null. `trackpad_swipes` is the configured setting; `swipe_tap_running` says whether the swipe tap exists and is enabled; `swipe_tap_unavailable` says it could not be created or its thread exited unexpectedly. `last_swipe` is the latest swipe that began, or null: its `location` in global points, the `display` minitile took it for (null when it went to macOS) and the `command` it ran (null when none). Timing diagnostics include full-scan counts/duration, recheck requests/passes, and the latest 128 activation-triggered first move submissions. Activation latency runs from delivery of the workspace or AX notification callback through return of the bridged move submission; it does not measure time before notification delivery or completion in WindowServer.
 
 Commands are noun then verb. Windows are addressed by window ID and default to the focused window. Pages and workspaces are addressed by index or `next`/`prev`, and default to the display with the focused window.
 
@@ -585,7 +594,7 @@ The shell also:
 
 - drops move, resize, focus and activation notifications caused by its own writes;
 - bounces back from the stash (see "Rules minitile must follow"), which needs no core input;
-- answers `debug` and `switcher` commands itself and passes every other command to the core as `.command(argv)`.
+- answers `debug`, `switcher` and `help show` commands itself and passes every other command to the core as `.command(argv)`.
 
 Scene visible/stashed lists express desktop ownership, including minimized and app-hidden windows. Frame targets cover active tiled windows on both shown and stashed pages; minimized, app-hidden, floating and explicitly hidden windows have no tiled frame target. `Action.setFrame` is a one-shot floating resize using the normal AX frame-write safeguards. `Action.openConfig` opens the config file. Both run before focus actions. IPC handlers supplied on `.main` use `MainActor.assumeIsolated` to access the shell's main-actor state.
 
@@ -640,13 +649,13 @@ trackpad_swipes = true  # swipes navigate pages and workspaces; false leaves the
 "ctrl+alt+down" = "window resize down"
 "cmd+alt+`" = "window swap next"
 "cmd+alt+shift+`" = "window swap prev"
-"cmd+h" = "help show"                # planned
-"cmd+alt+h" = "ignore"                  # planned
+"cmd+h" = "help show"
+"cmd+alt+h" = "ignore"
 ```
 
 The command strings above use the final grammar. A chord is modifiers (`ctrl`, `shift`, `alt`, `cmd`) and one key (a letter, a digit, `left`, `right`, `up`, `down`, `return`, `space`, `tab`, `escape`, `f1` to `f20`, and `` ` `` for the key of macOS's Move focus to next window shortcut), joined with `+`.
 
-`Config.parse` accepts file contents, with nil for an absent file; file I/O stays in the shell. Gaps and padding must be finite, nonnegative numbers. `trackpad_swipes` is a boolean. App lists contain nonempty bundle ID strings without surrounding whitespace. Unknown config keys, invalid field types, unsupported keys, repeated modifiers and duplicate normalized chords are rejected. Chords accept case and modifier-order variations and are displayed as ctrl, shift, alt, cmd, then key. Binding commands are split on whitespace; they are not shell commands and do not perform shell expansion. Command validation happens when executed, allowing shell-owned debug and switcher verbs.
+`Config.parse` accepts file contents, with nil for an absent file; file I/O stays in the shell. Gaps and padding must be finite, nonnegative numbers. `trackpad_swipes` is a boolean. App lists contain nonempty bundle ID strings without surrounding whitespace. Unknown config keys, invalid field types, unsupported keys, repeated modifiers and duplicate normalized chords are rejected. Chords accept case and modifier-order variations and are displayed as ctrl, shift, alt, cmd, then key. Binding commands are split on whitespace; they are not shell commands and do not perform shell expansion. Command validation happens when executed, allowing shell-owned debug, switcher and `help show` verbs.
 
 ## macOS behaviour to respect
 
@@ -707,7 +716,7 @@ Focus and closing:
 - Logging uses unified logging with subsystem `minitile`.
 - Threads:
   - the main thread runs the `NSApplication` loop, AX work, the core and the reconciler;
-  - the keyboard event tap runs on its own thread and hands commands, window switcher keys and grab releases to the main thread;
+  - the keyboard event tap runs on its own thread and hands commands, window switcher and help screen keys and grab releases to the main thread;
   - the trackpad swipe tap runs on its own thread and does the same;
   - the socket server reads on a background queue and does the same.
 

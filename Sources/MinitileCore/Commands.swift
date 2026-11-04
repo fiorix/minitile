@@ -8,7 +8,8 @@ struct CommandError: Error, CustomStringConvertible {
 extension Engine {
     /// Stable CLI grammar, shared by help, bindings and shell menu commands.
     public static let help = """
-    help
+    help [show]
+    ignore
     state
     watch
     window list
@@ -41,12 +42,14 @@ extension Engine {
     Tiled resize uses fractional shares; floating resize uses WIDTHxHEIGHT in points.
     Directional resize moves an edge by 0.05 of the layout area.
     Place sets the page's layout and puts the window in that tile, counting active tiles.
+    Ignore does nothing; a chord bound to it is swallowed.
     """
 
     mutating func command(_ argv: [String], output: inout Output) throws -> Reply {
         if argv.isEmpty || argv == ["help"] { return Reply(text: Self.help, data: .string(Self.help)) }
         if argv == ["state"] { let value = stateRecord(); return Reply(text: field(value), data: value) }
         if argv == ["watch"] { return Reply(text: "Watching events") }
+        if argv == ["ignore"] { return Reply(text: "OK") }
         if argv == ["quit"] { output.actions.append(.quit); return Reply(text: "Quitting") }
         guard argv.count >= 2 else { throw CommandError("Expected a noun and verb; run help") }
         let noun = argv[0], verb = argv[1], args = Array(argv.dropFirst(2))

@@ -334,10 +334,10 @@ private let arrows: [UInt16: String] = [123: "left", 124: "right", 125: "down", 
     bindings[Chord(modifiers: [.ctrl, .shift], key: "tab")] = ["switcher", "next"]
     var router = KeyRouter(bindings: bindings, names: arrows)
     router.switcherAvailable = true
-    let session = router.openSwitcher()
+    let session = router.open(.switcher)
     #expect(router.key(0, modifiers: [.ctrl, .shift], down: true) == .swallow)
     #expect(router.grab == nil)
-    router.closeSwitcher(session)
+    router.close(session)
     // A grab held when a binding opens the switcher ends with the same release that commits it.
     #expect(router.key(123, modifiers: [.ctrl, .shift], down: true) == .command(["window", "nudge", "left"], grab: 1))
     #expect(router.key(48, modifiers: [.ctrl, .shift], down: true) == .switcher(.open(forward: true, held: .ctrl), session: 2))

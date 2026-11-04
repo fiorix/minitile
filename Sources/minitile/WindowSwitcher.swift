@@ -83,6 +83,13 @@ final class WindowSwitcher {
 
     func cancel() { close() }
 
+    /// The help screen took the keyboard under `session`, so the switcher closes without changing anything and
+    /// ignores opens sent before it.
+    func supersede(_ session: Int) {
+        latest = max(latest, session)
+        close()
+    }
+
     private func reveal(_ session: Int) {
         guard self.session == session, !visible else { return }
         willShow?()
@@ -209,14 +216,14 @@ extension AppDelegate {
         case "next", "prev":
             let forward = argv[1] == "next"
             if windowSwitcher.isOpen { windowSwitcher.step(forward: forward); return Reply(text: "OK") }
-            let opened = openSwitcher(session: keyboard?.openSwitcher() ?? 0, forward: forward, held: false)
+            let opened = openSwitcher(session: keyboard?.open(.switcher) ?? 0, forward: forward, held: false)
             return opened ? Reply(text: "OK") : Reply(ok: false, text: "No window to switch to")
         case "commit":
             return windowSwitcher.isOpen ? commitSwitcher() : Reply(ok: false, text: "The switcher is not open")
         case "cancel":
             guard let session = windowSwitcher.session else { return Reply(ok: false, text: "The switcher is not open") }
             windowSwitcher.cancel()
-            keyboard?.closeSwitcher(session)
+            keyboard?.close(session)
             return Reply(text: "OK")
         default: return usage
         }
@@ -238,12 +245,14 @@ extension AppDelegate {
         }
     }
 
-    /// Opens on the display a command without an address acts on.
+    /// Opens on the display a command without an address acts on. The help screen closes even when the display has
+    /// no window to offer, since the router has already given the keyboard to the switcher.
     func openSwitcher(session: Int, forward: Bool, held: Bool) -> Bool {
+        helpScreen.supersede(session)
         let state = engine.savedState()
         let opened = windowSwitcher.open(session: session, forward: forward, held: held, state: state,
                                          display: engine.commandDisplay, config: engine.config)
-        if !opened { keyboard?.closeSwitcher(session) }
+        if !opened { keyboard?.close(session) }
         return opened
     }
 
@@ -251,26 +260,33 @@ extension AppDelegate {
     func commitSwitcher() -> Reply {
         let session = windowSwitcher.session
         guard let id = windowSwitcher.commit() else { return Reply(ok: false, text: "The switcher is not open") }
-        if let session { keyboard?.closeSwitcher(session) }
+        if let session { keyboard?.close(session) }
         let reply = command(["window", "focus", String(id)])
         if !reply.ok { logger.info("Switcher focus \(id): \(reply.text, privacy: .public)") }
         return reply
     }
 
-    /// The switcher's bindings work while minitile is started and not suspended; otherwise Cmd+Tab passes to macOS.
-    func updateSwitcherAvailability() {
-        let available = started && !quitting && suspendedReasons.isEmpty
-            && SwitcherSelection.offers(state: engine.savedState(), display: engine.commandDisplay, config: engine.config)
-        keyboard?.switcher(available: available)
-        if !available, let session = windowSwitcher.session {
+    /// The switcher's bindings work while minitile is started and not suspended and the active display has a window
+    /// to offer, and the help screen's while it is started and not suspended; otherwise Cmd+Tab and Cmd+H pass to
+    /// macOS.
+    func updateModalAvailability() {
+        let help = modalsAvailable
+        let switcher = help && SwitcherSelection.offers(state: engine.savedState(), display: engine.commandDisplay, config: engine.config)
+        keyboard?.availability(switcher: switcher, help: help)
+        if !switcher, let session = windowSwitcher.session {
             windowSwitcher.cancel()
-            keyboard?.closeSwitcher(session)
+            keyboard?.close(session)
+        }
+        if !help, let session = helpScreen.session {
+            helpScreen.close()
+            keyboard?.close(session)
         }
     }
 
-    /// A release of the opening binding's modifiers that the tap missed commits like one it saw.
-    func checkSwitcherModifiers() {
-        guard windowSwitcher.held, let decision = keyboard?.checkSwitcherModifiers() else { return }
+    /// A release of the opening binding's modifiers that the tap missed commits the switcher, or closes the help
+    /// screen, like one it saw.
+    func checkModalModifiers() {
+        guard windowSwitcher.held || helpScreen.held, let decision = keyboard?.checkModalModifiers() else { return }
         handleKey(decision, trace: nil)
     }
 }

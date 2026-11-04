@@ -12,6 +12,7 @@ extension AppDelegate {
             case .swallow: route = "swallow"; argv = []
             case .command(let command, _): route = "command"; argv = command
             case .switcher(let key, _): route = "switcher"; argv = [String(describing: key)]
+            case .help(let key, _): route = "help"; argv = [String(describing: key)]
             case .grabReleased: route = "grab_released"; argv = []
             }
             let key = [123: "left", 124: "right", 125: "down", 126: "up"][Int(trace.keycode)] ?? String(trace.keycode)
@@ -25,6 +26,7 @@ extension AppDelegate {
                     "suspended": .array(suspendedReasons.sorted().map(JSONValue.string))])
         }
         if case .switcher(let key, let session) = decision { switcherKey(key, session: session) }
+        if case .help(let key, let session) = decision { helpKey(key, session: session) }
         if case .grabReleased(let session) = decision { grabHighlight.released(session); updateGrab() }
         if case .command(let argv, let grab) = decision {
             let reply = command(argv, grab: grab)
@@ -107,6 +109,7 @@ extension AppDelegate {
                                 "grid_indicator_duration_ms": .number(GridIndicatorTiming.duration * 1000),
                                 "switcher_open": .bool(windowSwitcher.isOpen),
                                 "switcher_selected": windowSwitcher.selection.map { .number(Double($0.selected)) } ?? .null,
+                                "help_open": .bool(helpScreen.isOpen),
                                 "grab_window": grabHighlight.window.map { .number(Double($0)) } ?? .null,
                                 "grab_held": .bool(grabHighlight.session != nil),
                                 "grab_visible": .bool(grabPanel.visible),
