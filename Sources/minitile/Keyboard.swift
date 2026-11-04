@@ -121,6 +121,12 @@ struct KeyRouter {
             }
             command = nil
         }
+        // Every other key and binding goes nowhere while the switcher is open, so Cmd+Q or Cmd+W never hits the app
+        // behind it.
+        if switcher != nil {
+            swallowed.insert(code)
+            return .swallow
+        }
         if let command, !command.isEmpty {
             swallowed.insert(code)
             return autorepeat ? .swallow : .command(command)

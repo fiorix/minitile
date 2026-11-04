@@ -86,6 +86,11 @@ struct SwitcherSelection: Equatable {
 
     var entry: SwitcherGrid.Entry? { grid.entries.first { $0.window == selected } }
 
+    /// Whether the switcher has a window to offer on `display`; without one, Cmd+Tab goes to the native app switcher.
+    static func offers(state: SavedState, display: DisplayID?, config: Config) -> Bool {
+        display.flatMap { SwitcherSelection(state: state, display: $0, config: config, forward: true) } != nil
+    }
+
     /// Steps through the recent order, wrapping around.
     mutating func step(forward: Bool) {
         guard let index = order.firstIndex(of: selected) else { return }

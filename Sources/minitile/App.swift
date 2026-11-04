@@ -196,6 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func updateMenu() {
+        updateSwitcherAvailability()
         for key in warnings.keys where key.hasPrefix("display:") { warnings.removeValue(forKey: key) }
         for display in displays.infos {
             if let reason = display.unmanagedReason { warnings["display:\(display.id)"] = "\(display.id): \(reason)" }

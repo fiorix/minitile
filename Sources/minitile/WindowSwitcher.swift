@@ -260,6 +260,7 @@ extension AppDelegate {
     /// The switcher's bindings work while minitile is started and not suspended; otherwise Cmd+Tab passes to macOS.
     func updateSwitcherAvailability() {
         let available = started && !quitting && suspendedReasons.isEmpty
+            && SwitcherSelection.offers(state: engine.savedState(), display: engine.commandDisplay, config: engine.config)
         keyboard?.switcher(available: available)
         if !available, let session = windowSwitcher.session {
             windowSwitcher.cancel()

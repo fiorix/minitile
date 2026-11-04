@@ -170,3 +170,10 @@ private func open(_ state: SavedState, forward: Bool = true) -> SwitcherSelectio
     #expect(!whole.cropped)
     #expect(whole.pids == [1, 2, 3])
 }
+
+@Test func switcherOffersNothingOnADisplayWithoutVisibleWindows() {
+    #expect(SwitcherSelection.offers(state: model([[[1, 2]]]), display: "d", config: .default))
+    #expect(!SwitcherSelection.offers(state: model([[[1]]], minimized: [1]), display: "d", config: .default))
+    #expect(!SwitcherSelection.offers(state: model([[[1, 2]]]), display: nil, config: .default))
+    #expect(!SwitcherSelection.offers(state: model([[[1, 2]]]), display: "elsewhere", config: .default))
+}
