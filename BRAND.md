@@ -2,35 +2,50 @@
 
 ## Direction
 
-Quiet geometry. The product makes space by adding a little structure; the identity uses that same idea. Near-black surfaces carry fine three-dimensional wireframe windows, a restrained ice-blue accent, and slow, continuous movement. The forms come from the product's layouts rather than unrelated science-fiction imagery.
+Light comes from lines. The product makes space by adding a little structure; the identity uses that same idea. Near-black surfaces carry translucent glass and fine wireframe lines, and a single neon colour marks state: the focused window, the shown page, the primary action. Everything else stays unlit. The forms come from the product's layouts rather than unrelated science-fiction imagery.
 
-The lowercase wordmark is `minitile`. The mark is the three-window layout: one tall tile beside two smaller tiles. The central line is **A little order. A lot of space.** Consumer copy explains what happens to windows and what stays familiar. Project copy explains the model, the implementation, and how to contribute.
+A lit line is drawn the way a neon tube looks: a pale core inside a cyan halo. The website and minitile's own panels (`PanelStyle` in the app, see "Visual style" in `DESIGN.md`) share the palette and this rule.
+
+The central line is **A little order. A lot of space.** Consumer copy explains what happens to windows and what stays familiar. Project copy explains the model, the implementation, and how to contribute.
+
+## Logo
+
+The mark is a three-window layout on a 32-unit grid: one wide tile over two tall ones, 2 units apart, every corner rounded to 3 units, all glass (a hairline wire stroke over a faint wire fill). One neon line traces an m through the layout: up the outer edges, over the top tile and down the gap between the lower two. The line runs just inside the outer edges, so its corners stay concentric with the tiles' and the halo rather than the core reaches the edge.
+
+The wordmark is a custom monoline lowercase `minitile`, not set in a font: a 20-unit x-height, 27-unit ascenders, and one 2.2-unit stroke with round ends for stems, arches and the bowl of the e. The three i-dots are small square tiles that echo the mark's three windows; the last one is lit. The t's crossbar gets extra room before it and its foot tucks toward the next letter.
+
+In the horizontal lockup the mark's tiles span the wordmark's ascender to its baseline, 9 units before the first stem. Use the lockup on dark backgrounds only; the unlit parts are drawn for near-black.
 
 ## Palette and typography
 
 | Role | Value | Use |
 | --- | --- | --- |
-| Background | `#0b0d10` | Main canvas and brand images |
-| Panel | `#13161b` | Surfaces and code examples |
-| Text | `#eef0f4` | Headings and primary content |
-| Secondary text | `#9da6b3` | Supporting copy |
-| Ice blue | `#c8ddf8` | Mark, key edges, primary action |
-| Rules | `#292f39` | Quiet dividers |
+| Void | `#05070c` | Page and panel background, brand images |
+| Wire | `#7d9cc9` | Every unlit line and glass fill, always at an opacity (about 15-60%) |
+| Ink | `#e8f0fc` | Headings and primary content |
+| Dim | `#8e9cb4` | Supporting copy |
+| Faint | `#6f7e97` | Notes and tertiary labels on the website |
+| Neon | `#53e9ff` | State only: focus, the shown page, the primary action; the halo of a lit line |
+| Neon core | `#dcfbff` | The stroke of a lit line |
+| Bloom | `#2d5cff` | Faint background washes on the website, never lines or text |
 
-Use the system sans-serif stack for the website, with restrained weight and tight heading spacing. Use the system monospace stack for labels, coordinates, shortcuts, and code. SVG assets use Helvetica with Arial and generic sans-serif fallbacks. Fonts are not downloaded at runtime.
+Glass is a wire gradient from about 7% to 2% opacity with a hairline wire edge and, on the website, a backdrop blur. Lines are hairlines: 0.5 to 1 px for structure and 1 to 1.5 px for lit lines.
+
+Use the system sans-serif stack for the website. Display type is thin (weight 200) with tight tracking; in the hero, "A little order." is set tight and "A lot of space." is set wide and lit, so the spacing acts out the line. Use the system monospace stack only for coordinates, counters, chords and code. SVG assets use Helvetica Neue with Helvetica, Arial and generic sans-serif fallbacks. Fonts are not downloaded at runtime.
 
 ## Motion
 
-The website uses one guided wireframe desktop, with a screen, keyboard, trackpad, mouse, and animated hands. Four selectable chapters teach navigation, focus and slot cycling, moves and layouts, and resizing. Keyboard navigation and four-finger swipes share one chapter; the examples use the same pre-populated grid. Cmd+Tab, Cmd+H, and mouse swaps have short supporting explanations. Keep the action readable: fingers reach the keys before windows move, enlarged Mac-style keycaps show the chord beside the screen, and captions explain each action. The grid map mirrors the screen's window geometry. As the visitor scrolls, the hands and input devices dissolve into the shortcut table; scrolling back restores them. The tour offers pause, replay, and manual stepping, stops outside the viewport or in a hidden tab, and starts paused with settled frames for reduced-motion preferences. Reduced motion omits the zoom and scroll dissolve. A static SVG provides the opening illustration without JavaScript.
+The website uses one guided wireframe desktop: a screen with a grid map beside it, and a keyboard and trackpad below. Four selectable chapters teach navigation, focus and slot cycling, moves and layouts, and resizing. Keyboard navigation and four-finger swipes share one chapter; the examples use the same pre-populated grid. Cmd+Tab, Cmd+H, and mouse swaps have short supporting explanations. Keep the action readable and plain: a step's keys light up on the keyboard before the windows move, swipes show four lit fingertips sliding across the trackpad, and one line under the picture shows the chord and a short caption. The focused window, pressed keys, swipe fingertips and the shown page in the grid map are lit; the rest of the illustration is wire. The grid map mirrors the screen's window geometry. The only controls are chapter tabs, play and pause, and a dot per step. The tour stops outside the viewport or in a hidden tab and starts paused with settled frames for reduced-motion preferences. A static SVG provides the opening illustration without JavaScript.
 
-The README retains the original sixteen-second wireframe grid loop: pages run horizontally across two vertically stacked workspaces, and one highlighted window moves between them while surrounding windows retile. It uses a looping GIF with a static PNG selected by `prefers-reduced-motion` where the Markdown host supports it. Hosts that strip the picture source may still play the GIF; keep its movement slow and avoid flashes. The static [welcome image](web/assets/welcome.png) is also available directly.
+The README retains the sixteen-second wireframe grid loop: pages run horizontally across two vertically stacked workspaces, and one highlighted window moves between them while surrounding windows retile. It uses a looping GIF with a static PNG selected by `prefers-reduced-motion` where the Markdown host supports it. Hosts that strip the picture source may still play the GIF; keep its movement slow and avoid flashes. The static [welcome image](web/assets/welcome.png) is also available directly.
 
 ## Assets
 
 | File | Purpose |
 | --- | --- |
-| `web/assets/mark.svg` | Standalone mark and favicon |
-| `web/assets/wordmark.svg` | Horizontal mark and name |
+| `web/assets/mark.svg` | Standalone mark |
+| `web/assets/favicon.svg` | The mark on a void tile, for light and dark tab bars |
+| `web/assets/wordmark.svg` | Horizontal lockup of the mark and wordmark |
 | `web/assets/demo.svg` | Static fallback for the website's guided desktop tour |
 | `web/assets/wireframe.svg` | Original static grid geometry |
 | `web/assets/welcome.svg` | Scalable welcome composition |
@@ -38,20 +53,22 @@ The README retains the original sixteen-second wireframe grid loop: pages run ho
 | `web/assets/welcome.gif` | Animated README welcome image |
 | `web/assets/download.svg` | README download placeholder |
 
-The tour uses `web/demo-scenes.mjs` and `web/demo-art.mjs`, sharing tile layouts from `web/layouts.mjs`. The original grid and README assets use `web/geometry.mjs`. Regenerate those original SVGs with Node:
+The mark and wordmark are built by `scripts/branding/logo.mjs`. The tour uses `web/demo-scenes.mjs` and `web/demo-art.mjs`, sharing tile layouts from `web/layouts.mjs`. The original grid and README assets use `web/geometry.mjs`. Regenerate the SVG assets with Node:
 
 ```sh
 node scripts/branding/generate.mjs
 ```
 
-To regenerate the PNG and GIF, install ImageMagick and supply an available font if ImageMagick cannot resolve its defaults. On macOS:
+To regenerate the PNG and GIF, add `--raster`. Frames are rendered by headless Chrome, which draws the filters, tracking and font weights faithfully, and the GIF is assembled with ImageMagick. Set `CHROME` if Chrome is not in `/Applications` or `~/Applications`.
 
 ```sh
-BRAND_FONT=/System/Library/Fonts/Supplemental/Arial.ttf node scripts/branding/generate.mjs --raster
+node scripts/branding/generate.mjs --raster
 ```
 
 The GIF is exported at 960x400, eight frames per second, with a limited palette and optimized frames. The editable SVG composition is 1200x500. Generated assets are checked in so serving the site and rendering the README require no build tooling.
 
+`web/assets/demo.svg` is rebuilt from the rendered page by `scripts/branding/snapshot-demo.mjs`; its header comment has the steps. It embeds the rules between the `illustration:start` and `illustration:end` markers in `web/style.css`.
+
 ## References
 
-[Ruflo](https://github.com/ruvnet/ruflo) supplied the reference for a moving README welcome; [RuView](https://github.com/ruvnet/RuView) supplied the reference for dimensional wireframe imagery. Chan's local marketing site and animation components informed the quiet atmosphere and motion lifecycle. minitile's geometry, mark, and compositions are original; no reference images or animation code are bundled.
+[Ruflo](https://github.com/ruvnet/ruflo) supplied the reference for a moving README welcome; [RuView](https://github.com/ruvnet/RuView) supplied the reference for dimensional wireframe imagery. Chan's local marketing site and animation components informed the quiet atmosphere and motion lifecycle. minitile's geometry, mark, wordmark, and compositions are original; no reference images or animation code are bundled.

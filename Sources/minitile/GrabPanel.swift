@@ -1,25 +1,30 @@
 import AppKit
 import MinitileCore
 
-/// A click-through outline around the grabbed window's tile.
+/// A click-through lit outline around the grabbed window's tile.
 @MainActor
 final class GrabPanel: GrabPresenting {
     /// Above normal windows and below the page-transition overlays (one below `.floating`), so a slide covers it, and
     /// the position indicator, the drop picker and the window switcher above those.
     static let level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue - 2)
-    /// The border lies just outside the tile, in the gap, so it does not cover the window's edge.
-    static let width: CGFloat = 4
     /// The corner radius at the tile's edge.
     static let radius: CGFloat = 12
     private var panel: NSPanel?
 
     var visible: Bool { panel?.isVisible == true }
 
+    /// The line lies just outside the tile, in the gap, so it does not cover the window's edge; the panel reaches past
+    /// it so the halo is not clipped.
+    static func frame(around tile: NSRect) -> NSRect {
+        let margin = PanelStyle.grab.width + PanelStyle.grab.reach
+        return tile.insetBy(dx: -margin, dy: -margin)
+    }
+
     func show(_ frame: Rect) {
         let height = NSScreen.screens.first?.frame.height ?? 0
         let panel = self.panel ?? makePanel()
         self.panel = panel
-        let target = Geometry.cocoaFrame(frame, primaryHeight: height).insetBy(dx: -Self.width, dy: -Self.width)
+        let target = Self.frame(around: Geometry.cocoaFrame(frame, primaryHeight: height))
         if panel.frame != target { panel.setFrame(target, display: true) }
         if !panel.isVisible { panel.orderFrontRegardless() }
     }
@@ -49,13 +54,16 @@ final class GrabPanel: GrabPresenting {
 
 @MainActor
 final class GrabOutlineView: NSView {
+    /// The rect the line is drawn just inside, the tile grown by the line's width, and its corner radius there, which
+    /// keeps the line concentric with the tile's corner.
+    static func line(in bounds: NSRect) -> (rect: NSRect, radius: CGFloat) {
+        let reach = PanelStyle.grab.reach
+        return (bounds.insetBy(dx: reach, dy: reach), GrabPanel.radius + PanelStyle.grab.width)
+    }
+
     override func draw(_ dirtyRect: NSRect) {
-        let inset = GrabPanel.width / 2
-        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: inset, dy: inset), xRadius: GrabPanel.radius + inset,
-                                yRadius: GrabPanel.radius + inset)
-        path.lineWidth = GrabPanel.width
-        PanelStyle.grab.color.setStroke()
-        path.stroke()
+        let line = Self.line(in: bounds)
+        PanelStyle.grab.draw(inside: line.rect, radius: line.radius)
     }
 }
 

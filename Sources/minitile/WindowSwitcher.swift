@@ -197,14 +197,14 @@ final class SwitcherView: NSView {
         GridPainter.text(content.app, rect: NSRect(x: margin, y: 10 * s, width: width - 156 * s, height: 17 * s), size: 12 * s,
                          weight: .semibold)
         GridPainter.text(content.position, rect: NSRect(x: bounds.width - margin - 150 * s, y: 11 * s, width: 150 * s, height: 16 * s),
-                         size: 10 * s, color: PanelStyle.secondary, alignment: .right, monospaced: true)
+                         size: 10 * s, color: PanelStyle.dim, alignment: .right, monospaced: true)
         GridPainter.text(content.title, rect: NSRect(x: margin, y: 28 * s, width: width, height: 16 * s), size: 11 * s,
-                         color: PanelStyle.secondary)
+                         color: PanelStyle.dim)
         GridPainter(area: content.area, metrics: geometry.metrics, icons: icons)
             .grid(content.pages, rows: content.rows, columns: content.columns, geometry: geometry, labeled: content.cell,
                   current: content.shown, selected: content.selected)
         if content.cropped {
-            GridPainter.text("Grid cropped around the selection", rect: geometry.footerRect, size: 9 * s, color: PanelStyle.secondary,
+            GridPainter.text("Grid cropped around the selection", rect: geometry.footerRect, size: 9 * s, color: PanelStyle.dim,
                              monospaced: true)
         }
     }

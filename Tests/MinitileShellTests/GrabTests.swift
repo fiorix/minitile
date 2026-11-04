@@ -293,6 +293,18 @@ private func highlight() -> (GrabHighlight, FakeOutline, FakeTimer) {
     #expect(GrabPanel.level.rawValue < SwitcherPanel.level.rawValue)
 }
 
+@Test @MainActor func outlineIsALitLineInTheGapJustOutsideTheTile() {
+    let tile = NSRect(x: 100, y: 200, width: 640, height: 480), width = PanelStyle.grab.width, reach = PanelStyle.grab.reach
+    #expect(PanelStyle.grab.glow == PanelStyle.glow && width <= Config.default.gaps / 2)
+    let frame = GrabPanel.frame(around: tile)
+    let line = GrabOutlineView.line(in: NSRect(origin: .zero, size: frame.size))
+    // The line runs from the tile's edge out into the gap, and the panel leaves its halo the reach past it.
+    #expect(line.rect.offsetBy(dx: frame.minX, dy: frame.minY) == tile.insetBy(dx: -width, dy: -width))
+    #expect(frame == tile.insetBy(dx: -(width + reach), dy: -(width + reach)))
+    // Stroked half its width inside that rect, the line's corner is the tile's grown by the same distance.
+    #expect(line.radius - width / 2 == GrabPanel.radius + width / 2)
+}
+
 private let arrows: [UInt16: String] = [123: "left", 124: "right", 125: "down", 126: "up", 49: "space", 48: "tab", 0: "a", 96: "f5"]
 
 @Test func grabbingBindingHoldsUntilAnyOfItsModifiersIsReleased() {

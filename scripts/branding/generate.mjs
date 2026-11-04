@@ -1,44 +1,71 @@
-import { mkdir, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { geometrySVG, LOOP_SECONDS } from "../../web/geometry.mjs";
+import { faviconSVG, lockup, lockupSVG, markSVG, palette } from "./logo.mjs";
 
 const assets = fileURLToPath(new URL("../../web/assets/", import.meta.url));
-const font = process.env.BRAND_FONT;
 const raster = process.argv.includes("--raster");
 const temporary = await mkdtemp(join(tmpdir(), "minitile-brand-"));
-const mark = await readFile(join(assets, "mark.svg"), "utf8");
-const markContent = mark.replace(/<svg[^>]*>|<\/svg>/g, "").trim();
 const svg = (width, height, content) =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${content}</svg>\n`;
 
 function banner(seconds = 0) {
+  const brand = lockup();
   return svg(
     1200,
     500,
-    `<rect width="1200" height="500" rx="14" fill="#0b0d10"/>
-<path d="M32 1h1136" stroke="#c8ddf8" stroke-opacity=".35"/>
-<g transform="translate(56 44) scale(.95)" fill="none">${markContent}</g>
-<g font-family="Helvetica,Arial,sans-serif" fill="#eef0f4">
-<text x="107" y="72" font-size="28" font-weight="600">minitile</text>
-<text x="56" y="195" font-size="66" font-weight="500">A little order.</text>
-<text x="56" y="267" font-size="66" font-weight="500" fill="#9da6b3">A lot of space.</text>
-<text x="59" y="322" font-size="18" fill="#adb7c5">A minimal tiling window manager for macOS.</text>
-<text x="59" y="351" font-size="18" fill="#adb7c5">Your windows, in place. Your habits, intact.</text>
-<text x="59" y="446" font-size="12" fill="#c8ddf8" letter-spacing="1.4">FREE &amp; OPEN SOURCE</text>
-<text x="272" y="446" font-size="12" fill="#8993a3">/</text>
-<text x="291" y="446" font-size="12" fill="#9da6b3" letter-spacing="1.4">MADE FOR macOS</text>
-</g><g transform="translate(605 10)">${geometrySVG(590, 480, seconds)}</g>
-<text x="1136" y="449" text-anchor="end" fill="#8993a3" font-family="Helvetica,Arial,sans-serif" font-size="9" letter-spacing="1.5">SPACE, ARRANGED.</text>`,
+    `<defs><filter id="banner-glow" x="-10%" y="-40%" width="120%" height="180%"><feGaussianBlur stdDeviation="5"/></filter></defs>
+<rect width="1200" height="500" rx="14" fill="${palette.void}"/>
+<path d="M32 .5h1136" stroke="${palette.wire}" stroke-opacity=".3"/>
+<g transform="translate(52 40) scale(1.05)">${brand.content}</g>
+<g font-family="Helvetica Neue,Helvetica,Arial,sans-serif" fill="${palette.ink}">
+<text x="56" y="200" font-size="68" font-weight="200" letter-spacing="-2.6">A little order.</text>
+<text x="56" y="276" font-size="64" font-weight="200" letter-spacing="9" fill="${palette.neon}" filter="url(#banner-glow)">A lot of space.</text>
+<text x="56" y="276" font-size="64" font-weight="200" letter-spacing="9" fill="${palette.core}">A lot of space.</text>
+<text x="59" y="332" font-size="18" font-weight="300" fill="${palette.dim}">A minimal tiling window manager for macOS.</text>
+<text x="59" y="360" font-size="18" font-weight="300" fill="${palette.dim}">Your windows, in place. Your habits, intact.</text>
+<text x="59" y="446" font-size="13" fill="${palette.dim}">Free and open source</text>
+<path d="M210 436v12" stroke="${palette.wire}" stroke-opacity=".5"/>
+<text x="224" y="446" font-size="13" fill="${palette.dim}">Made for macOS</text>
+</g><g transform="translate(605 10)">${geometrySVG(590, 480, seconds)}</g>`,
   );
 }
 
-function run(command, args) {
-  const result = spawnSync(command, args, { stdio: "inherit" });
+function run(command, args, stdio = "inherit") {
+  const result = spawnSync(command, args, { stdio });
   if (result.error || result.status !== 0)
     throw result.error || new Error(`${command} exited ${result.status}`);
+}
+
+// Chrome renders the banner's filters, tracking and font weights faithfully; ImageMagick's own SVG renderer does not.
+const chrome = [
+  process.env.CHROME,
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  join(homedir(), "Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+].find((path) => path && existsSync(path));
+
+function screenshot(source, target) {
+  if (!chrome) throw new Error("set CHROME to a Chrome or Chromium binary");
+  run(
+    chrome,
+    [
+      "--headless=new",
+      "--disable-gpu",
+      "--hide-scrollbars",
+      "--no-first-run",
+      `--user-data-dir=${join(temporary, "chrome")}`,
+      "--default-background-color=00000000",
+      "--force-device-scale-factor=1",
+      "--window-size=1200,500",
+      `--screenshot=${target}`,
+      `file://${source}`,
+    ],
+    "ignore",
+  );
 }
 
 try {
@@ -48,47 +75,34 @@ try {
     svg(640, 555, geometrySVG(640, 555)),
   );
   await writeFile(join(assets, "welcome.svg"), banner());
-  await writeFile(
-    join(assets, "wordmark.svg"),
-    svg(
-      245,
-      56,
-      `<g transform="translate(0 8)" fill="none">${markContent}</g><text x="54" y="41" font-family="Helvetica,Arial,sans-serif" font-size="40" font-weight="600" fill="#eef0f4">minitile</text>`,
-    ),
-  );
+  await writeFile(join(assets, "mark.svg"), markSVG());
+  await writeFile(join(assets, "favicon.svg"), faviconSVG());
+  await writeFile(join(assets, "wordmark.svg"), lockupSVG());
   await writeFile(
     join(assets, "download.svg"),
     svg(
       320,
       52,
-      '<rect width="320" height="52" rx="7" fill="#c8ddf8"/><text x="160" y="32" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="14" fill="#15202e">Download for macOS - coming soon</text>',
+      `<rect x=".5" y=".5" width="319" height="51" rx="9" fill="${palette.neon}" fill-opacity=".08" stroke="${palette.neon}"/><text x="160" y="31" text-anchor="middle" font-family="Helvetica Neue,Helvetica,Arial,sans-serif" font-size="14" fill="${palette.core}">Download for macOS - coming soon</text>`,
     ),
   );
   console.log("Generated SVG brand assets.");
   if (raster) {
-    const fontArgs = font ? ["-font", font] : [];
     const fps = 8;
     const frames = [];
     for (let index = 0; index < LOOP_SECONDS * fps; index++) {
-      const path = join(
-        temporary,
-        `frame-${String(index).padStart(3, "0")}.svg`,
-      );
-      await writeFile(path, banner(index / fps));
-      frames.push("-delay", index % 2 ? "13" : "12", path);
+      const name = `frame-${String(index).padStart(3, "0")}`;
+      await writeFile(join(temporary, `${name}.svg`), banner(index / fps));
+      screenshot(join(temporary, `${name}.svg`), join(temporary, `${name}.png`));
+      frames.push("-delay", index % 2 ? "13" : "12", join(temporary, `${name}.png`));
     }
+    screenshot(join(assets, "welcome.svg"), join(assets, "welcome.png"));
     run("magick", [
-      ...fontArgs,
-      join(assets, "welcome.svg"),
-      join(assets, "welcome.png"),
-    ]);
-    run("magick", [
-      ...fontArgs,
       ...frames,
       "-resize",
       "960x400",
       "-background",
-      "#0b0d10",
+      palette.void,
       "-alpha",
       "remove",
       "-colors",

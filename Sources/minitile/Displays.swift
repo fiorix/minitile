@@ -62,6 +62,11 @@ final class DisplayCatalog {
         return CFUUIDCreateString(nil, uuid) as String
     }
 
+    /// Displays' names as the user knows them, such as "Built-in Retina Display", by ID.
+    static func names() -> [DisplayID: String] {
+        Dictionary(NSScreen.screens.compactMap { screen in id(for: screen).map { ($0, screen.localizedName) } }) { first, _ in first }
+    }
+
     private func readSpaces() -> [NativeDisplaySpaces]? {
         guard let raw = csl_copy_managed_display_spaces() as? [[String: Any]] else { return nil }
         let parsed = NativeDisplaySpaces.parse(raw)
@@ -109,11 +114,10 @@ final class DisplayCatalog {
                 ?? (index == 0 ? raw.first { $0.identifier == "Main" } : nil)
             let spaces = native?.spaces ?? []
             let users = spaces.filter { $0.type == 0 }
-            let reason: String? = !NSScreen.screensHaveSeparateSpaces ? "Displays have separate Spaces is disabled"
-                : users.count < 2 ? "Create two desktops in Mission Control" : nil
+            let need: DisplayNeed? = !NSScreen.screensHaveSeparateSpaces ? .separateSpaces : users.count < 2 ? .secondDesktop : nil
             let info = DisplayInfo(id: id, frame: Geometry.cgFrame(screen.frame, primaryHeight: height),
                                    visibleFrame: Geometry.cgFrame(screen.visibleFrame, primaryHeight: height),
-                                   isPrimary: index == 0, unmanagedReason: reason,
+                                   isPrimary: index == 0, unmanagedReason: need?.reason,
                                    visibleSpace: users.first?.id, stashSpace: users.count >= 2 ? users.last?.id : nil)
             let identifier = native?.identifier ?? id
             return NativeDisplay(info: info, identifier: identifier, spaces: spaces,

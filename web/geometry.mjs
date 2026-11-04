@@ -233,19 +233,19 @@ export function geometrySVG(width, height, seconds = 0) {
     faces
       .map(
         ({ points, alpha }) =>
-          `<polygon points="${points.map(point).join(" ")}" fill="#c8ddf8" fill-opacity="${alpha}"/>`,
+          `<polygon points="${points.map(point).join(" ")}" fill="#53e9ff" fill-opacity="${alpha}"/>`,
       )
       .join("") +
     segments
       .map(
         ({ a, b, alpha, accent, weight }) =>
-          `<path d="M${point(a)}L${point(b)}" fill="none" stroke="${accent ? "#c8ddf8" : "#7489a5"}" stroke-opacity="${alpha}" stroke-width="${weight}"/>`,
+          `<path d="M${point(a)}L${point(b)}" fill="none" stroke="${accent ? "#53e9ff" : "#7d9cc9"}" stroke-opacity="${alpha}" stroke-width="${weight}"/>`,
       )
       .join("") +
     labels
       .map(
         ({ text, position: [x, y], size, alpha, rotation }) =>
-          `<g transform="translate(${x.toFixed(2)} ${y.toFixed(2)})${rotation ? ` rotate(${(rotation * 180) / Math.PI})` : ""}"><text x="0" y="0" fill="#c8ddf8" fill-opacity="${alpha}" font-family="Helvetica,Arial,sans-serif" font-size="${size}" text-anchor="middle">${text}</text></g>`,
+          `<g transform="translate(${x.toFixed(2)} ${y.toFixed(2)})${rotation ? ` rotate(${(rotation * 180) / Math.PI})` : ""}"><text x="0" y="0" fill="#9fb3d1" fill-opacity="${alpha}" font-family="Helvetica,Arial,sans-serif" font-size="${size}" text-anchor="middle">${text}</text></g>`,
       )
       .join("")
   );

@@ -1,6 +1,6 @@
 # minitile website
 
-A static consumer website using HTML, CSS, and browser JavaScript modules. A single wireframe desktop tour pairs window movement with animated hands on a keyboard, trackpad, and mouse. No framework, dependency installation, or build step is required.
+A static consumer website using HTML, CSS, and browser JavaScript modules. A single wireframe desktop tour moves windows while the keys of each shortcut light up on a keyboard, and swipes show on a trackpad. No framework, dependency installation, or build step is required.
 
 ## Preview
 
@@ -17,19 +17,22 @@ Open `http://127.0.0.1:4173`. Set `PORT=4180` to use another port. The server bi
 npm test
 ```
 
-The tests verify layout partitions, valid scene states, window conservation, focus versus position swaps, page splitting and merging, resizing, four-finger swipe directions, layout cycling, animation continuity, reduced-motion frames, and fingertip positions on demonstrated keys. They also check the grid's exact projection of window positions and sizes, keycap zoom endpoints, and reversible scroll-dissolve progress. The original geometry tests still cover the shared README artwork. Browser verification should cover every chapter and action, narrow and wide screens, scene selection and wrapping, replay, manual stepping, keyboard focus, download navigation, setup disclosure, reduced motion, pause, offscreen suspension, scroll dissolution in both directions, and JavaScript disabled.
+The tests verify layout partitions, valid scene states, window conservation, focus versus position swaps, page splitting and merging, resizing, four-finger swipe directions, layout cycling, animation continuity, and reduced-motion frames. They also check the grid's exact projection of window positions and sizes, that every key a step lights is on the keyboard, and that swipe fingertips move in the swipe's direction and stay on the trackpad. The original geometry tests still cover the shared README artwork. Browser verification should cover every chapter and step, narrow and wide screens, chapter selection and wrapping, step dots, keyboard focus, download navigation, the setup section and its diagram, reduced motion, pause, offscreen suspension, and JavaScript disabled.
 
 The tour is an illustration, not a native app recording or a second implementation of the window manager. Its controls change only the example on the page. It does not capture operating-system shortcut chords.
 
 ## Guided tour
 
 - `demo-scenes.mjs` contains four independently replayable chapters with explicit window states and timed actions. It also samples transitions and reuses `layouts.mjs` for tile geometry.
-- `demo-art.mjs` renders the SVG monitor, app windows, workspace map, keyboard, pointing devices, and wireframe hands in one coordinate system. The map uses the same animated window rectangles as the screen, including their aspect ratio, gaps, resize proportions, and drag positions. Active keys zoom from their wireframe positions to larger Mac-style keycaps beside the screen, with symbols and modifier names. Hands reach the highlighted keycaps; trackpad actions show four fingertips and matching swipe trails.
-- `main.mjs` owns playback and accessible controls. The tour pauses outside the viewport and in hidden tabs. Reduced motion starts paused and shows settled states; Next action steps through them without interpolation. Keyboard focus on scene controls pauses autoplay.
-- `demo-scroll.mjs` ties the dissolve to scroll position: the hands and input devices fade and soften as the shortcut table appears in their place. Scrolling back restores the devices. Reduced motion and JavaScript-disabled pages keep the illustration and table in ordinary document flow. The shortcut table directly follows the demo; supporting feature copy comes afterward.
-- `assets/demo.svg` is a standalone snapshot of the opening illustration, used before JavaScript loads and when it is disabled. After changing the illustration, refresh this snapshot from the opening, paused SVG with its illustration styles embedded.
+- `demo-art.mjs` renders the SVG monitor, app windows, workspace map, keyboard, and trackpad in one coordinate system. The map uses the same animated window rectangles as the screen, including their aspect ratio, gaps, and resize proportions. A step's keys light up on the keyboard while it plays; swipes show four lit fingertips sliding across the trackpad. Unlit keys stay faint so the lit ones read at a glance.
+- `main.mjs` owns playback and accessible controls: chapter tabs and a play button above the picture, and below it one action line (the chord as keycaps, or the swipe, beside a short caption) and a dot per step. The current step's dot fills as it plays; choosing a dot pauses on that step's settled frame. The tour pauses outside the viewport and in hidden tabs. Reduced motion starts paused and shows settled states. Keyboard focus on the tour's controls pauses autoplay.
+- `assets/demo.svg` is a standalone snapshot of the opening illustration, used before JavaScript loads and when it is disabled. After changing the illustration or its styles, rebuild it with `scripts/branding/snapshot-demo.mjs`, which embeds the rules between the `illustration:start` and `illustration:end` markers in `style.css`.
 
 The four chapters teach navigation with Control+arrows and four-finger swipes, focus cycling and slot swaps, window moves and layout cycling, and resizing. Control+Option+Space cycles layouts, matching Control+Option+arrows for resizing. The move chapter shows both split and merge behavior. Cmd+Tab, Cmd+H, and mouse swaps appear as supporting explanations. Chapter selection resets the example to that chapter's starting state; every chapter uses the same pre-populated grid.
+
+## Setup section
+
+The page explains, in its own section and from the hero, that every display needs a second desktop added by hand in Mission Control: minitile keeps hidden pages there and macOS does not let apps create desktops. Keep this visible rather than behind a disclosure, and keep its wording in step with the app's menu and notice and the README's getting-started steps.
 
 ## Publication
 

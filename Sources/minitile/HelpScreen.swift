@@ -138,7 +138,7 @@ final class HelpView: NSView {
         GridPainter.background(bounds)
         GridPainter.text("minitile", rect: NSRect(x: margin, y: margin - 4, width: 120, height: 17), size: 12, weight: .semibold)
         GridPainter.text("Keys and gestures", rect: NSRect(x: bounds.width - margin - 160, y: margin - 3, width: 160, height: 16), size: 10,
-                         color: PanelStyle.secondary, alignment: .right)
+                         color: PanelStyle.dim, alignment: .right)
         for (index, column) in layout.columns.enumerated() {
             var origin = layout.origin(column: index)
             for line in column {
@@ -151,7 +151,7 @@ final class HelpView: NSView {
                                      size: 12, weight: .medium, monospaced: entry.chord,
                                      symbolTracking: entry.chord ? PanelStyle.chordTracking : 0)
                     GridPainter.text(entry.text, rect: NSRect(x: origin.x + HelpLayout.keyWidth, y: origin.y + 1, width: HelpLayout.textWidth,
-                                                              height: 16), size: 12, color: PanelStyle.secondary)
+                                                              height: 16), size: 12, color: PanelStyle.dim)
                 }
                 origin.y += line.height
             }
