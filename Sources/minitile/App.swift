@@ -67,6 +67,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Keeps App Nap away: a windowless accessory app looks idle, and a napping one handles keys and gestures late.
     var napActivity: NSObjectProtocol?
     var lastResumeMilliseconds = 0.0
+    /// The display the latest command crossed into, if it did; a swipe that crosses moves the pointer there.
+    var lastCrossed: DisplayID?
     var inputWaits = InputWaits()
     var viewEchoUntil: TimeInterval = 0
     var lastConfig: String?
@@ -279,8 +281,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var plan: [DisplayID: TransitionKind] = [:]
         if let argv, let before, output.reply?.ok == true {
             let after = engine.savedState()
-            let crossed = TransitionPlan.crossing(argv: argv, window: grab?.window, before: before, after: after,
-                                                  context: context, contextAfter: engine.commandDisplay)
+            let crossed = output.crossed
+            lastCrossed = crossed
             // A display crossed into usually keeps its shown page, which alone would not show the indicator there.
             if let crossed { gridIndicator.show(on: crossed) }
             plan = TransitionPlan.plan(before: before, after: after, argv: argv, context: context, crossed: crossed != nil)

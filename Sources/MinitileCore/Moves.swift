@@ -50,6 +50,7 @@ extension Engine {
         removeFromPage(id)
         leave(at.display, output: &output)
         move(id, to: start, output: &output)
+        output.crossed = state.displays[e].info.id
         return true
     }
 

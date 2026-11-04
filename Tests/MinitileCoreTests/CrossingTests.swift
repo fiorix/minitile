@@ -146,20 +146,29 @@ func neighbourEdgeMayBeOffByAPoint(_ x: Double, _ found: Bool) {
     #expect(e.savedState() == empty)
 }
 
-@Test func navigationThatNamesADisplayNeverCrosses() {
-    var e = plus([(1, "centre"), (2, "left"), (3, "right"), (4, "above"), (5, "below")], focus: 1)
-    var before = e.savedState()
-    command(&e, "page prev display centre")
-    command(&e, "workspace prev display centre")
+@Test func navigationThatNamesADisplayCrossesFromIt() {
+    var e = plus([(1, "centre"), (2, "left"), (3, "right"), (4, "above"), (5, "below")], focus: 3)
+    // Nothing lies above the display above, so this changes nothing.
+    let before = e.savedState()
+    let none = command(&e, "workspace prev display above")
     #expect(e.savedState() == before)
-    command(&e, "page next display centre")
+    #expect(none.crossed == nil)
+    // Named, left crosses from itself, as a swipe on it does: an empty page opens, then the next step crosses into
+    // centre on its right, and left drops the empty page.
+    command(&e, "page next display left")
+    #expect(grid(e, "left") == [[[2], []]])
+    let out = command(&e, "page next display left")
+    #expect(out.crossed == "centre")
+    #expect(grid(e, "left") == [[[2]]])
+    #expect(e.commandDisplay == "centre")
+    #expect(e.savedState().focus == 1)
+    // `workspace new` never crosses.
     command(&e, "workspace next display centre")
-    before = e.savedState()
     #expect(grid(e, "centre") == [[[1]], [[]]])
-    command(&e, "page next display centre")
-    command(&e, "workspace next display centre")
-    command(&e, "workspace new")
-    #expect(e.savedState() == before)
+    let kept = e.savedState()
+    let new = command(&e, "workspace new")
+    #expect(e.savedState() == kept)
+    #expect(new.crossed == nil)
 }
 
 @Test func crossingFocusesTheLastFocusedWindowOnTheShownPageElseTheFirst() {
@@ -231,6 +240,7 @@ func neighbourEdgeMayBeOffByAPoint(_ x: Double, _ found: Bool) {
     #expect(e.savedState().focus == 1)
     #expect(e.commandDisplay == "left")
     #expect(out.actions == [.focus(1)])
+    #expect(out.crossed == "left")
     #expect(out.events.contains { $0.type == "window_moved" && $0.data == .number(1) })
     #expect(shown(out) == ["centre"])
     #expect(out.scene.displays["centre"]?.visible == [2])

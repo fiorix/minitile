@@ -26,9 +26,7 @@ private func run(_ engine: inout Engine, _ command: String) -> (plan: [DisplayID
     let output = engine.handle(.command(argv))
     #expect(output.reply?.ok == true, Comment(rawValue: output.reply?.text ?? "missing reply"))
     let after = engine.savedState()
-    let window = GrabCommand(argv: argv, focus: before.focus, output: output)?.window
-    let crossed = TransitionPlan.crossing(argv: argv, window: window, before: before, after: after,
-                                          context: context, contextAfter: engine.commandDisplay)
+    let crossed = output.crossed
     return (TransitionPlan.plan(before: before, after: after, argv: argv, context: context, crossed: crossed != nil), crossed)
 }
 
@@ -82,7 +80,8 @@ private let up = TransitionKind.slide(TransitionDirection(dx: 0, dy: -1))
 @Test func addressedNavigationSlidesAndBouncesOnTheAddressedDisplay() {
     var e = started(1, displays: [primary, secondary], extra: [info(9, display: "secondary")])
     #expect(e.commandDisplay == "primary")
-    #expect(plan(&e, "page prev display secondary") == ["secondary": .bounce(TransitionDirection(dx: -1, dy: 0))])
+    // Primary lies left of secondary, so this crosses into it and nothing slides or bounces.
+    #expect(run(&e, "page prev display secondary") == ([:], "primary"))
     #expect(plan(&e, "workspace prev display secondary") == ["secondary": .bounce(TransitionDirection(dx: 0, dy: -1))])
     #expect(plan(&e, "page next display secondary") == ["secondary": right])
     #expect(plan(&e, "page next display secondary") == ["secondary": .bounce(TransitionDirection(dx: 1, dy: 0))])
@@ -102,10 +101,10 @@ private let up = TransitionKind.slide(TransitionDirection(dx: 0, dy: -1))
     // Nothing lies left of primary or above either display, so these bounce as before.
     #expect(run(&e, "page prev") == (["primary": .bounce(TransitionDirection(dx: -1, dy: 0))], nil))
     #expect(run(&e, "workspace prev") == (["primary": .bounce(TransitionDirection(dx: 0, dy: -1))], nil))
-    // A swipe names its display and never crosses.
+    // A swipe names its display and crosses from it as the keys do.
     #expect(run(&e, "page next display primary") == (["primary": right], nil))
-    #expect(run(&e, "page next display primary") == (["primary": .bounce(TransitionDirection(dx: 1, dy: 0))], nil))
-    #expect(e.commandDisplay == "primary")
+    #expect(run(&e, "page next display primary") == (["primary": left], "secondary"))
+    #expect(e.commandDisplay == "secondary")
 }
 
 @Test func nudgeAndCarryAcrossSlideOnlyWhereTheShownPageChanged() {
@@ -215,9 +214,7 @@ private final class Harness {
         var plan: [DisplayID: TransitionKind] = [:]
         if let argv, let before {
             let after = engine.savedState()
-            let window = GrabCommand(argv: argv, focus: before.focus, output: output)?.window
-            let crossed = TransitionPlan.crossing(argv: argv, window: window, before: before, after: after,
-                                                  context: context, contextAfter: engine.commandDisplay)
+            let crossed = output.crossed
             plan = TransitionPlan.plan(before: before, after: after, argv: argv, context: context, crossed: crossed != nil)
         }
         return transitions.hold(output, plan: plan, before: before)

@@ -164,12 +164,12 @@ extension Engine {
         if let id = best?.info.id, let at = positions[id] { show(at, focusWindow: false, output: &output) }
     }
 
-    /// Without an explicit `display`, navigation past the edge of the grid crosses to the display on that side.
+    /// Navigation past the edge of the grid crosses to the display on that side, from `display` when it is named.
     mutating func navigatePage(_ delta: Int, display: Int? = nil, output: inout Output) throws {
         guard let d = display ?? currentDisplay(), var at = currentLocation(display: d) else { throw CommandError("No managed display") }
         let pages = state.displays[d].workspaces[at.workspace].pages
         if at.page + delta < 0 || (at.page + delta >= pages.count && page(at).windows.isEmpty) {
-            if display == nil { cross(from: d, dx: delta, dy: 0, output: &output) }
+            cross(from: d, dx: delta, dy: 0, output: &output)
             return
         }
         if at.page + delta >= pages.count {
@@ -185,7 +185,7 @@ extension Engine {
         let workspaces = state.displays[d].workspaces
         let empty = !workspaces[at.workspace].pages.contains(where: { !$0.windows.isEmpty })
         if !alwaysNew, at.workspace + delta < 0 || (at.workspace + delta >= workspaces.count && empty) {
-            if display == nil { cross(from: d, dx: 0, dy: delta, output: &output) }
+            cross(from: d, dx: 0, dy: delta, output: &output)
             return
         }
         if alwaysNew || at.workspace + delta >= workspaces.count {
@@ -214,6 +214,7 @@ extension Engine {
         guard let e = neighbour(of: d, dx: dx, dy: dy), let at = currentLocation(display: e) else { return }
         leave(d, output: &output)
         show(at, output: &output)
+        output.crossed = state.displays[e].info.id
     }
 
     /// A display that a crossing leaves showing an empty page shows the nearest page instead, and cleanup drops the
