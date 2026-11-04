@@ -21,6 +21,7 @@ d=${ids[3]}
 watch_pid=$!
 printf '%s\n' 'Each screen shows its workspace/page grid in the upper-right; the blue cell is the current page.'
 printf '%s\n' 'Connect the external monitor. On that display, ensure Mission Control has two native desktops.'
+printf '%s\n' 'After adding a desktop, exit Mission Control and allow about five seconds for its grid to appear.'
 read -r -p 'Return to this Terminal and press Return when ready: '
 wait_state '.displays | length == 2 and all(.[]; .unmanaged_reason == null)'
 external_display=$(jq -r --arg home "$home_display" '.displays[] | select(.id != $home) | .id' "$report/state.json")

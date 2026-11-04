@@ -81,6 +81,7 @@ extension AppDelegate {
             case "timings": data = .object(["reconcile_ms": .number(reconciler?.lastMilliseconds ?? 0)])
             case "health":
                 data = .object(["started": .bool(started), "pid": .number(Double(ProcessInfo.processInfo.processIdentifier)), "suspended": .bool(discovery?.frozen == true),
+                                "suspended_reasons": .array(suspendedReasons.sorted().map(JSONValue.string)),
                                 "secure_input": .bool(csl_secure_input_enabled()), "tap_unavailable": .bool(keyboard?.unavailable == true),
                                 "key_trace_enabled": .bool(keyboard?.traceEnabled == true),
                                 "grid_indicator_displays": .number(Double(gridIndicator.displayCount)),

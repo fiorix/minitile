@@ -55,8 +55,12 @@ extension AppDelegate {
                 self.suspend("locked", enabled: session?["CGSSessionScreenIsLocked"] as? Bool == true)
                 ticks += 1
                 if ticks % 3 == 0, self.discovery?.frozen == false {
-                    self.discovery?.scan()
-                    self.keyboard?.update(config: self.engine.config, displays: self.displays, dragged: self.reconciler?.dragging)
+                    if self.displays.spacesChanged() {
+                        self.scheduleDisplays()
+                    } else {
+                        self.discovery?.scan()
+                        self.keyboard?.update(config: self.engine.config, displays: self.displays, dragged: self.reconciler?.dragging)
+                    }
                 }
                 self.updateMenu()
             }

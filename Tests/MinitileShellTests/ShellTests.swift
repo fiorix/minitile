@@ -123,6 +123,7 @@ func dragCommandsAddressDraggedWindow(_ direction: String) {
 }
 
 @Test func smokeScopeExcludesOtherDocumentsAndUnknownStashWindows() {
+    #expect(SmokeScope(environment: [:]).allows(document: nil))
     let scope = SmokeScope(environment: ["MINITILE_SMOKE_DIRECTORY": "/tmp/minitile-smoke-test",
                                          "MINITILE_SMOKE_WINDOWS": "42:100,43:101"])
     #expect(scope.allows(document: "file:///tmp/minitile-smoke-test/document.txt"))

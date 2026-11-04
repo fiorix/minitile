@@ -198,6 +198,8 @@ wait_state() {
     done
     echo "State assertion failed: $filter" >&2
     cat "$report/state.json" >&2
+    "$mntl" --json debug health > "$report/failure-health.json" || true
+    "$mntl" --json debug spaces > "$report/failure-spaces.json" || true
     return 1
 }
 
@@ -256,6 +258,7 @@ if [ "$display_test" = 1 ] && ! jq -e '.grid_indicator_displays == 1' "$report/h
     echo 'The position grid is unavailable. Rebuild by omitting --no-build.' >&2
     exit 1
 fi
+echo 'This run manages only its five test files; unsaved Cmd+N documents are ignored.'
 for ((index=1; index<=5; index++)); do
     printf 'minitile smoke document %s\n' "$index" > "$testdir/$prefix-$index.txt"
     open -a TextEdit "$testdir/$prefix-$index.txt"
