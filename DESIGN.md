@@ -2,7 +2,7 @@
 
 minitile is a tiling window manager for macOS. It runs with SIP enabled and aims for a small core that blends with macOS: a handful of keys that reuse the native desktop shortcuts, mouse gestures where macOS users already use the mouse, and every function scriptable from the `mntl` command line tool. HyprMac (github.com/zacharytgray/HyprMac) is a source of macOS behaviour to respect, not a feature list to copy.
 
-Status: the core, IPC, `mntl` and the macOS shell are implemented and verified live on one display. Multiple displays and the items under "Open" are not yet verified. Page transitions, Cmd+\` window cycling and page miniatures in the position indicator are implemented and unit tested but not yet tried on screen; the transition mechanism was validated in a spike. Trackpad swipes are implemented and unit tested but not yet tried on screen; the swipe mechanism was validated in a spike.
+Status: the core, IPC, `mntl` and the macOS shell are implemented and verified live on one display. Multiple displays and the items under "Open" are not yet verified. Page transitions, Cmd+\` window cycling and page miniatures in the position indicator are implemented and unit tested but not yet tried on screen; the transition mechanism was validated in a spike. Trackpad swipes are implemented and unit tested; the swipe mechanism was validated in a spike. The Cmd+Tab window switcher is designed but not yet implemented.
 
 ## Model
 
@@ -34,9 +34,25 @@ The first managed view after startup or display attachment also shows the indica
 - At most four rows and five columns are drawn, centered on the current position where possible. A cropped grid keeps its full indices and says it is cropped.
 - The grid passes mouse input through, never takes focus, appears on whichever native desktop is current, and follows light and dark appearance.
 
-It is an orientation aid, not an interactive overview.
+It is an orientation aid, not an interactive overview; the window switcher below is the keyboard-driven view of the same grid.
 
 Cells keep the area of 64x40 pt at any aspect ratio, clamped to 3:1 either way. Tile frames come from the same layout function as the scene, with the config's gaps and padding, and are scaled into the cell on half-point edges; each tile is inset by half a point so neighbours stay apart where scaled gaps fall below a point. The floating count includes minimized floating windows. App icons come from the running application and are cached per pid until no managed window has that pid. The panel is sized from the number of drawn cells, with a minimum width for the header.
+
+### Window switcher
+
+Not yet implemented.
+
+Cmd+Tab opens a window switcher in place of the native app switcher. It shows the active display's grid as page miniatures in the middle of its usable area and moves a selection over the windows.
+
+- Pressing Cmd+Tab selects the window focused before the current one, and Cmd+Shift+Tab the least recently focused one. While Cmd is held, Tab and Shift+Tab step forward and back through the windows in most-recent focus order, wrapping around.
+- The arrow keys move the selection to the nearest window in that direction, first on its page, then on neighbouring pages and workspaces. Empty pages are skipped.
+- Releasing Cmd, or pressing Return, focuses the selected window and shows its page, with the usual slide. Esc closes the switcher without changing anything.
+- A quick Cmd+Tab, released within about 150 ms, switches straight to the previous window without showing the switcher, as the native switcher does.
+- The switcher covers the managed windows of the active display: tiled and floating windows, without minimized and app-hidden ones. Running apps with no managed window are not in it; the Dock and Spotlight reach them.
+- Cells are about twice the size of the position indicator's (128x80 pt in the usable area's proportions), with app icons in the tiles. Floating windows show as icons in a tray along the cell's top edge, so they can be selected. The selected window is highlighted, as is the page holding the current focus. At most four rows and five columns are drawn, centered on the selection.
+- The switcher never takes focus. While it is open, the key event tap swallows Tab, the arrows, Return and Esc and routes them to it; Tab, Shift+Tab and the arrows repeat while held.
+- It is opened by the `switcher next` and `switcher prev` commands, bound to Cmd+Tab and Cmd+Shift+Tab. Through a key binding it stays open while the binding's modifiers other than Shift are held. Opened without a held modifier (from `mntl`), it stays open until Return or Esc, or `switcher commit` or `switcher cancel`.
+- When minitile is not started or is suspended, Cmd+Tab passes to macOS. Binding `"cmd+tab"` to `""` restores the native app switcher.
 
 ### Placement
 
@@ -121,6 +137,7 @@ Default bindings:
 | Ctrl+Up/Down | Show the workspace above or below. | Mission Control, App Expose |
 | Cmd+\` / Cmd+Shift+\` | Focus the next or previous window on the shown page: tiles in slot order, then floating windows, wrapping around. | Move focus to next window, which cycles the frontmost app's windows |
 | Ctrl+Shift+Space | Toggle the shown page between its standard and alternate layout (see Layout). | Nothing by default; Ctrl+Space and Ctrl+Option+Space switch input sources |
+| Cmd+Tab / Cmd+Shift+Tab | Open the window switcher and step through windows (see "Window switcher"). Not yet implemented. | App switcher |
 | Ctrl+Shift+Left/Right | Nudge the focused window. If it shares its page, it moves onto a new page of its own on that side. If it is alone, it joins the neighbouring page; if that page is full, it joins the next page with room in the same direction, or a new page at that end of the workspace. Focus follows. | Select to line start or end in text fields, which Cmd+Shift+arrows also does |
 | Ctrl+Shift+Up/Down | Carry the focused window to the workspace above or below, placed by the placement rules. Past the last workspace, it carries the window into a new one. Focus follows. | - |
 
@@ -164,7 +181,8 @@ Notes:
 
 - Validated with physical keys: the session-level event tap receives Ctrl+Left/Right/Up/Down before the Dock, and swallowing them keeps desktops from switching and Mission Control and App Expose from opening. Ctrl+Up/Down are system shortcuts 32 and 33, and Ctrl+Left/Right are 79 and 81.
 - Arrow keys carry the fn and keypad flags, so binding matches ignore them.
-- A held binding fires once. Key repeats of a bound chord are swallowed without running the command again.
+- A held binding fires once. Key repeats of a bound chord are swallowed without running the command again. The open window switcher is the exception.
+- Validated with physical keys (`dev/spikes/gesture`, `cmdtab` mode): swallowing Tab at the session-level event tap while Cmd is held keeps the native app switcher (system shortcuts 1 and 2) from appearing, and Cmd presses arrive as flags-changed events. A quick Cmd+Tab, Shift+Tab and the Cmd release were not part of that test.
 - The \` key is whichever key macOS assigns to Move focus to next window (system shortcut 27), so Cmd+\` follows non-US layouts. Only the shortcut's keycode is used; binding modifiers come from the config. On this Mac it is keycode 50 with Cmd, and keycode 50 is the fallback when the shortcut cannot be read. It is reread whenever the key map is rebuilt. A key that already has another name, such as a letter, keeps it, and \` then names no key. In apps minitile does not manage, chords on the \` key keep their native meaning: the tap passes them through while the frontmost app is not allowed by the config, a flag the shell updates on every app activation and config reload. A press swallowed in a managed app stays swallowed until its key-up. Not yet validated with physical keys: swallowing it must stop the app's own window cycling, including in apps that handle Cmd+\` themselves.
 - Mission Control stays reachable through its own key and the Dock, and through the trackpad when `trackpad_swipes` is false. It shows the stash desktop with every hidden page's windows, which makes it an escape hatch rather than a view of the grid.
 - The event tap also swallows Desktop N shortcuts and native Move left/right a Space shortcuts that would lead into any managed display's stash. Directional blockers follow native adjacency, including fullscreen Spaces, and remain active when the corresponding minitile binding is unbound.
@@ -179,6 +197,7 @@ Every minitile function is a command. Key bindings, the menu bar, mouse gestures
 - `mntl watch` gets one `ok` response, then one JSON event per line until the client disconnects.
 - `mntl` is a thin client. It sends its arguments, prints `text` (or `data` with `--json`) and exits 0 on success, 1 on a command error and 2 when minitile cannot be reached. New commands need no change to `mntl`.
 - Config bindings and menu items use the same command strings, for example `"ctrl+left" = "page prev"`.
+- `mntl switcher next|prev|commit|cancel` commands (planned) are answered by the app shell, since the switcher is shell UI; committing runs `window focus ID` through the core.
 - `mntl debug <verb>` commands are answered by the app shell and expose internals: raw desktops per display, the last applied scene, timings. Debug verbs can be added freely. Every other command is answered by the core.
 
 The shell provides `debug spaces`, `debug windows`, `debug scene`, `debug timings` and `debug health`. Spaces include the native display identifier, every native Space and its type, current Space, and core display metadata. The desktop list comes from the last catalog refresh; current Space is read for each request. Windows include allowed apps' raw layer-0 windows, AX observation status, current spaces, frames and tileability. Scene frame keys are decimal window-ID strings. Health includes process ID, startup/suspension state and reasons, secure input, tap availability, paths and warnings. The menu can open config, retry startup after a config error, or quit while normal command handling is still unavailable.
@@ -533,6 +552,8 @@ trackpad_swipes = true  # swipes navigate pages and workspaces; false leaves the
 "cmd+`" = "window focus next"
 "cmd+shift+`" = "window focus prev"
 "ctrl+shift+space" = "page variant"
+"cmd+tab" = "switcher next"           # planned
+"cmd+shift+tab" = "switcher prev"     # planned
 ```
 
 The command strings above use the final grammar. A chord is modifiers (`ctrl`, `shift`, `alt`, `cmd`) and one key (a letter, a digit, `left`, `right`, `up`, `down`, `return`, `space`, `tab`, `escape`, `f1` to `f20`, and `` ` `` for the key of macOS's Move focus to next window shortcut), joined with `+`.
@@ -637,13 +658,14 @@ First version:
 - the config file with reload, the menu bar icon and the state file;
 - activation pre-emption;
 - page transitions: slides and edge bounces;
-- trackpad swipes for pages and workspaces.
+- trackpad swipes for pages and workspaces;
+- the Cmd+Tab window switcher.
 
 Not planned:
 
 - focus-follows-mouse;
 - focus borders and dimming;
-- an interactive overview;
+- a mouse-driven overview;
 - live drag previews;
 - saved layouts;
 - a URL scheme (status bars can use `mntl watch`);

@@ -5,7 +5,9 @@
 // blocking tap cannot outlive the test.
 //
 // Environment:
-//   GESTURE_MODE     observe (default; listen only) or block (swallow matching events)
+//   GESTURE_MODE     observe (default; listen only), block (swallow matching events), or
+//                    cmdtab (session key tap: swallow Tab while Cmd is held, log Cmd presses;
+//                    no other key is logged)
 //   GESTURE_SECONDS  run time, default 30
 //   GESTURE_TYPES    event types to swallow in block mode, comma-separated, default "30"
 //   GESTURE_TAP      session (default) or hid
@@ -78,6 +80,36 @@ static CGEventRef callback(CGEventTapProxy proxy, CGEventType type, CGEventRef e
     return swallow ? NULL : event;
 }
 
+static BOOL tabSwallowed, cmdHeld;
+
+// Cmd+Tab mode: is the native app switcher stopped by swallowing Tab at the session tap?
+static CGEventRef keyCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef event, void *context) {
+    if (type == kCGEventTapDisabledByTimeout || type == kCGEventTapDisabledByUserInput) {
+        say("tap disabled (%u); re-enabling", type);
+        CGEventTapEnable(tap, true);
+        return event;
+    }
+    CGEventFlags flags = CGEventGetFlags(event);
+    BOOL cmd = (flags & kCGEventFlagMaskCommand) != 0, shift = (flags & kCGEventFlagMaskShift) != 0;
+    if (type == kCGEventFlagsChanged) {
+        if (cmd != cmdHeld) say("cmd %s", cmd ? "down" : "up");
+        cmdHeld = cmd;
+        return event;
+    }
+    if (CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode) != 48) return event;
+    BOOL down = type == kCGEventKeyDown;
+    BOOL repeat = CGEventGetIntegerValueField(event, kCGKeyboardEventAutorepeat) != 0;
+    if (down && cmd) {
+        tabSwallowed = YES;
+        counts[@"tab swallowed"] = @(counts[@"tab swallowed"].integerValue + 1);
+        say("tab down with cmd%s%s: SWALLOWED", shift ? "+shift" : "", repeat ? " (repeat)" : "");
+        return NULL;
+    }
+    if (!down && tabSwallowed) { tabSwallowed = NO; say("tab up: SWALLOWED"); return NULL; }
+    say("tab %s without cmd: passed", down ? "down" : "up");
+    return event;
+}
+
 static void finish(int code) {
     say("summary:");
     for (NSString *key in [counts.allKeys sortedArrayUsingSelector:@selector(compare:)]) say("  %s: %ld events", key.UTF8String, counts[key].longValue);
@@ -105,9 +137,12 @@ int main(void) {
             say("Accessibility is not granted to GestureSpike. Grant it in System Settings > Privacy & Security > Accessibility, then run again.");
             finish(2);
         }
-        tap = CGEventTapCreate(hid ? kCGHIDEventTap : kCGSessionEventTap, kCGHeadInsertEventTap,
-                               blocking ? kCGEventTapOptionDefault : kCGEventTapOptionListenOnly,
-                               kCGEventMaskForAllEvents, callback, NULL);
+        BOOL keys = [mode isEqual:@"cmdtab"];
+        CGEventMask keyMask = CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventKeyUp) | CGEventMaskBit(kCGEventFlagsChanged);
+        tap = keys ? CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap, kCGEventTapOptionDefault, keyMask, keyCallback, NULL)
+                   : CGEventTapCreate(hid ? kCGHIDEventTap : kCGSessionEventTap, kCGHeadInsertEventTap,
+                                      blocking ? kCGEventTapOptionDefault : kCGEventTapOptionListenOnly,
+                                      kCGEventMaskForAllEvents, callback, NULL);
         if (!tap) { say("could not create the event tap"); finish(1); }
         CFRunLoopAddSource(CFRunLoopGetMain(), CFMachPortCreateRunLoopSource(NULL, tap, 0), kCFRunLoopCommonModes);
         CGEventTapEnable(tap, true);
@@ -115,7 +150,8 @@ int main(void) {
         for (NSNumber *type in types) [names addObject:type.stringValue];
         say("mode=%s tap=%s seconds=%.0f%s", mode.UTF8String, hid ? "hid" : "session", seconds,
             blocking ? [NSString stringWithFormat:@" swallowing types %@", [names componentsJoinedByString:@","]].UTF8String : "");
-        say("swipe now: left, right, up, down, a couple of times each");
+        say(keys ? "press Cmd+Tab quickly, then hold Cmd and tap Tab a few times, also with Shift"
+                 : "swipe now: left, right, up, down, a couple of times each");
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(seconds * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ finish(0); });
         CFRunLoopRun();
     }
