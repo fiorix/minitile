@@ -52,6 +52,8 @@ struct GridMiniature: Equatable {
         /// Nil for reserved slots of minimized and app-hidden windows, which the core leaves out of the layout.
         var frame: Rect?
         var focused = false
+        /// An open tile of the drop picker, drawn without an icon.
+        var placeholder = false
         var dimmed: Bool { frame == nil }
     }
 

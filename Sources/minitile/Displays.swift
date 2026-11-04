@@ -38,6 +38,11 @@ enum Geometry {
         Rect(x: frame.minX, y: primaryHeight - frame.maxY, width: frame.width, height: frame.height)
     }
 
+    /// The inverse of `cgFrame`: AppKit's origin is the primary display's bottom-left, with y up.
+    static func cocoaFrame(_ frame: Rect, primaryHeight: Double) -> CGRect {
+        CGRect(x: frame.x, y: primaryHeight - frame.maxY, width: frame.width, height: frame.height)
+    }
+
     static func near(_ a: Rect, _ b: Rect, tolerance: Double = 1) -> Bool {
         abs(a.x - b.x) <= tolerance && abs(a.y - b.y) <= tolerance
             && abs(a.width - b.width) <= tolerance && abs(a.height - b.height) <= tolerance

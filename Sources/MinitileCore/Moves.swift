@@ -109,6 +109,40 @@ extension Engine {
         output.events += [Event(type: "window_moved", data: .number(Double(first))), Event(type: "window_moved", data: .number(Double(second)))]
     }
 
+    /// Sets the page's variant and puts the window in that tile of the layout. Slots count the page's active tiles; the
+    /// other active tiles keep their order, and reserved and floating windows keep their places in the page's list.
+    mutating func place(_ id: WindowID, variant: Variant, slot: Int, output: inout Output) throws {
+        guard let (at, _) = activeTile(id) else { throw CommandError("Window has no active tile") }
+        let active = tiled(page(at), activeOnly: true)
+        guard Layout.variants(count: active.count).contains(variant) else {
+            throw CommandError("\(variant.rawValue) is not a layout for \(active.count) windows")
+        }
+        guard active.indices.contains(slot) else { throw CommandError("Expected a slot in 0...\(active.count - 1)") }
+        // A dropped window snaps to its tile even when nothing changes.
+        output.rewrite.insert(id)
+        let current = page(at)
+        let reset = Layout.effective(current.variant, count: active.count) != variant
+        guard current.variant != variant || active[slot] != id else { return }
+        if active[slot] != id {
+            var windows = current.windows
+            windows.removeAll { $0 == id }
+            let others = active.filter { $0 != id }
+            let index = slot < others.count ? windows.firstIndex(of: others[slot])! : windows.firstIndex(of: others[slot - 1])! + 1
+            windows.insert(id, at: index)
+            state.displays[at.display].workspaces[at.workspace].pages[at.page].windows = windows
+        }
+        state.displays[at.display].workspaces[at.workspace].pages[at.page].variant = variant
+        if reset {
+            let (a, b) = Layout.defaults(count: active.count, variant: variant)
+            setRatios(at, a, b)
+        }
+        show(at, focusWindow: false, output: &output)
+        focus(id, action: true, output: &output)
+        for (old, new) in zip(active, tiled(page(at), activeOnly: true)) where old != new {
+            output.events.append(Event(type: "window_moved", data: .number(Double(new))))
+        }
+    }
+
     mutating func resize(_ id: WindowID, size: String, output: inout Output) throws {
         let parts = size.split(separator: "x", omittingEmptySubsequences: false)
         guard (1...2).contains(parts.count), let first = Double(parts[0]), first.isFinite, first > 0,
