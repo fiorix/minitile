@@ -19,7 +19,7 @@ minitile is a small tiling window manager for macOS. It arranges your windows, g
 
 - **A small, predictable model.** Each page has up to four tiled windows. Additional pages make room for more work, and workspaces group those pages. Floating windows are supported outside the tile limit.
 - **Blend with macOS.** A native Swift/AppKit app, a menu bar presence, and ordinary app windows. Resize an edge, drag to swap tiles, or use the layout picker while dragging.
-- **Reuse familiar chords.** Control and arrows navigate. Add Shift to move a window. Cmd+Tab switches windows, and Cmd+backtick cycles the current page. Cmd+W and Cmd+Q remain native.
+- **Reuse familiar chords.** Control and arrows navigate. Add Shift to move a window. Cmd+Tab switches windows, Cmd+backtick cycles the current page, and Cmd+H shows every shortcut. Cmd+W and Cmd+Q remain native.
 - **Keep the system intact.** System Integrity Protection stays enabled. minitile uses Accessibility and SkyLight; page transitions additionally use Screen Recording permission.
 - **Keep it scriptable.** The `mntl` command-line tool exposes the window manager's commands. Configuration is a small TOML file.
 
@@ -52,9 +52,9 @@ The script creates `build/Minitile.app` and `build/mntl`. It signs the app using
 1. In Mission Control, create two desktops per display.
 2. In System Settings > Desktop & Dock, keep **Displays have separate Spaces** enabled, turn off **Automatically rearrange Spaces based on most recent use**, and turn off macOS drag-to-tile options.
 3. Launch minitile and grant Accessibility permission when prompted. Allow Screen Recording for page transitions, or set `transition_ms = 0` to turn transitions off.
-4. Open a few windows. Use Control+Left/Right for pages and Control+Up/Down for workspaces. Control+Down past the last workspace opens a new one.
+4. Open a few windows. Use Control+Left/Right for pages and Control+Up/Down for workspaces. Control+Down past the last workspace opens a new one. Hold Cmd+H to see every shortcut.
 
-minitile takes over the system shortcuts listed below while active, including Mission Control's Control+Up/Down and the native app switcher's Cmd+Tab. Mission Control remains available through its dedicated key or Dock. Quit minitile to return those keys to macOS. Windows on its stash desktop remain reachable through Mission Control after quitting.
+minitile takes over the system shortcuts listed below while active, including Mission Control's Control+Up/Down, the native app switcher's Cmd+Tab, and Cmd+H, which hides apps in macOS. Apps can still be hidden from their app menu or the Dock. Mission Control remains available through its dedicated key or Dock. Quit minitile to return those keys to macOS. Windows on its stash desktop remain reachable through Mission Control after quitting.
 
 ## Shortcuts
 
@@ -66,10 +66,13 @@ minitile takes over the system shortcuts listed below while active, including Mi
 | Control + Shift + Up / Down | Carry the focused window to another workspace |
 | Control + Option + arrows | Resize the focused window |
 | Control + Shift + Space | Cycle the page's layouts |
-| Cmd + Tab | Switch between windows on the active display |
-| Cmd + backtick | Cycle windows on the current page |
+| Cmd + Tab / Cmd + Shift + Tab | Switch windows: a ring across the grid from the top-left; hold Cmd to see the switcher |
+| Cmd + backtick / Cmd + Shift + backtick | Cycle windows on the current page |
+| Cmd + Option + backtick / Cmd + Option + Shift + backtick | Swap the focused window with the next / previous slot on its page |
+| Cmd + H | Show every shortcut while Cmd is held |
+| Cmd + Option + H | Nothing: Hide Others is blocked |
 
-No special modifier or Caps Lock remap. Bindings can be changed or unbound in `~/.config/minitile/minitile.toml`. Control+Option overlaps with VoiceOver's default modifier, so remap those bindings if you use VoiceOver.
+No special modifier or Caps Lock remap. While a move or resize chord is held, minitile outlines the window it acts on. Bindings can be changed or unbound in `~/.config/minitile/minitile.toml`. Control+Option overlaps with VoiceOver's default modifier, so remap those bindings if you use VoiceOver.
 
 ```toml
 gaps = 8
@@ -80,6 +83,8 @@ transition_ms = 500
 # Leave Cmd+Tab with the native macOS app switcher.
 "cmd+tab" = ""
 "cmd+shift+tab" = ""
+# Keep Cmd+H hiding apps.
+"cmd+h" = ""
 ```
 
 Configuration reloads automatically. You can also open or reload it from the menu bar.
