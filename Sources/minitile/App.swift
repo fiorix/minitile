@@ -336,6 +336,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let granted = CGPreflightScreenCaptureAccess()
         transitions.configure(milliseconds: milliseconds, reduceMotion: reduceMotion, screenRecording: granted)
+        // The switcher's slide between displays moves its own panel, so it needs no screen capture.
+        switcherPanel.slides = milliseconds > 0 && !reduceMotion
         let missing = TransitionGate.needsPermission(milliseconds: milliseconds, reduceMotion: reduceMotion, screenRecording: granted)
         if missing, !screenRecordingRequested {
             screenRecordingRequested = true

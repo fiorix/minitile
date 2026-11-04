@@ -32,6 +32,7 @@ import Testing
     #expect(PanelStyle.iconOpacity == 0.7 && PanelStyle.reservedOpacity < PanelStyle.iconOpacity)
     #expect(PanelStyle.previewFill == Paint(rgb: 0x53e9ff, alpha: 0.08))
     #expect(PanelStyle.keyline == Stroke(paint: Paint(rgb: 0x05070c, alpha: 0.5), width: 1))
+    #expect(PanelStyle.marker == Stroke(paint: Paint(rgb: 0x7d9cc9, alpha: 0.6), width: 1))
 }
 
 @Test @MainActor func onlyStateIsLitAndPanelsLeaveRoomForTheHalo() {
@@ -41,7 +42,8 @@ import Testing
     for (stroke, width) in lit {
         #expect(stroke == Stroke(paint: Paint(rgb: 0xdcfbff), width: width, glow: glow) && stroke.reach == 6)
     }
-    for stroke in [PanelStyle.border, PanelStyle.page, PanelStyle.emptyPage, PanelStyle.tile, PanelStyle.plate, PanelStyle.keyline] {
+    for stroke in [PanelStyle.border, PanelStyle.page, PanelStyle.emptyPage, PanelStyle.tile, PanelStyle.plate, PanelStyle.keyline,
+                   PanelStyle.marker] {
         #expect(stroke.glow == nil && stroke.reach == 0)
     }
     let target = NSRect(x: 100, y: 200, width: 640, height: 480)

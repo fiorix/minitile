@@ -320,3 +320,17 @@ func neighbourEdgeMayBeOffByAPoint(_ x: Double, _ found: Bool) {
     #expect(grid(e, "above") == [[[2, 3, 4, 5], [1]]])
     #expect(e.makeScene().displays["above"]?.visible == [1])
 }
+
+@Test func focusingAWindowOnAnotherDisplayShowsItsPageThereAndMakesThatDisplayActive() {
+    // The window switcher commits with `window focus ID`, which may name a window on another display's hidden page.
+    var e = plus([(1, "centre"), (2, "above"), (3, "above"), (4, "above"), (5, "above"), (6, "above")], focus: 1)
+    #expect(grid(e, "above") == [[[2, 3, 4, 5], [6]]])
+    let out = command(&e, "window focus 6")
+    #expect(e.savedState().focus == 6)
+    #expect(e.savedState().activeDisplay == "above")
+    #expect(e.commandDisplay == "above")
+    #expect(out.actions == [.focus(6)])
+    #expect(shown(out) == ["above"])
+    #expect(out.scene.displays["above"]?.visible == [6])
+    #expect(out.scene.displays["centre"]?.visible == [1])
+}

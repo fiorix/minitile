@@ -69,7 +69,7 @@ import Testing
                      2: WindowState(info: WindowInfo(id: 2, pid: 20, tileable: false), display: "screen", floating: true)]
     state.activeDisplay = "screen"
     state.focus = 1
-    let content = GridIndicatorContent(display: display, state: state, config: .default, name: "Laptop")
+    let content = GridIndicatorContent(display: display, state: state, config: .default, names: ["screen": "Laptop"])
     #expect(content.active)
     #expect(content.pages.flatMap { $0.flatMap(\.slots) }.filter { $0.focused }.isEmpty)
     #expect(content.workspace == 2)
@@ -102,7 +102,7 @@ func miniaturesMirrorTheCoreLayoutOnShownAndStashedPages(portrait: Bool) {
         let output = engine.handle(.command(["page", "ratio", "0.3", "0.6"]))
         let state = engine.savedState()
         #expect(state.displays[0].workspaces[0].pages[0].variant == variant)
-        let content = GridIndicatorContent(display: state.displays[0], state: state, config: engine.config, name: "Laptop")
+        let content = GridIndicatorContent(display: state.displays[0], state: state, config: engine.config, names: ["d": "Laptop"])
         let pages = content.pages[0]
         #expect(pages.count == 2)
         #expect(pages[0].slots.map(\.window) == [1, 2, 4, 5])
@@ -217,7 +217,7 @@ func miniaturesMirrorTheCoreLayoutOnShownAndStashedPages(portrait: Bool) {
 @Test func gridIndicatorExplainsUnmanagedDisplay() {
     let display = DisplayState(info: DisplayInfo(id: "external", frame: .init(x: 0, y: 0, width: 1200, height: 900),
                                                 unmanagedReason: DisplayNeed.secondDesktop.reason))
-    let content = GridIndicatorContent(display: display, state: SavedState(), config: .default, name: "External")
+    let content = GridIndicatorContent(display: display, state: SavedState(), config: .default, names: ["external": "External"])
     #expect(content.position == "Display not managed")
     #expect(content.warning == DisplayNeed.secondDesktop.reason)
     #expect(content.workspace == nil)

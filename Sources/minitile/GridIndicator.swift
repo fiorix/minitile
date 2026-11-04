@@ -95,6 +95,24 @@ struct GridMiniature: Equatable {
     var reserved: [Slot] { slots.filter(\.dimmed) }
 }
 
+/// Another managed display on one side of a panel's display, found as for crossing, which a monitor marker on that
+/// edge of the panel names.
+struct MonitorMarker: Equatable {
+    var side: SwitcherDirection
+    var name: String
+
+    /// One for each side with a managed display, in `SwitcherDirection` order; none for an unmanaged display. `displays`
+    /// are in the model's order, as the core searches them; `names` are the displays' names by ID.
+    static func markers(for id: DisplayID, displays: [DisplayInfo], names: [DisplayID: String]) -> [MonitorMarker] {
+        guard let d = displays.firstIndex(where: { $0.id == id }) else { return [] }
+        return SwitcherDirection.allCases.compactMap { side in
+            DisplayInfo.neighbour(of: d, in: displays, dx: side.dx, dy: side.dy).map {
+                MonitorMarker(side: side, name: names[displays[$0].id] ?? "Display")
+            }
+        }
+    }
+}
+
 struct GridIndicatorContent: Equatable {
     static let rowLimit = 4
     static let columnLimit = 5
@@ -107,6 +125,7 @@ struct GridIndicatorContent: Equatable {
     var area: Rect
     var pages: [[GridMiniature]]
     var warning: String?
+    var markers: [MonitorMarker] = []
 
     var rows: Range<Int> { Self.viewport(count: pages.count, selected: workspace, limit: Self.rowLimit) }
     var columns: Range<Int> { Self.viewport(count: pageCount, selected: page, limit: Self.columnLimit) }
@@ -137,7 +156,8 @@ struct GridIndicatorContent: Equatable {
 }
 
 extension GridIndicatorContent {
-    init(display: DisplayState, state: SavedState, config: Config, name: String) {
+    /// `names` are the displays' names by ID, as `DisplayCatalog.names` gives them.
+    init(display: DisplayState, state: SavedState, config: Config, names: [DisplayID: String]) {
         let workspace = display.workspaces.firstIndex { $0.id == display.currentWorkspace }
         let page = workspace.flatMap { index in
             display.workspaces[index].pages.firstIndex { $0.id == display.workspaces[index].currentPage }
@@ -149,8 +169,10 @@ extension GridIndicatorContent {
                 return GridMiniature(page: page, windows: state.windows, focus: shown ? state.focus : nil, area: area, config: config)
             }
         }
-        self.init(displayName: name, active: state.activeDisplay == display.info.id, workspace: workspace.map { $0 + 1 },
-                  page: page.map { $0 + 1 }, area: area, pages: pages, warning: display.info.unmanagedReason)
+        self.init(displayName: names[display.info.id] ?? "", active: state.activeDisplay == display.info.id,
+                  workspace: workspace.map { $0 + 1 }, page: page.map { $0 + 1 }, area: area, pages: pages,
+                  warning: display.info.unmanagedReason,
+                  markers: MonitorMarker.markers(for: display.info.id, displays: state.displays.map(\.info), names: names))
     }
 }
 
@@ -189,6 +211,7 @@ final class GridIndicator {
         let now = ProcessInfo.processInfo.systemUptime
         let requested = requested
         self.requested = []
+        let names = DisplayCatalog.names()
         for screen in NSScreen.screens {
             guard let id = DisplayCatalog.id(for: screen), let display = state.displays.first(where: { $0.info.id == id }) else { continue }
             present.insert(id)
@@ -212,7 +235,7 @@ final class GridIndicator {
                 }
             }
             guard clock.visible(now: now) else { panels[id]?.orderOut(nil); continue }
-            let content = GridIndicatorContent(display: display, state: state, config: config, name: screen.localizedName)
+            let content = GridIndicatorContent(display: display, state: state, config: config, names: names)
             let panel: NSPanel
             if let existing = panels[id] { panel = existing }
             else {

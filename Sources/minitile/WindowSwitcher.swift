@@ -3,7 +3,9 @@ import MinitileCore
 
 @MainActor
 protocol SwitcherPresenting: AnyObject {
-    func show(_ content: SwitcherContent, display: DisplayID)
+    /// Shows `content` in the middle of the display's usable area, sliding there from the middle of `from`'s when that
+    /// is another display.
+    func show(_ content: SwitcherContent, display: DisplayID, from: DisplayID?)
     func hide()
 }
 
@@ -12,6 +14,7 @@ protocol SwitcherPresenting: AnyObject {
 @MainActor
 final class WindowSwitcher {
     typealias Schedule = @MainActor (TimeInterval, @escaping @MainActor @Sendable () -> Void) -> Void
+    typealias Names = @MainActor () -> [DisplayID: String]
     static let showDelay: TimeInterval = 0.15
 
     private(set) var selection: SwitcherSelection?
@@ -25,30 +28,36 @@ final class WindowSwitcher {
     private var latest = 0
     private var state: SavedState?
     private var shown: SwitcherContent?
+    /// The display the panel is on, or before it shows, the active display it starts from.
+    private var presented: DisplayID?
     private let presenter: any SwitcherPresenting
     private let schedule: Schedule
+    private let names: Names
 
     init(presenter: any SwitcherPresenting, schedule: @escaping Schedule = { delay, work in
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { MainActor.assumeIsolated { work() } }
-    }) {
+    }, names: @escaping Names = { DisplayCatalog.names() }) {
         self.presenter = presenter
         self.schedule = schedule
+        self.names = names
     }
 
     var isOpen: Bool { selection != nil }
 
     func isStale(_ session: Int) -> Bool { session <= latest }
 
-    /// Opens on the display, replacing an open switcher. Returns false, leaving it closed, when the display has no
-    /// window to offer.
+    /// Opens over the windows of every managed display, replacing an open switcher. The panel starts in the middle of
+    /// `display`, the active one, and slides on to the selection's display when that is another. Returns false,
+    /// leaving it closed, when no managed display has a window to offer.
     func open(session: Int, forward: Bool, held: Bool, state: SavedState, display: DisplayID?, config: Config) -> Bool {
         latest = max(latest, session)
         close()
-        guard let display, let selection = SwitcherSelection(state: state, display: display, config: config, forward: forward) else { return false }
+        guard let selection = SwitcherSelection(state: state, config: config, forward: forward) else { return false }
         self.selection = selection
         self.session = session
         self.held = held
         self.state = state
+        presented = display
         if held { schedule(Self.showDelay) { [weak self] in self?.reveal(session) } }
         else { reveal(session) }
         return true
@@ -100,10 +109,11 @@ final class WindowSwitcher {
 
     private func redraw() {
         guard visible, let selection, let state else { return }
-        let content = SwitcherContent(selection: selection, state: state)
-        guard content != shown else { return }
+        let content = SwitcherContent(selection: selection, state: state, names: names())
+        guard content != shown || selection.display != presented else { return }
         shown = content
-        presenter.show(content, display: selection.display)
+        presenter.show(content, display: selection.display, from: presented)
+        presented = selection.display
     }
 
     private func close() {
@@ -114,20 +124,42 @@ final class WindowSwitcher {
         visible = false
         state = nil
         shown = nil
+        presented = nil
     }
 }
 
-/// A click-through panel in the middle of the display's usable area.
+/// The switcher panel's move between displays, from the middle of one usable area to the middle of another's.
+enum PanelSlide {
+    static let duration: TimeInterval = 0.25
+
+    /// A frame of `size` centered on `point`, on whole points.
+    static func frame(_ size: CGSize, centeredOn point: CGPoint) -> CGRect {
+        CGRect(x: (point.x - size.width / 2).rounded(), y: (point.y - size.height / 2).rounded(), width: size.width, height: size.height)
+    }
+
+    /// Where the panel's origin is `elapsed` seconds into a slide, eased in and out; at `to` once the slide is over.
+    static func origin(from: CGPoint, to: CGPoint, elapsed: TimeInterval) -> CGPoint {
+        guard elapsed < duration else { return to }
+        let t = max(0, elapsed / duration)
+        let eased = t < 0.5 ? 4 * t * t * t : 1 - pow(2 - 2 * t, 3) / 2
+        return CGPoint(x: from.x + (to.x - from.x) * eased, y: from.y + (to.y - from.y) * eased)
+    }
+}
+
+/// A click-through panel in the middle of the display's usable area. It moves to another display by sliding there.
 @MainActor
 final class SwitcherPanel: SwitcherPresenting {
     /// Above the position indicator (`.floating`), the page-transition overlays (one below it) and other apps' floating
     /// windows, as the native app switcher is.
     static let level = NSWindow.Level.popUpMenu
+    /// Off with Reduce Motion or `transition_ms` at 0: the panel then moves between displays at once.
+    var slides = true
     private var panel: NSPanel?
     private var icons = AppIconCache<NSImage>()
+    private var slide: (timer: Timer, target: NSRect)?
 
-    func show(_ content: SwitcherContent, display: DisplayID) {
-        guard let screen = NSScreen.screens.first(where: { DisplayCatalog.id(for: $0) == display }) else { hide(); return }
+    func show(_ content: SwitcherContent, display: DisplayID, from: DisplayID?) {
+        guard let screen = NSScreen.screen(for: display) else { hide(); return }
         let panel = self.panel ?? makePanel(content)
         self.panel = panel
         if let view = panel.styledContent as? SwitcherView {
@@ -138,20 +170,55 @@ final class SwitcherPanel: SwitcherPresenting {
             }
             view.icons = images
             view.content = content
-            view.setAccessibilityLabel("Window switcher, \(content.app), \(content.title), \(content.position)")
+            let name = content.displayName.map { ", \($0)" } ?? ""
+            view.setAccessibilityLabel("Window switcher, \(content.app), \(content.title), \(content.position)\(name)")
         }
         let size = content.geometry.size, area = screen.visibleFrame
-        let frame = NSRect(x: (area.midX - size.width / 2).rounded(), y: (area.midY - size.height / 2).rounded(),
-                           width: size.width, height: size.height)
-        if panel.frame != frame { panel.setFrame(frame, display: true) }
+        let target = PanelSlide.frame(size, centeredOn: CGPoint(x: area.midX, y: area.midY))
+        if let slide, slide.target == target { return }
+        // A slide starts where the panel is, mid-slide or in the middle of the display left behind; a panel not yet
+        // shown starts in the middle of `from`.
+        var start: NSRect?
+        if slides, slide != nil || (from != nil && from != display) {
+            let old = panel.isVisible ? panel.frame : from.flatMap { NSScreen.screen(for: $0)?.visibleFrame }
+            start = old.map { PanelSlide.frame(size, centeredOn: CGPoint(x: $0.midX, y: $0.midY)) }
+        }
+        endSlide()
+        if let start, start != target {
+            panel.setFrame(start, display: true)
+            slide(panel, from: start.origin, to: target)
+        } else if panel.frame != target { panel.setFrame(target, display: true) }
         if !panel.isVisible { panel.orderFrontRegardless() }
     }
 
-    func hide() { panel?.orderOut(nil) }
+    func hide() {
+        endSlide()
+        panel?.orderOut(nil)
+    }
 
     func stop() {
+        endSlide()
         panel?.close()
         panel = nil
+    }
+
+    /// Moves the panel's origin on each tick, which the window server does without redrawing the panel.
+    private func slide(_ panel: NSPanel, from start: CGPoint, to target: NSRect) {
+        let began = ProcessInfo.processInfo.systemUptime
+        let timer = Timer(timeInterval: 1.0 / 120, repeats: true) { [weak self, weak panel] _ in
+            MainActor.assumeIsolated {
+                let elapsed = ProcessInfo.processInfo.systemUptime - began
+                panel?.setFrameOrigin(PanelSlide.origin(from: start, to: target.origin, elapsed: elapsed))
+                if elapsed >= PanelSlide.duration || panel == nil { self?.endSlide() }
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        slide = (timer, target)
+    }
+
+    private func endSlide() {
+        slide?.timer.invalidate()
+        slide = nil
     }
 
     private func makePanel(_ content: SwitcherContent) -> NSPanel {
@@ -192,14 +259,26 @@ final class SwitcherView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let geometry = content.geometry
-        let s = geometry.metrics.scale, margin = geometry.margin, width = bounds.width - 2 * margin
         GridPainter.background(bounds)
+        for marker in content.markers { GridPainter.marker(marker, geometry: geometry) }
+        GridPainter.inner(at: geometry.inset) { drawInner(geometry) }
+    }
+
+    private func drawInner(_ geometry: GridIndicatorGeometry) {
+        let s = geometry.metrics.scale, margin = geometry.margin, bounds = NSRect(origin: .zero, size: geometry.inner)
+        let width = bounds.width - 2 * margin
         GridPainter.text(content.app, rect: NSRect(x: margin, y: 10 * s, width: width - 156 * s, height: 17 * s), size: 12 * s,
                          weight: .semibold)
         GridPainter.text(content.position, rect: NSRect(x: bounds.width - margin - 150 * s, y: 11 * s, width: 150 * s, height: 16 * s),
                          size: 10 * s, color: PanelStyle.dim, alignment: .right, monospaced: true)
-        GridPainter.text(content.title, rect: NSRect(x: margin, y: 28 * s, width: width, height: 16 * s), size: 11 * s,
-                         color: PanelStyle.dim)
+        // The display's name shares the title's row, right-aligned under the position, as the indicator's "Active" does.
+        let named = content.displayName != nil
+        GridPainter.text(content.title, rect: NSRect(x: margin, y: 28 * s, width: width - (named ? 156 * s : 0), height: 16 * s),
+                         size: 11 * s, color: PanelStyle.dim)
+        if let name = content.displayName {
+            GridPainter.text(name, rect: NSRect(x: bounds.width - margin - 150 * s, y: 29 * s, width: 150 * s, height: 16 * s),
+                             size: 10 * s, color: PanelStyle.dim, alignment: .right, monospaced: true)
+        }
         GridPainter(area: content.area, metrics: geometry.metrics, icons: icons)
             .grid(content.pages, rows: content.rows, columns: content.columns, geometry: geometry, labeled: content.cell,
                   current: content.shown, selected: content.selected)
@@ -248,8 +327,9 @@ extension AppDelegate {
         }
     }
 
-    /// Opens on the display a command without an address acts on. The help screen closes even when the display has
-    /// no window to offer, since the router has already given the keyboard to the switcher.
+    /// Opens over every managed display's windows, starting on the display a command without an address acts on. The
+    /// help screen closes even when there is no window to offer, since the router has already given the keyboard to
+    /// the switcher.
     func openSwitcher(session: Int, forward: Bool, held: Bool) -> Bool {
         helpScreen.supersede(session)
         let state = engine.savedState()
@@ -269,12 +349,12 @@ extension AppDelegate {
         return reply
     }
 
-    /// The switcher's bindings work while minitile is started and not suspended and the active display has a window
+    /// The switcher's bindings work while minitile is started and not suspended and some managed display has a window
     /// to offer, and the help screen's while it is started and not suspended; otherwise Cmd+Tab and Cmd+H pass to
     /// macOS.
     func updateModalAvailability() {
         let help = modalsAvailable
-        let switcher = help && SwitcherSelection.offers(state: engine.savedState(), display: engine.commandDisplay, config: engine.config)
+        let switcher = help && SwitcherSelection.offers(state: engine.savedState(), config: engine.config)
         keyboard?.availability(switcher: switcher, help: help)
         if !switcher, let session = windowSwitcher.session {
             windowSwitcher.cancel()
