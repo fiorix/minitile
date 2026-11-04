@@ -214,6 +214,7 @@ final class Reconciler {
                 guard let window = discovery.windows[id], let target = writes[id] else { continue }
                 frames[id] = target
                 suppression[id] = ProcessInfo.processInfo.systemUptime + 1.2
+                discovery.wroteFrame(id)
                 AX.setFrame(window.element, target)
                 if verify {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.25) { [weak self] in

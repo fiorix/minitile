@@ -69,7 +69,7 @@ enum AX {
     }
 
     /// Input waits behind the main thread, so an AX call that holds it for long is logged with its app.
-    nonisolated static func timed<T>(_ element: AXUIElement, _ name: String, _ call: () -> T) -> T {
+    @discardableResult nonisolated static func timed<T>(_ element: AXUIElement, _ name: String, _ call: () -> T) -> T {
         guard Thread.isMainThread else { return call() }
         let start = ProcessInfo.processInfo.systemUptime
         let result = call()

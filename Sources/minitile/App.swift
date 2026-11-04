@@ -140,7 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do { saved = try stateWriter.read() }
         catch { warnings["state"] = "Cannot restore saved state: \(error)" }
         discovery.prepareStash()
-        discovery.scan()
+        discovery.scanNow()
         startupStashCount = discovery.adoptionCount
         startupImmediateHandles = startupStashCount - discovery.missingAdoptionHandles.count
         logger.info("Startup stash handles immediately available: \(self.startupImmediateHandles)/\(self.startupStashCount)")
@@ -151,7 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let discovery, let reconciler, !quitting else { return }
         if !discovery.missingAdoptionHandles.isEmpty, attempt < 4 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-                self?.discovery?.scan(); self?.finishStart(attempt: attempt + 1)
+                self?.discovery?.scanNow(); self?.finishStart(attempt: attempt + 1)
             }
             return
         }
@@ -344,7 +344,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             discovery?.config = config
             discovery?.pruneIgnored()
             discovery?.prepareStash()
-            discovery?.scan()
+            discovery?.scanNow()
             finishReloadAdoption(attempt: 0)
             keyboard?.update(config: config, displays: displays, dragged: reconciler?.dragging)
             // A reload retries a swipe tap that could not be created.
@@ -363,7 +363,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !quitting, let discovery else { return }
         if !discovery.missingAdoptionHandles.isEmpty, attempt < 4 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-                self?.discovery?.scan(); self?.finishReloadAdoption(attempt: attempt + 1)
+                self?.discovery?.scanNow(); self?.finishReloadAdoption(attempt: attempt + 1)
             }
         } else { discovery.finishAdoption() }
     }
