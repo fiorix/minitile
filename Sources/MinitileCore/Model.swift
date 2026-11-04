@@ -164,8 +164,8 @@ extension Engine {
         if let id = best?.info.id, let at = positions[id] { show(at, focusWindow: false, output: &output) }
     }
 
-    mutating func navigatePage(_ delta: Int, output: inout Output) throws {
-        guard let d = currentDisplay(), var at = currentLocation(display: d) else { throw CommandError("No managed display") }
+    mutating func navigatePage(_ delta: Int, display: Int? = nil, output: inout Output) throws {
+        guard let d = display ?? currentDisplay(), var at = currentLocation(display: d) else { throw CommandError("No managed display") }
         let pages = state.displays[d].workspaces[at.workspace].pages
         if at.page + delta < 0 { return }
         if at.page + delta >= pages.count {
@@ -177,8 +177,8 @@ extension Engine {
         show(at, output: &output)
     }
 
-    mutating func navigateWorkspace(_ delta: Int, alwaysNew: Bool = false, output: inout Output) throws {
-        guard let d = currentDisplay(), var at = currentLocation(display: d) else { throw CommandError("No managed display") }
+    mutating func navigateWorkspace(_ delta: Int, display: Int? = nil, alwaysNew: Bool = false, output: inout Output) throws {
+        guard let d = display ?? currentDisplay(), var at = currentLocation(display: d) else { throw CommandError("No managed display") }
         let workspaces = state.displays[d].workspaces
         if at.workspace + delta < 0 { return }
         if alwaysNew || at.workspace + delta >= workspaces.count {

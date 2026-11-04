@@ -33,15 +33,24 @@ enum TransitionPlan {
         ["workspace", "next"]: TransitionDirection(dx: 0, dy: 1), ["workspace", "prev"]: TransitionDirection(dx: 0, dy: -1),
     ]
 
+    /// A navigation command's bounce direction and the display it addresses, if it names one.
+    static func navigation(_ argv: [String]) -> (direction: TransitionDirection, display: DisplayID?)? {
+        guard argv.count == 2 || (argv.count == 4 && argv[2] == "display"),
+              let direction = bounces[Array(argv.prefix(2))] else { return nil }
+        return (direction, argv.count == 4 ? argv[3] : nil)
+    }
+
     /// Per display: slide where the shown page or workspace changed, bounce where a navigation command on the
-    /// command's display changed nothing.
+    /// display it acts on changed nothing: the addressed display, else `context`.
     static func plan(before: SavedState, after: SavedState, argv: [String], context: DisplayID?) -> [DisplayID: TransitionKind] {
+        let navigation = navigation(argv)
+        let context = navigation?.display ?? context
         var result: [DisplayID: TransitionKind] = [:]
         for display in after.displays {
             guard let old = before.displays.first(where: { $0.info.id == display.info.id }),
                   let from = ShownView(old), let to = ShownView(display) else { continue }
             if from != to { result[display.info.id] = .slide(direction(before: old, after: display, from: from, to: to)) }
-            else if display.info.id == context, let bounce = bounces[argv] { result[display.info.id] = .bounce(bounce) }
+            else if display.info.id == context, let navigation { result[display.info.id] = .bounce(navigation.direction) }
         }
         return result
     }

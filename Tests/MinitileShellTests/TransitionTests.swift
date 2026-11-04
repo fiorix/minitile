@@ -73,6 +73,30 @@ private let up = TransitionKind.slide(TransitionDirection(dx: 0, dy: -1))
     #expect(plan(&e, "workspace prev") == ["secondary": .bounce(TransitionDirection(dx: 0, dy: -1))])
 }
 
+@Test func addressedNavigationSlidesAndBouncesOnTheAddressedDisplay() {
+    var e = started(1, displays: [primary, secondary], extra: [info(9, display: "secondary")])
+    #expect(e.commandDisplay == "primary")
+    #expect(plan(&e, "page prev display secondary") == ["secondary": .bounce(TransitionDirection(dx: -1, dy: 0))])
+    #expect(plan(&e, "workspace prev display secondary") == ["secondary": .bounce(TransitionDirection(dx: 0, dy: -1))])
+    #expect(plan(&e, "page next display secondary") == ["secondary": right])
+    #expect(plan(&e, "page next display secondary") == ["secondary": .bounce(TransitionDirection(dx: 1, dy: 0))])
+    #expect(plan(&e, "page prev display secondary") == ["secondary": left])
+    #expect(plan(&e, "workspace next display secondary") == ["secondary": down])
+    #expect(plan(&e, "workspace next display secondary") == ["secondary": .bounce(TransitionDirection(dx: 0, dy: 1))])
+    #expect(plan(&e, "page prev display primary") == ["primary": .bounce(TransitionDirection(dx: -1, dy: 0))])
+}
+
+@Test func onlyNavigationCommandsCarryABounceAndAnAddress() {
+    #expect(TransitionPlan.navigation(["page", "next"])?.direction == TransitionDirection(dx: 1, dy: 0))
+    #expect(TransitionPlan.navigation(["page", "next"])?.display == nil)
+    #expect(TransitionPlan.navigation(["workspace", "prev", "display", "B"])?.display == "B")
+    #expect(TransitionPlan.navigation(["workspace", "prev", "display", "B"])?.direction == TransitionDirection(dx: 0, dy: -1))
+    #expect(TransitionPlan.navigation(["workspace", "new"]) == nil)
+    #expect(TransitionPlan.navigation(["page", "next", "display"]) == nil)
+    #expect(TransitionPlan.navigation(["page", "next", "screen", "B"]) == nil)
+    #expect(TransitionPlan.navigation(["page", "show", "display", "B"]) == nil)
+}
+
 @Test func directionUsesTheStateThatHoldsBothIdentities() {
     #expect(TransitionPlan.step([7, 8], [8], 7, 8) == 1)
     #expect(TransitionPlan.step([8], [9, 8], 8, 9) == -1)
