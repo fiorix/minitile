@@ -49,11 +49,15 @@ final class Discovery {
     let smokeScope = SmokeScope()
     var frozen = false
     var input: ((Input) -> Void)?
-    var activated: ((Int32) -> Void)?
+    var activated: ((Int32, TimeInterval) -> Void)?
     var focused: ((WindowID?) -> Void)?
     var acceptsFocus: ((Int32) -> Bool)?
     var moved: ((WindowID) -> Void)?
     var suppressGeometry: ((WindowID) -> Bool)?
+    private(set) var fullScans = 0
+    private(set) var fullScanMilliseconds = 0.0
+    private(set) var recheckRequests = 0
+    private(set) var recheckPasses = 0
     private let windowNotifications = [kAXUIElementDestroyedNotification, kAXMovedNotification, kAXResizedNotification,
                                        kAXTitleChangedNotification, kAXWindowMiniaturizedNotification, kAXWindowDeminiaturizedNotification]
 
@@ -108,6 +112,9 @@ final class Discovery {
 
     func scan() {
         guard !frozen, let cg = CGWindowRecord.snapshot() else { return }
+        let start = ProcessInfo.processInfo.systemUptime
+        fullScans += 1
+        defer { fullScanMilliseconds += (ProcessInfo.processInfo.systemUptime - start) * 1000 }
         for app in NSWorkspace.shared.runningApplications where allows(app) {
             observe(app)
             scan(app, cg: cg)
@@ -207,15 +214,20 @@ final class Discovery {
     }
 
     func recheckSoon() {
+        recheckRequests += 1
         for delay in [0.15, 0.4, 0.9] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.scan() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.recheckPasses += 1
+                self?.scan()
+            }
         }
     }
 
     private func notification(pid: Int32, element: AXUIElement, name: String) {
+        let received = ProcessInfo.processInfo.systemUptime
         guard !frozen else { return }
         // Activation must reach the reconciler before any AX discovery reads.
-        if name == kAXApplicationActivatedNotification { activated?(pid); return }
+        if name == kAXApplicationActivatedNotification { activated?(pid, received); return }
         if name == kAXFocusedWindowChangedNotification || name == kAXMainWindowChangedNotification {
             refreshFocus(pid: pid)
             recheckSoon()

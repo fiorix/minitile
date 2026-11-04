@@ -35,6 +35,14 @@ struct FocusEcho {
     func suppresses(_ pid: Int32, now: TimeInterval) -> Bool { self.pid == pid && now < until }
 }
 
+struct ActivationTiming: Encodable {
+    var pid: Int32
+    var source: String
+    var notification_to_submit_ms: Double
+    var submission_ms: Double
+    var windows: Int
+}
+
 enum FocusForwarding {
     static func accepts(pid: Int32, frontmost: Int32?, echo: FocusEcho?, now: TimeInterval) -> Bool {
         pid == frontmost && echo?.suppresses(pid, now: now) != true
@@ -55,6 +63,8 @@ final class Reconciler {
     private var focusRead: DispatchWorkItem?
     var warning: ((String) -> Void)?
     private(set) var lastMilliseconds = 0.0
+    var activation: (pid: Int32, source: String, received: TimeInterval)?
+    private(set) var activationTimings: [ActivationTiming] = []
 
     init(discovery: Discovery, displays: DisplayCatalog) { self.discovery = discovery; self.displays = displays }
 
@@ -119,8 +129,17 @@ final class Reconciler {
     }
 
     private func submit(_ move: SpaceMove, verify: Bool = true) {
+        let before = ProcessInfo.processInfo.systemUptime
         guard csl_move_windows(move.windows, move.windows.count, move.space) else {
             warning?("Could not submit a desktop move"); return
+        }
+        if let activation {
+            let submitted = ProcessInfo.processInfo.systemUptime
+            activationTimings.append(ActivationTiming(pid: activation.pid, source: activation.source,
+                notification_to_submit_ms: (submitted - activation.received) * 1000,
+                submission_ms: (submitted - before) * 1000, windows: move.windows.count))
+            if activationTimings.count > 128 { activationTimings.removeFirst() }
+            self.activation = nil
         }
         let until = ProcessInfo.processInfo.systemUptime + 1.2
         let identities = move.windows.compactMap { id in discovery.windows[id].map { (id, $0.info.pid) } }

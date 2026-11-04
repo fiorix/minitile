@@ -140,7 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         displays: displays.infos, focus: discovery.currentFocus().window))
         saved = nil
         discovery.input = { [weak self] in self?.handle($0) }
-        discovery.activated = { [weak self] in self?.activate($0) }
+        discovery.activated = { [weak self] pid, received in self?.activate(pid, received: received, source: "ax") }
         discovery.acceptsFocus = { [weak reconciler] in reconciler?.acceptsFocus($0) == true }
         discovery.focused = { [weak self] in self?.handle(.focusChanged($0)) }
         discovery.moved = { [weak self] in self?.windowMoved($0) }

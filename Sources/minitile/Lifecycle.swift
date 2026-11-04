@@ -16,9 +16,7 @@ struct SuspensionState {
 extension AppDelegate {
     func observeLifecycle() {
         let workspace = NSWorkspace.shared.notificationCenter
-        observe(workspace, NSWorkspace.didActivateApplicationNotification) { [weak self] pid in
-            if let pid { self?.activate(pid) }
-        }
+        observeActivation(workspace)
         observe(workspace, NSWorkspace.didLaunchApplicationNotification) { [weak self] pid in
             guard let pid, let app = NSRunningApplication(processIdentifier: pid) else { return }
             self?.discovery?.observe(app); self?.discovery?.recheckSoon()
@@ -95,6 +93,19 @@ extension AppDelegate {
         observers.append((center, token))
     }
 
+    func observeActivation(_ center: NotificationCenter) {
+        let token = center.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: nil) { [weak self] notification in
+            let received = ProcessInfo.processInfo.systemUptime
+            guard let pid = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier else { return }
+            let deliver: @MainActor @Sendable () -> Void = { [weak self] in
+                self?.activate(pid, received: received, source: "workspace")
+            }
+            if Thread.isMainThread { MainActor.assumeIsolated { deliver() } }
+            else { DispatchQueue.main.async(execute: deliver) }
+        }
+        observers.append((center, token))
+    }
+
     func suspend(_ reason: String, enabled: Bool) {
         let shouldResume = suspension.set(reason, enabled: enabled)
         discovery?.frozen = !suspendedReasons.isEmpty
@@ -131,12 +142,14 @@ extension AppDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + max(2, wakeUntil - ProcessInfo.processInfo.systemUptime), execute: work)
     }
 
-    func activate(_ pid: Int32) {
+    func activate(_ pid: Int32, received: TimeInterval, source: String) {
         guard started, discovery?.frozen == false, reconciler?.suppressesActivation(pid) != true,
               pid != ProcessInfo.processInfo.processIdentifier else { return }
         let now = ProcessInfo.processInfo.systemUptime
         if let lastActivation, lastActivation.pid == pid, now - lastActivation.time < 0.15 { return }
         lastActivation = (pid, now)
+        reconciler?.activation = (pid, source, received)
+        defer { reconciler?.activation = nil }
         // No AX reads before this input: Cmd-Tab's desktop switch has a narrow race.
         handle(.appActivated(pid: pid))
         if let app = NSRunningApplication(processIdentifier: pid), discovery?.allows(app) == false { handle(.focusChanged(nil)) }

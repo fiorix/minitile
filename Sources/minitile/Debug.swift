@@ -78,7 +78,13 @@ extension AppDelegate {
                              "frames": .object(try Dictionary(uniqueKeysWithValues: scene.frames.map { (String($0.key), try .encoding($0.value)) })),
                              "label": .string(scene.label)])
                 })])
-            case "timings": data = .object(["reconcile_ms": .number(reconciler?.lastMilliseconds ?? 0)])
+            case "timings":
+                data = .object(["reconcile_ms": .number(reconciler?.lastMilliseconds ?? 0),
+                                "activation_moves": try .encoding(reconciler?.activationTimings ?? []),
+                                "full_scans": .number(Double(discovery?.fullScans ?? 0)),
+                                "full_scan_ms": .number(discovery?.fullScanMilliseconds ?? 0),
+                                "recheck_requests": .number(Double(discovery?.recheckRequests ?? 0)),
+                                "recheck_passes": .number(Double(discovery?.recheckPasses ?? 0))])
             case "health":
                 data = .object(["started": .bool(started), "pid": .number(Double(ProcessInfo.processInfo.processIdentifier)), "suspended": .bool(discovery?.frozen == true),
                                 "suspended_reasons": .array(suspendedReasons.sorted().map(JSONValue.string)),

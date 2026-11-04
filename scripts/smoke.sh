@@ -3,23 +3,29 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 interactive=0
 display_test=0
+activation_test=0
 build=1
 recovery_directory=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --interactive) interactive=1 ;;
         --displays) display_test=1 ;;
+        --activation) activation_test=1 ;;
         --no-build) build=0 ;;
         --cleanup)
             if [ "$#" -lt 2 ] || [ -z "$2" ]; then echo '--cleanup requires a test directory.' >&2; exit 2; fi
             recovery_directory=$2
             shift
             ;;
-        --help|-h) echo 'Usage: smoke.sh [--interactive | --displays | --cleanup TEST_DIRECTORY] [--no-build]'; exit 0 ;;
+        --help|-h) echo 'Usage: smoke.sh [--interactive | --displays | --activation | --cleanup TEST_DIRECTORY] [--no-build]'; exit 0 ;;
         *) echo "Unknown argument: $1" >&2; exit 2 ;;
     esac
     shift
 done
+if [ "$activation_test" = 1 ] && { [ "$interactive" = 1 ] || [ "$display_test" = 1 ] || [ -n "$recovery_directory" ]; }; then
+    echo '--activation cannot be combined with --interactive, --displays or --cleanup.' >&2
+    exit 2
+fi
 if [ "$display_test" = 1 ] && { [ "$interactive" = 1 ] || [ -n "$recovery_directory" ]; }; then
     echo '--displays cannot be combined with --interactive or --cleanup.' >&2
     exit 2
@@ -270,6 +276,32 @@ textedit_pid=$(jq -r '.windows[0].pid' "$report/state.json")
 display_id=$(jq -r '.windows[0].display' "$report/state.json")
 read -r -a ids <<< "$(jq -r '.windows | sort_by(.id) | map(.id | tostring) | join(" ")' "$report/state.json")"
 a=${ids[0]}; b=${ids[1]}; c=${ids[2]}; e=${ids[4]}
+
+if [ "$activation_test" = 1 ]; then
+    if [ "$front_pid" = "$textedit_pid" ] || [ "$front_pid" = 0 ]; then
+        echo 'Start the activation test from Terminal with Terminal frontmost.' >&2
+        exit 1
+    fi
+    for ((round=1; round<=10; round++)); do
+        for id in "$a" "$b" "$c"; do "$mntl" window focus "$id"; done
+        "$mntl" workspace next
+        build/smoke-support restore "$front_pid"
+        sleep 0.2
+        if [ "$(build/smoke-support front)" != "$front_pid" ]; then
+            echo 'Could not activate the original Terminal; activation sample would be invalid.' >&2
+            exit 1
+        fi
+        build/smoke-support restore "$textedit_pid"
+        wait_state 'any(.windows[]; .shown)'
+        "$mntl" --json debug spaces > "$report/activation-$round-spaces.json"
+        jq -e 'all(.[]; .current == .info.visibleSpace)' "$report/activation-$round-spaces.json" >/dev/null
+    done
+    "$mntl" --json debug timings > "$report/activation-timings.json"
+    jq -e --argjson pid "$textedit_pid" '[.activation_moves[] | select(.pid == $pid)] | length >= 10' "$report/activation-timings.json" >/dev/null
+    jq '{activation_moves, full_scans, full_scan_ms, recheck_requests, recheck_passes}' "$report/activation-timings.json"
+    echo 'Activation samples captured; cleaning up test documents.'
+    exit 0
+fi
 
 if [ "$display_test" = 1 ]; then
     # shellcheck source=scripts/smoke-displays.sh
