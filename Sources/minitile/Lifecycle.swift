@@ -62,6 +62,7 @@ extension AppDelegate {
             MainActor.assumeIsolated {
                 guard let self, !self.quitting else { return }
                 self.keyboard?.checkHealth()
+                self.checkSwitcherModifiers()
                 self.swipes?.checkHealth()
                 self.warnings["secure-input"] = csl_secure_input_enabled() ? "Secure input is blocking keyboard shortcuts" : nil
                 self.warnings["keyboard"] = self.keyboard?.unavailable == true ? "Keyboard tap unavailable; check Accessibility and restart" : nil
@@ -127,6 +128,7 @@ extension AppDelegate {
         discovery?.frozen = !suspendedReasons.isEmpty
         if shouldResume { resume() }
         else if wasSuspended != !suspendedReasons.isEmpty { updateSwipes() }
+        updateSwitcherAvailability()
     }
 
     func resume() {

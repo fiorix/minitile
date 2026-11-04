@@ -33,7 +33,17 @@ enum CycleKey {
     }
 }
 
-enum KeyDecision: Equatable, Sendable { case pass, swallow, command([String]) }
+enum SwitcherKey: Equatable, Sendable {
+    /// `held` are the opening binding's modifiers other than Shift; releasing one commits. Empty keeps it open.
+    case open(forward: Bool, held: Modifiers)
+    case step(forward: Bool)
+    case move(SwitcherDirection)
+    case commit
+    case cancel
+}
+
+/// A switcher decision carries the session it belongs to, so the main thread can drop ones for a closed switcher.
+enum KeyDecision: Equatable, Sendable { case pass, swallow, command([String]), switcher(SwitcherKey, session: Int) }
 
 struct KeyTrace: Sendable {
     var time: TimeInterval
@@ -54,11 +64,22 @@ struct KeyTraceFilter {
 }
 
 struct KeyRouter {
+    struct OpenSwitcher: Equatable {
+        var session: Int
+        var held: Modifiers
+    }
+
     var bindings: [Chord: [String]] = [:]
     var names: [UInt16: String] = [:]
     var blocked: Set<NativeChord> = []
     var dragged: WindowID?
     var frontmostManaged = true
+    /// Started and not suspended. Otherwise the switcher's bindings pass, so Cmd+Tab reaches macOS.
+    var switcherAvailable = false {
+        didSet { if !switcherAvailable { switcher = nil } }
+    }
+    private(set) var switcher: OpenSwitcher?
+    private var sessions = 0
     private var swallowed: Set<UInt16> = []
 
     static func modifiers(_ flags: CGEventFlags) -> Modifiers {
@@ -74,6 +95,12 @@ struct KeyRouter {
 
     mutating func key(_ code: UInt16, modifiers: Modifiers, down: Bool, autorepeat: Bool = false) -> KeyDecision {
         if !down { return swallowed.remove(code) != nil ? .swallow : .pass }
+        // The open switcher takes its keys whatever the modifiers, repeats included.
+        if let open = switcher, let key = Self.switcherKey(names[code], shift: modifiers.contains(.shift)) {
+            swallowed.insert(code)
+            if key == .commit || key == .cancel { switcher = nil }
+            return .switcher(key, session: open.session)
+        }
         if autorepeat, swallowed.contains(code) { return .swallow }
         if !autorepeat { swallowed.remove(code) }
         // In apps minitile does not manage, the window-cycling key keeps its native meaning.
@@ -88,6 +115,10 @@ struct KeyRouter {
             }
         }
         command = command ?? chord.flatMap { bindings[$0] }
+        if let argv = command, argv.count == 2, argv[0] == "switcher", argv[1] == "next" || argv[1] == "prev" {
+            if switcherAvailable { return switcherBinding(code, forward: argv[1] == "next", held: modifiers.subtracting(.shift), autorepeat: autorepeat) }
+            command = nil
+        }
         if let command, !command.isEmpty {
             swallowed.insert(code)
             return autorepeat ? .swallow : .command(command)
@@ -96,6 +127,50 @@ struct KeyRouter {
             swallowed.insert(code); return .swallow
         }
         return .pass
+    }
+
+    /// A switcher opened by a binding commits once one of the binding's modifiers other than Shift is released.
+    /// Modifier changes themselves always pass.
+    mutating func flags(_ modifiers: Modifiers) -> KeyDecision {
+        guard let open = switcher, !open.held.isEmpty, !modifiers.isSuperset(of: open.held) else { return .pass }
+        switcher = nil
+        return .switcher(.commit, session: open.session)
+    }
+
+    /// The main thread opened the switcher without a key, as `mntl switcher next` does; it stays open until closed.
+    mutating func openSwitcher() -> Int {
+        sessions += 1
+        switcher = OpenSwitcher(session: sessions, held: [])
+        return sessions
+    }
+
+    /// The main thread closed the switcher. A newer session a key opened meanwhile stays open.
+    mutating func closeSwitcher(_ session: Int) {
+        if switcher?.session == session { switcher = nil }
+    }
+
+    /// A bound `switcher next|prev` opens the switcher, or steps it when it is already open. Repeats of a press that
+    /// did not open it never do.
+    private mutating func switcherBinding(_ code: UInt16, forward: Bool, held: Modifiers, autorepeat: Bool) -> KeyDecision {
+        swallowed.insert(code)
+        if let open = switcher { return .switcher(.step(forward: forward), session: open.session) }
+        if autorepeat { return .swallow }
+        sessions += 1
+        switcher = OpenSwitcher(session: sessions, held: held)
+        return .switcher(.open(forward: forward, held: held), session: sessions)
+    }
+
+    private static func switcherKey(_ name: String?, shift: Bool) -> SwitcherKey? {
+        switch name {
+        case "tab": .step(forward: !shift)
+        case "left": .move(.left)
+        case "right": .move(.right)
+        case "up": .move(.up)
+        case "down": .move(.down)
+        case "return": .commit
+        case "escape": .cancel
+        default: nil
+        }
     }
 }
 
@@ -138,6 +213,18 @@ final class KeyboardTap: @unchecked Sendable {
     func drag(_ id: WindowID?) { lock.withLock { router.dragged = id } }
 
     func frontmost(managed: Bool) { lock.withLock { router.frontmostManaged = managed } }
+
+    func switcher(available: Bool) { lock.withLock { router.switcherAvailable = available } }
+
+    func openSwitcher() -> Int { lock.withLock { router.openSwitcher() } }
+
+    func closeSwitcher(_ session: Int) { lock.withLock { router.closeSwitcher(session) } }
+
+    /// Catches a modifier release the tap missed, as while macOS had it disabled.
+    func checkSwitcherModifiers() -> KeyDecision {
+        let modifiers = KeyRouter.modifiers(CGEventSource.flagsState(.combinedSessionState))
+        return lock.withLock { router.flags(modifiers) }
+    }
 
     var unavailable: Bool { lock.withLock { failed } }
 
@@ -196,6 +283,11 @@ final class KeyboardTap: @unchecked Sendable {
             if let port = lock.withLock({ port }) { CGEvent.tapEnable(tap: port, enable: true) }
             return Unmanaged.passUnretained(event)
         }
+        if type == .flagsChanged {
+            let decision = lock.withLock { router.flags(KeyRouter.modifiers(event.flags)) }
+            if case .switcher = decision { DispatchQueue.main.async { [handle] in handle(decision, nil) } }
+            return Unmanaged.passUnretained(event)
+        }
         guard type == .keyDown || type == .keyUp else { return Unmanaged.passUnretained(event) }
         let code = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
         let down = type == .keyDown
@@ -209,7 +301,7 @@ final class KeyboardTap: @unchecked Sendable {
             return (decision, trace)
         }
         switch decision {
-        case .command:
+        case .command, .switcher:
             DispatchQueue.main.async { [handle] in handle(decision, trace) }
         case .pass, .swallow:
             if trace != nil { DispatchQueue.main.async { [handle] in handle(decision, trace) } }

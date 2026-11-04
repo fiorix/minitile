@@ -29,6 +29,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let paths = ShellPaths()
     let status = StatusMenu()
     let gridIndicator = GridIndicator()
+    let switcherPanel = SwitcherPanel()
+    lazy var windowSwitcher = WindowSwitcher(presenter: switcherPanel)
     let transitions = Transitions()
     var screenRecordingRequested = false
     var permissionTimer: Timer?
@@ -167,6 +169,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         keyboard.update(config: engine.config, displays: displays, dragged: nil)
         self.keyboard = keyboard
         updateFrontmost()
+        windowSwitcher.willShow = { [weak self] in self?.checkSwitcherModifiers() }
+        updateSwitcherAvailability()
         keyboard.start()
         updateSwipes()
         let watcher = ConfigWatcher(file: paths.config)
@@ -198,6 +202,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let snapshot = engine.savedState()
         gridIndicator.update(state: snapshot, config: engine.config)
+        if let closed = windowSwitcher.update(state: snapshot, config: engine.config) { keyboard?.closeSwitcher(closed) }
         let active = snapshot.activeDisplay ?? displays.infos.first(where: \.isPrimary)?.id
         let label = active.flatMap { reconciler?.scene.displays[$0]?.label } ?? "minitile"
         status.update(label: label, warnings: warnings.values.sorted(),
@@ -222,6 +227,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if discovery?.frozen == true, !readOnly {
             return Reply(ok: false, text: "Session inactive; window changes are suspended")
         }
+        if argv.first == "switcher" { return switcherCommand(argv) }
         return handle(.command(argv)) ?? Reply()
     }
 
@@ -336,6 +342,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func requestQuit() {
         guard !quitting else { return }
         quitting = true
+        updateSwitcherAvailability()
         keyboard?.stop()
         updateSwipes()
         // Let the background socket writer flush the quit reply before stopping it.
@@ -346,6 +353,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         quitting = true
         keyboard?.stop(); swipes?.stop(); server?.stop(); configWatcher?.stop(); discovery?.finishAdoption(restoreAll: true); discovery?.stop()
         gridIndicator.stop()
+        windowSwitcher.cancel()
+        switcherPanel.stop()
         transitions.stop()
         permissionTimer?.invalidate(); healthTimer?.invalidate(); dragTimer?.invalidate(); displayWork?.cancel(); activationFocusRead?.cancel()
         for (center, token) in observers { center.removeObserver(token) }
