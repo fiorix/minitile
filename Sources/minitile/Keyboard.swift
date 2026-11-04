@@ -44,8 +44,12 @@ struct KeyRouter {
         return result
     }
 
-    mutating func key(_ code: UInt16, modifiers: Modifiers, down: Bool) -> KeyDecision {
+    mutating func resetHeld() { swallowed.removeAll() }
+
+    mutating func key(_ code: UInt16, modifiers: Modifiers, down: Bool, autorepeat: Bool = false) -> KeyDecision {
         if !down { return swallowed.remove(code) != nil ? .swallow : .pass }
+        if autorepeat, swallowed.contains(code) { return .swallow }
+        if !autorepeat { swallowed.remove(code) }
         let chord = names[code].map { Chord(modifiers: modifiers, key: $0) }
         var command: [String]?
         if let dragged, modifiers == .ctrl, let name = names[code] {
@@ -56,8 +60,11 @@ struct KeyRouter {
             }
         }
         command = command ?? chord.flatMap { bindings[$0] }
-        if let command, !command.isEmpty { swallowed.insert(code); return .command(command) }
-        if blocked.contains(NativeChord(keycode: code, modifiers: modifiers)) || swallowed.contains(code) {
+        if let command, !command.isEmpty {
+            swallowed.insert(code)
+            return autorepeat ? .swallow : .command(command)
+        }
+        if blocked.contains(NativeChord(keycode: code, modifiers: modifiers)) {
             swallowed.insert(code); return .swallow
         }
         return .pass
@@ -136,12 +143,17 @@ final class KeyboardTap: @unchecked Sendable {
 
     func checkHealth() {
         guard let port = lock.withLock({ port }), !CGEvent.tapIsEnabled(tap: port) else { return }
+        resetHeld()
         CGEvent.tapEnable(tap: port, enable: true)
+    }
+
+    private func resetHeld() {
+        lock.withLock { router.resetHeld(); traceFilter = KeyTraceFilter() }
     }
 
     private func receive(_ type: CGEventType, _ event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            // Modifiers come from each event; no state can stick across a disabled tap.
+            resetHeld()
             if let port = lock.withLock({ port }) { CGEvent.tapEnable(tap: port, enable: true) }
             return Unmanaged.passUnretained(event)
         }
@@ -151,7 +163,8 @@ final class KeyboardTap: @unchecked Sendable {
         let flags = event.flags.rawValue
         let modifiers = KeyRouter.modifiers(event.flags)
         let (decision, trace): (KeyDecision, KeyTrace?) = lock.withLock {
-            let decision = router.key(code, modifiers: modifiers, down: down)
+            let decision = router.key(code, modifiers: modifiers, down: down,
+                                      autorepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0)
             let trace = traceEnabled && traceFilter.includes(code, modifiers: modifiers, down: down)
                 ? KeyTrace(time: ProcessInfo.processInfo.systemUptime, keycode: code, flags: flags, down: down) : nil
             return (decision, trace)
