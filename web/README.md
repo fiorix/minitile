@@ -1,6 +1,6 @@
 # minitile website
 
-A static consumer website using HTML, CSS, and browser JavaScript modules. It shares its wireframe geometry and brand assets with the project README. No framework, dependency installation, or build step is required.
+A static consumer website using HTML, CSS, and browser JavaScript modules. A single wireframe desktop tour pairs window movement with animated hands on a keyboard, trackpad, and mouse. No framework, dependency installation, or build step is required.
 
 ## Preview
 
@@ -17,9 +17,19 @@ Open `http://127.0.0.1:4173`. Set `PORT=4180` to use another port. The server bi
 npm test
 ```
 
-The tests verify that all illustrative layouts partition the available space without overlap, that geometry stays finite across viewport sizes, and that its motion loop closes. The hero tests also check horizontal page movement, vertical workspace movement, window conservation, retiling, and continuity between animation stages. Browser verification should cover narrow and wide screens, the hero's moving and static states, all window counts and layout variants, keyboard focus, download navigation, setup disclosure, reduced motion, manual pause, and JavaScript disabled.
+The tests verify layout partitions, valid scene states, window conservation, focus versus position swaps, page splitting and merging, resizing, four-finger swipe directions, layout cycling, animation continuity, reduced-motion frames, and fingertip positions on demonstrated keys. They also check the grid's exact projection of window positions and sizes, keycap zoom endpoints, and reversible scroll-dissolve progress. The original geometry tests still cover the shared README artwork. Browser verification should cover every chapter and action, narrow and wide screens, scene selection and wrapping, replay, manual stepping, keyboard focus, download navigation, setup disclosure, reduced motion, pause, offscreen suspension, scroll dissolution in both directions, and JavaScript disabled.
 
-The window preview is an illustration, not a native app recording or a second implementation of the window manager. Its controls change only the example on the page. It does not capture operating-system shortcut chords.
+The tour is an illustration, not a native app recording or a second implementation of the window manager. Its controls change only the example on the page. It does not capture operating-system shortcut chords.
+
+## Guided tour
+
+- `demo-scenes.mjs` contains four independently replayable chapters with explicit window states and timed actions. It also samples transitions and reuses `layouts.mjs` for tile geometry.
+- `demo-art.mjs` renders the SVG monitor, app windows, workspace map, keyboard, pointing devices, and wireframe hands in one coordinate system. The map uses the same animated window rectangles as the screen, including their aspect ratio, gaps, resize proportions, and drag positions. Active keys zoom from their wireframe positions to larger Mac-style keycaps beside the screen, with symbols and modifier names. Hands reach the highlighted keycaps; trackpad actions show four fingertips and matching swipe trails.
+- `main.mjs` owns playback and accessible controls. The tour pauses outside the viewport and in hidden tabs. Reduced motion starts paused and shows settled states; Next action steps through them without interpolation. Keyboard focus on scene controls pauses autoplay.
+- `demo-scroll.mjs` ties the dissolve to scroll position: the hands and input devices fade and soften as the shortcut table appears in their place. Scrolling back restores the devices. Reduced motion and JavaScript-disabled pages keep the illustration and table in ordinary document flow. The shortcut table directly follows the demo; supporting feature copy comes afterward.
+- `assets/demo.svg` is a standalone snapshot of the opening illustration, used before JavaScript loads and when it is disabled. After changing the illustration, refresh this snapshot from the opening, paused SVG with its illustration styles embedded.
+
+The four chapters teach navigation with Control+arrows and four-finger swipes, focus cycling and slot swaps, window moves and layout cycling, and resizing. Control+Option+Space cycles layouts, matching Control+Option+arrows for resizing. The move chapter shows both split and merge behavior. Cmd+Tab, Cmd+H, and mouse swaps appear as supporting explanations. Chapter selection resets the example to that chapter's starting state; every chapter uses the same pre-populated grid.
 
 ## Publication
 

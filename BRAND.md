@@ -21,9 +21,9 @@ Use the system sans-serif stack for the website, with restrained weight and tigh
 
 ## Motion
 
-The hero's original wireframe scene runs on a sixteen-second loop. Pages run horizontally across two vertically stacked workspaces. One highlighted window moves across a page, down to the next workspace, and back around; surrounding windows retile as it moves. Labeled axes keep the product model clear in both moving and static versions. Keep motion behind the message, never across text. The website respects reduced-motion preferences, offers a pause control, stops canvas work outside the viewport or in a hidden tab, and retains a static SVG fallback when JavaScript or canvas is unavailable.
+The website uses one guided wireframe desktop, with a screen, keyboard, trackpad, mouse, and animated hands. Four selectable chapters teach navigation, focus and slot cycling, moves and layouts, and resizing. Keyboard navigation and four-finger swipes share one chapter; the examples use the same pre-populated grid. Cmd+Tab, Cmd+H, and mouse swaps have short supporting explanations. Keep the action readable: fingers reach the keys before windows move, enlarged Mac-style keycaps show the chord beside the screen, and captions explain each action. The grid map mirrors the screen's window geometry. As the visitor scrolls, the hands and input devices dissolve into the shortcut table; scrolling back restores them. The tour offers pause, replay, and manual stepping, stops outside the viewport or in a hidden tab, and starts paused with settled frames for reduced-motion preferences. Reduced motion omits the zoom and scroll dissolve. A static SVG provides the opening illustration without JavaScript.
 
-The README uses a looping GIF with a static PNG selected by `prefers-reduced-motion` where the Markdown host supports it. Hosts that strip the picture source may still play the GIF; keep its movement slow and avoid flashes. The static [welcome image](web/assets/welcome.png) is also available directly.
+The README retains the original sixteen-second wireframe grid loop: pages run horizontally across two vertically stacked workspaces, and one highlighted window moves between them while surrounding windows retile. It uses a looping GIF with a static PNG selected by `prefers-reduced-motion` where the Markdown host supports it. Hosts that strip the picture source may still play the GIF; keep its movement slow and avoid flashes. The static [welcome image](web/assets/welcome.png) is also available directly.
 
 ## Assets
 
@@ -31,13 +31,14 @@ The README uses a looping GIF with a static PNG selected by `prefers-reduced-mot
 | --- | --- |
 | `web/assets/mark.svg` | Standalone mark and favicon |
 | `web/assets/wordmark.svg` | Horizontal mark and name |
-| `web/assets/wireframe.svg` | Static hero geometry |
+| `web/assets/demo.svg` | Static fallback for the website's guided desktop tour |
+| `web/assets/wireframe.svg` | Original static grid geometry |
 | `web/assets/welcome.svg` | Scalable welcome composition |
 | `web/assets/welcome.png` | Static welcome image |
 | `web/assets/welcome.gif` | Animated README welcome image |
 | `web/assets/download.svg` | README download placeholder |
 
-The website and exported assets share geometry from `web/geometry.mjs`. Regenerate the SVGs with Node:
+The tour uses `web/demo-scenes.mjs` and `web/demo-art.mjs`, sharing tile layouts from `web/layouts.mjs`. The original grid and README assets use `web/geometry.mjs`. Regenerate those original SVGs with Node:
 
 ```sh
 node scripts/branding/generate.mjs

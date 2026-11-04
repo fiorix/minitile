@@ -13,7 +13,7 @@ private func entry(_ keys: String, _ text: String) -> HelpContent.Entry { HelpCo
     #expect(HelpKeys.text(Chord(modifiers: [.cmd, .shift, .alt, .ctrl], key: "left")) == ctrl + option + shift + command + leftArrow)
     #expect(HelpKeys.text(Chord(modifiers: .cmd, key: "`")) == command + "`")
     #expect(HelpKeys.text(Chord(modifiers: [.shift, .cmd], key: "tab")) == shift + command + "Tab")
-    #expect(HelpKeys.text(Chord(modifiers: [.ctrl, .shift], key: "space")) == ctrl + shift + "Space")
+    #expect(HelpKeys.text(Chord(modifiers: [.ctrl, .alt], key: "space")) == ctrl + option + "Space")
     #expect(HelpKeys.text(Chord(modifiers: .cmd, key: "h")) == command + "H")
     #expect(HelpKeys.text(Chord(key: "f12")) == "F12")
     #expect(HelpKeys.text(Chord(modifiers: .alt, key: "1")) == option + "1")
@@ -32,7 +32,7 @@ private func entry(_ keys: String, _ text: String) -> HelpContent.Entry { HelpCo
         entry(option + command + "`", "Swap with next slot"), entry(option + shift + command + "`", "Swap with previous slot"),
     ])
     #expect(content.sections[2].entries == [
-        entry(ctrl + shift + "Space", "Cycle page layout"), entry(ctrl + option + leftArrow, "Resize window left"),
+        entry(ctrl + option + "Space", "Cycle page layout"), entry(ctrl + option + leftArrow, "Resize window left"),
         entry(ctrl + option + rightArrow, "Resize window right"), entry(ctrl + option + upArrow, "Resize window up"),
         entry(ctrl + option + downArrow, "Resize window down"),
     ])

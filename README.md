@@ -54,7 +54,7 @@ The script creates `build/Minitile.app` and `build/mntl`. It signs the app using
 3. Launch minitile and grant Accessibility permission when prompted. Allow Screen Recording for page transitions, or set `transition_ms = 0` to turn transitions off.
 4. Open a few windows. Use Control+Left/Right for pages and Control+Up/Down for workspaces. Control+Down past the last workspace opens a new one. Hold Cmd+H to see every shortcut.
 
-minitile takes over the system shortcuts listed below while active, including Mission Control's Control+Up/Down, the native app switcher's Cmd+Tab, and Cmd+H, which hides apps in macOS. Apps can still be hidden from their app menu or the Dock. Mission Control remains available through its dedicated key or Dock. Quit minitile to return those keys to macOS. Windows on its stash desktop remain reachable through Mission Control after quitting.
+minitile takes over the system shortcuts listed below while active, including Mission Control's Control+Up/Down, Control+Option+Space for switching input sources, the native app switcher's Cmd+Tab, and Cmd+H, which hides apps in macOS. Apps can still be hidden from their app menu or the Dock. Mission Control remains available through its dedicated key or Dock. Quit minitile to return those keys to macOS. Windows on its stash desktop remain reachable through Mission Control after quitting.
 
 ## Shortcuts
 
@@ -65,7 +65,7 @@ minitile takes over the system shortcuts listed below while active, including Mi
 | Control + Shift + Left / Right | Nudge the focused window to another page |
 | Control + Shift + Up / Down | Carry the focused window to another workspace |
 | Control + Option + arrows | Resize the focused window |
-| Control + Shift + Space | Cycle the page's layouts |
+| Control + Option + Space | Cycle the page's layouts |
 | Cmd + Tab / Cmd + Shift + Tab | Switch windows: a ring across the grid from the top-left; hold Cmd to see the switcher |
 | Cmd + backtick / Cmd + Shift + backtick | Cycle windows on the current page |
 | Cmd + Option + backtick / Cmd + Option + Shift + backtick | Swap the focused window with the next / previous slot on its page |

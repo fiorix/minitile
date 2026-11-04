@@ -92,7 +92,7 @@ When a key binding moves or resizes the focused window (Ctrl+Shift+arrows to nud
 - A move or resize from `mntl` or the menu, with no modifier held, shows it for about 1 s.
 - It ends early when the window closes, is minimized or hidden, or loses focus to another window, on suspension and on quit. Mouse drags never show it, including Ctrl+arrow while dragging, since the pointer already holds the window.
 
-Commands: `window nudge [ID] left|right`, `window move [ID] left|right|up|down`, `window move [ID] workspace prev|next` and `window resize [ID] left|right|up|down` grab; other moves (`window move ... page|display`, `swap`, `place`) and resizes by share or size do not. A grabbing command acts on its window ID, or on the window focused before it ran. One that fails leaves the grab as it is. One that succeeds without changing the model (a nudge toward the edge from the first or last page, a carry above the first workspace, a resize with no cut to move or already at its limit) starts no grab and leaves a grab of another window alone; on the grabbed window it counts like any other grabbing command. Commands that do not grab leave the grab alone, so after Ctrl+Shift+Space the outline follows the held window to its new tile. A grabbing command on the window being dragged never grabs, and a drag that begins ends the grab.
+Commands: `window nudge [ID] left|right`, `window move [ID] left|right|up|down`, `window move [ID] workspace prev|next` and `window resize [ID] left|right|up|down` grab; other moves (`window move ... page|display`, `swap`, `place`) and resizes by share or size do not. A grabbing command acts on its window ID, or on the window focused before it ran. One that fails leaves the grab as it is. One that succeeds without changing the model (a nudge toward the edge from the first or last page, a carry above the first workspace, a resize with no cut to move or already at its limit) starts no grab and leaves a grab of another window alone; on the grabbed window it counts like any other grabbing command. Commands that do not grab leave the grab alone, so after Ctrl+Option+Space the outline follows the held window to its new tile. A grabbing command on the window being dragged never grabs, and a drag that begins ends the grab.
 
 Lifetime: the keyboard tap's router opens a grab session when a grabbing binding with modifiers fires and remembers all of its modifiers, Shift included; a flags-changed event without one of them ends the session. Further grabbing presses with the same modifiers, and the key repeats of a directional resize, continue the session. A binding's command carries its session to the main thread, and a release ends the grab only if the grab still belongs to that session. Every second the shell rereads the modifier state (`CGEventSource.flagsState`) and ends a held grab whose session the router no longer holds, so a release the tap missed still ends it. A grabbing binding without modifiers, `mntl` and the menu start a timed grab, which ends 1 s after its last grabbing command; such a command on a window a binding holds leaves it held. A grab also ends when its window leaves the model, is minimized, app-hidden or explicitly hidden, or when the model's focus moves from what it was at the last grabbing command to a window other than the grabbed one, or to none. A grab of a window that did not have focus, as `mntl window resize ID left` makes, lasts while focus stays put or moves to the grabbed window. The window switcher does not end a grab, though committing it usually moves focus, which does.
 
@@ -161,7 +161,7 @@ The mechanism and its measurements are under "Transition mechanism".
 
 ### Layout
 
-Each page holds an ordered list of windows, its slots. The layout is a fixed function of the window count and the page's variant. Ctrl+Shift+Space (`mntl page variant`) cycles a page through its count's layouts in this order:
+Each page holds an ordered list of windows, its slots. The layout is a fixed function of the window count and the page's variant. Ctrl+Option+Space (`mntl page variant`) cycles a page through its count's layouts in this order:
 
 | Windows | Layouts, in cycling order |
 |---|---|
@@ -236,7 +236,7 @@ Default bindings:
 | Cmd+Option+\` / Cmd+Option+Shift+\` | Swap the focused window with the window in the next or previous slot on its page, wrapping around; focus stays with it. With two windows this swaps them. | Nothing by default |
 | Cmd+H | Show the help screen while Cmd is held (see "Help screen"). | Hide the frontmost app |
 | Cmd+Option+H | Nothing: swallowed so other apps are not hidden. | Hide other apps |
-| Ctrl+Shift+Space | Cycle the shown page through its window count's layouts (see Layout). | Nothing by default; Ctrl+Space and Ctrl+Option+Space switch input sources |
+| Ctrl+Option+Space | Cycle the shown page through its window count's layouts (see Layout). | Switch input sources |
 | Ctrl+Option+arrows | Resize the focused window: the divider on that side moves the way the arrow points (see Layout). | Nothing by default; VoiceOver uses Ctrl+Option as its modifier |
 | Cmd+Tab / Cmd+Shift+Tab | Open the window switcher and step through windows (see "Window switcher"). | App switcher |
 | Ctrl+Shift+Left/Right | Nudge the focused window. If it shares its page, it moves onto a new page of its own on that side. If it is alone, it joins the neighbouring page; if that page is full, it joins the next page with room in the same direction, or a new page at that end of the workspace. Focus follows. | Select to line start or end in text fields, which Cmd+Shift+arrows also does |
@@ -658,7 +658,7 @@ trackpad_swipes = true  # swipes navigate pages and workspaces; false leaves the
 "ctrl+shift+down" = "window move workspace next"
 "cmd+`" = "window focus next"
 "cmd+shift+`" = "window focus prev"
-"ctrl+shift+space" = "page variant"
+"ctrl+alt+space" = "page variant"
 "cmd+tab" = "switcher next"
 "cmd+shift+tab" = "switcher prev"
 "ctrl+alt+left" = "window resize left"

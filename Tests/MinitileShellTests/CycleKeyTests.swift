@@ -2,6 +2,16 @@ import MinitileCore
 import Testing
 @testable import minitile
 
+@Test func layoutCycleUsesControlOptionAndFiresOncePerPress() {
+    var router = KeyRouter(bindings: Config.defaultBindings, names: [49: "space"])
+    #expect(router.key(49, modifiers: [.ctrl, .alt], down: true) == .command(["page", "variant"]))
+    #expect(router.key(49, modifiers: [.ctrl, .alt], down: true, autorepeat: true) == .swallow)
+    #expect(router.key(49, modifiers: [.ctrl, .alt], down: false) == .swallow)
+    #expect(router.key(49, modifiers: [.ctrl, .shift], down: true) == .pass)
+    #expect(router.key(49, modifiers: [.ctrl, .shift], down: false) == .pass)
+    #expect(router.key(49, modifiers: [.ctrl, .alt], down: true) == .command(["page", "variant"]))
+}
+
 @Test func cycleKeyFollowsTheNativeShortcutAndFallsBackToKeycode50() {
     #expect(CycleKey.named([:], hotkey: 10) == [10: "`"])
     #expect(CycleKey.named([:], hotkey: nil) == [50: "`"])

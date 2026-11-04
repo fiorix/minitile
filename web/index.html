@@ -41,62 +41,251 @@
       </header>
       <main id="main">
         <section class="hero" aria-labelledby="hero-title">
-          <div class="hero-copy">
-            <p class="eyebrow">
-              <span class="status-dot"></span> SMALL BY DESIGN. NATIVE BY
-              NATURE.
-            </p>
-            <h1 id="hero-title">
-              A little order.<br /><span>A lot of space.</span>
-            </h1>
-            <p class="hero-description">
-              A minimal tiling window manager for macOS.<br />Your windows, in
-              place. Your habits, intact.
-            </p>
-            <div class="hero-actions">
+          <div class="hero-intro">
+            <div>
+              <p class="eyebrow">
+                <span class="status-dot"></span> SMALL BY DESIGN. NATIVE BY
+                NATURE.
+              </p>
+              <h1 id="hero-title">
+                A little order.<br /><span>A lot of space.</span>
+              </h1>
+            </div>
+            <div class="hero-copy">
+              <p class="hero-description">
+                A minimal tiling window manager for macOS.<br />Your windows, in
+                place. Your habits, intact.
+              </p>
               <a class="button primary" href="#download"
                 >Get minitile for macOS
                 <span aria-hidden="true">&#8595;</span></a
-              ><a class="text-link" href="#overview"
-                >See it in motion <span aria-hidden="true">&#8599;</span></a
+              >
+              <p class="platform-note">
+                Free &amp; open source <span>/</span> macOS 26+
+                <span>/</span> In development
+              </p>
+            </div>
+          </div>
+          <section
+            class="guided-demo"
+            id="overview"
+            aria-label="See minitile in action"
+            aria-roledescription="carousel"
+          >
+            <div class="demo-topline">
+              <span><i></i> A LITTLE TOUR OF YOUR NEXT WORKSPACE</span
+              ><span>WATCH THE HANDS. FOLLOW THE WINDOWS.</span>
+            </div>
+            <div
+              class="demo-scene"
+              id="demo-scene"
+              role="group"
+              aria-roledescription="slide"
+              aria-labelledby="scene-title"
+            >
+              <span class="scene-counter" aria-label="Scene">01 / 04</span>
+              <div class="scene-copy">
+                <h2 class="scene-title" id="scene-title">
+                  Move across pages and workspaces.
+                </h2>
+                <p class="scene-description">
+                  Control + arrows, or four-finger swipes. Pages run across;
+                  workspaces run up and down. Each page holds up to four tiled
+                  windows.
+                </p>
+              </div>
+              <div
+                class="demo-controls"
+                role="group"
+                aria-label="Tour playback"
+                hidden
+              >
+                <div class="playback-buttons">
+                  <button type="button" data-prev aria-label="Previous scene">
+                    &#8592;</button
+                  ><button
+                    type="button"
+                    data-play
+                    aria-label="Pause tour"
+                    aria-pressed="true"
+                  >
+                    Pause</button
+                  ><button type="button" data-next aria-label="Next scene">
+                    &#8594;
+                  </button>
+                </div>
+                <div class="step-buttons">
+                  <button type="button" data-replay>Replay</button
+                  ><button type="button" data-step>
+                    Next action <span aria-hidden="true">&#8618;</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <nav class="demo-chapters" aria-label="Tour scenes" hidden></nav>
+            <div class="demo-action" hidden>
+              <div class="action-chord" aria-hidden="true"></div>
+              <p class="action-caption">
+                Pages across. Workspaces down. Your windows are already in
+                place.
+              </p>
+              <span class="action-count" aria-label="Action within scene"
+                >1 / 7</span
               >
             </div>
-            <p class="platform-note">
-              Free &amp; open source <span aria-hidden="true">/</span> macOS 26+
-              <span aria-hidden="true">/</span> In development
+            <div class="scene-progress-track" hidden>
+              <div class="scene-progress"></div>
+            </div>
+            <p class="demo-disclaimer">
+              An illustrated walkthrough. Your apps keep their own appearance.
+            </p>
+            <noscript
+              ><p class="no-script-note">
+                Enable JavaScript to play the guided tour. Explore the shortcuts
+                below for the keyboard, mouse, and trackpad controls.
+              </p></noscript
+            >
+            <div class="demo-stage">
+              <img
+                src="./assets/demo.svg"
+                width="1120"
+                height="704"
+                alt="A wireframe Mac with three tiled windows, a keyboard, trackpad, mouse, and hands ready to navigate."
+              />
+            </div>
+          </section>
+        </section>
+        <section
+          class="shortcuts section"
+          id="shortcuts"
+          aria-labelledby="shortcuts-title"
+        >
+          <div class="shortcut-copy">
+            <p class="eyebrow"><span>02 /</span> ALREADY IN YOUR FINGERS</p>
+            <h2 id="shortcuts-title">
+              New flow.<br /><span>Familiar keys.</span>
+            </h2>
+            <p>
+              Built around the chords macOS already uses. Control and the arrow
+              keys take you through your space. Add Shift to bring a window
+              along.
+            </p>
+            <p class="muted">
+              No special modifier. No Caps Lock remap. Cmd+W still closes. Cmd+Q
+              still quits.
+            </p>
+            <div class="system-keys">
+              <h3>Which macOS shortcuts change?</h3>
+              <p>
+                Control+Left/Right navigates minitile pages instead of native
+                Spaces. Control+Up/Down navigates workspaces instead of opening
+                Mission Control or App Expose. Control+Option+Space cycles
+                layouts instead of switching input sources.
+              </p>
+              <p>
+                Cmd+Tab switches windows instead of apps. Cmd+Backtick cycles
+                all windows on the current page instead of just the current
+                app's windows. Cmd+H shows minitile's shortcuts instead of
+                hiding the app, and Cmd+Option+H does nothing.
+              </p>
+              <p>
+                Bindings are configurable. Unbind a chord to leave it with
+                macOS, or quit minitile to return these shortcuts to the system.
+              </p>
+            </div>
+          </div>
+          <div class="shortcut-table">
+            <div class="shortcut-row">
+              <span>Move between pages</span
+              ><span class="keys"
+                ><kbd>Control</kbd><kbd>Left / Right</kbd></span
+              >
+            </div>
+            <div class="shortcut-row">
+              <span>Move between workspaces</span
+              ><span class="keys"><kbd>Control</kbd><kbd>Up / Down</kbd></span>
+            </div>
+            <div class="shortcut-row">
+              <span
+                >Nudge a window to another page<small class="shortcut-detail"
+                  >A shared window gets its own page; a window on its own joins
+                  its neighbour.</small
+                ></span
+              ><span class="keys"
+                ><kbd>Control</kbd><kbd>Shift</kbd><kbd>Left / Right</kbd></span
+              >
+            </div>
+            <div class="shortcut-row">
+              <span>Carry a window to another workspace</span
+              ><span class="keys"
+                ><kbd>Control</kbd><kbd>Shift</kbd><kbd>Up / Down</kbd></span
+              >
+            </div>
+            <div class="shortcut-row">
+              <span>Resize a window</span
+              ><span class="keys"
+                ><kbd>Control</kbd><kbd>Option</kbd><kbd>Arrow keys</kbd></span
+              >
+            </div>
+            <div class="shortcut-row">
+              <span>Cycle layouts</span
+              ><span class="keys"
+                ><kbd>Control</kbd><kbd>Option</kbd><kbd>Space</kbd></span
+              >
+            </div>
+            <div class="shortcut-row">
+              <span
+                >Find a window anywhere<small class="shortcut-detail"
+                  >Hold Cmd, choose with Tab or arrows, then release to
+                  jump.</small
+                ></span
+              ><span class="keys"><kbd>Cmd</kbd><kbd>Tab</kbd></span>
+            </div>
+            <div class="shortcut-row">
+              <span>Cycle windows on this page</span
+              ><span class="keys"><kbd>Cmd</kbd><kbd>Backtick</kbd></span>
+            </div>
+            <div class="shortcut-row">
+              <span>Swap a window with its neighbour</span
+              ><span class="keys"
+                ><kbd>Cmd</kbd><kbd>Option</kbd><kbd>Backtick</kbd></span
+              >
+            </div>
+            <div class="shortcut-row">
+              <span
+                >Show every shortcut<small class="shortcut-detail"
+                  >Keep Cmd held to read them. Release it to close.</small
+                ></span
+              ><span class="keys"><kbd>Cmd</kbd><kbd>H</kbd></span>
+            </div>
+            <p class="shortcut-footnote">
+              The switcher runs across the grid from the top-left. Add Shift to
+              reverse Tab and Backtick. Backtick is the key marked ` on a US
+              keyboard. Control+Option is also VoiceOver's default modifier;
+              remap those bindings if you use VoiceOver.
             </p>
           </div>
-          <div
-            class="hero-art"
-            role="img"
-            aria-label="A grid of pages running horizontally across two vertically stacked workspaces. A highlighted window moves between pages and workspaces while the other windows retile."
-          >
-            <img
-              class="geometry-fallback"
-              src="./assets/wireframe.svg"
-              alt=""
-            />
-            <canvas id="hero-canvas" aria-hidden="true"></canvas>
-            <span class="art-coordinate coordinate-top"
-              >FIG. 01 &nbsp; / &nbsp; YOUR WORKSPACE GRID</span
-            >
-            <span class="art-coordinate coordinate-bottom"
-              >PAGES ACROSS. WORKSPACES DOWN.</span
-            >
-          </div>
-          <div class="hero-bottom">
-            <span><i></i> A quieter kind of window manager.</span
-            ><button
-              class="motion-toggle"
-              type="button"
-              aria-pressed="false"
-              hidden
-            >
-              <span class="motion-symbol" aria-hidden="true">&#8545;</span>
-              <span class="motion-label">Pause motion</span></button
-            ><a href="#overview" aria-label="Explore minitile"
-              ><span aria-hidden="true">&#8595;</span></a
-            >
+          <div class="gestures">
+            <div class="gestures-heading">
+              <p class="eyebrow">ALSO WORKS WITH THE MOUSE</p>
+              <h3>Grab a window. Or its edge.</h3>
+            </div>
+            <dl class="gesture-list">
+              <div>
+                <dt>Drag onto a tile to swap</dt>
+                <dd>
+                  Drag a window by its title bar and drop it onto another tile
+                  on the same page. The windows trade places.
+                </dd>
+              </div>
+              <div>
+                <dt>Drag a shared edge to resize</dt>
+                <dd>
+                  Move the divider between two windows. Drag a corner to adjust
+                  both dividers.
+                </dd>
+              </div>
+            </dl>
           </div>
         </section>
         <div class="benefits" aria-label="At a glance">
@@ -116,194 +305,9 @@
           >
         </div>
         <section
-          class="overview section"
-          id="overview"
-          aria-labelledby="overview-title"
+          class="features section"
+          aria-label="A little structure for your desktop"
         >
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow"><span>01 /</span> ROOM TO THINK</p>
-              <h2 id="overview-title">
-                Your space.<br /><span>Already arranged.</span>
-              </h2>
-            </div>
-            <p>
-              Open a window. It finds its place. Up to four tiles per page, with
-              more pages a shortcut away. Enough structure to stay focused.
-              Enough room to work your way.
-            </p>
-          </div>
-          <div class="demo-toolbar">
-            <div
-              class="window-count"
-              role="group"
-              aria-label="Number of windows in preview"
-            >
-              <span>WINDOWS</span
-              ><button
-                type="button"
-                data-count="1"
-                aria-pressed="false"
-                disabled
-              >
-                1</button
-              ><button
-                type="button"
-                data-count="2"
-                aria-pressed="false"
-                disabled
-              >
-                2</button
-              ><button
-                type="button"
-                data-count="3"
-                aria-pressed="true"
-                disabled
-              >
-                3</button
-              ><button
-                type="button"
-                data-count="4"
-                aria-pressed="false"
-                disabled
-              >
-                4
-              </button>
-            </div>
-            <button class="cycle-button" type="button" disabled>
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M20 9a8 8 0 0 0-14-3L3 9m0-6v6h6M4 15a8 8 0 0 0 14 3l3-3m0 6v-6h-6"
-                />
-              </svg>
-              Cycle layout
-              <span class="cycle-shortcut"
-                ><kbd>Control</kbd><kbd>Shift</kbd><kbd>Space</kbd></span
-              >
-            </button>
-          </div>
-          <div
-            class="desktop"
-            data-count="3"
-            data-variant="0"
-            aria-label="Illustrative preview of three tiled windows"
-          >
-            <div class="mac-menubar" aria-hidden="true">
-              <span class="mac-menu-left"
-                ><svg viewBox="0 0 20 20">
-                  <path
-                    d="M11 5c2-1 2-3 2-3s-3 0-3 3M15 11c-3-2-1-5-1-5s-2-2-4 0C5 3 2 8 5 13c1 2 2 4 4 2 3 2 4-1 6-4Z"
-                    fill="currentColor"
-                  /></svg
-                ><b>Finder</b><span>File</span><span>Edit</span><span>View</span
-                ><span>Go</span></span
-              ><span class="mac-menu-right"
-                ><img src="./assets/mark.svg" alt="" /> W1 : P1
-                <span class="wifi">&#9684;</span> Tue 9:41</span
-              >
-            </div>
-            <div class="desktop-field">
-              <div class="wallpaper-lines" aria-hidden="true"></div>
-              <div class="demo-window editor">
-                <div class="window-title">
-                  <span class="traffic-lights"><i></i><i></i><i></i></span
-                  ><span>Editor</span><span class="window-icon">&#9707;</span>
-                </div>
-                <div class="editor-tabs">
-                  <span><i></i> a-little-space.ts</span><span>M</span>
-                </div>
-                <div class="code-area" aria-hidden="true">
-                  <div class="line-numbers">
-                    1<br />2<br />3<br />4<br />5<br />6<br />7<br />8<br />9<br />10<br />11<br />12<br />13<br />14
-                  </div>
-                  <pre><span class="code-muted">// Make room for what matters.</span>
-
-<span class="code-purple">const</span> workspace = {
-  windows: <span class="code-string">'in their place'</span>,
-  distractions: <span class="code-orange">0</span>,
-  possibilities: <span class="code-string">'wide open'</span>,
-};
-
-<span class="code-purple">function</span> <span class="code-blue">findYourFlow</span>() {
-  <span class="code-purple">return</span> {
-    ...workspace,
-    focus: <span class="code-orange">true</span>,
-  };
-}</pre>
-                </div>
-                <div class="editor-status">
-                  <span>&#9095; main</span><span>TypeScript &nbsp; UTF-8</span>
-                </div>
-              </div>
-              <div class="demo-window notes">
-                <div class="window-title">
-                  <span class="traffic-lights"><i></i><i></i><i></i></span
-                  ><span>Notes</span><span class="window-icon">&#9707;</span>
-                </div>
-                <div class="notes-content">
-                  <span class="note-date">A little breathing room</span>
-                  <h3>Less arranging.<br />More doing.</h3>
-                  <p>Good tools make space for your ideas.</p>
-                  <div class="note-check">
-                    <span>&#10003;</span> Make something useful
-                  </div>
-                  <div class="note-check">
-                    <span>&#10003;</span> Keep it simple
-                  </div>
-                  <div class="note-check unchecked">
-                    <span></span> Get into the flow
-                  </div>
-                </div>
-              </div>
-              <div class="demo-window terminal">
-                <div class="window-title">
-                  <span class="traffic-lights"><i></i><i></i><i></i></span
-                  ><span>Terminal</span><span class="window-icon">&#9707;</span>
-                </div>
-                <div class="terminal-content">
-                  <p>
-                    <span class="code-string">~</span>
-                    <span class="code-muted">&#10095;</span> mntl page list
-                  </p>
-                  <p class="code-muted">Your workspace, a command away.</p>
-                  <p>
-                    <span class="code-string">~</span>
-                    <span class="code-muted">&#10095;</span>
-                    <span class="cursor"></span>
-                  </p>
-                </div>
-              </div>
-              <div class="demo-window browser-window" hidden>
-                <div class="window-title">
-                  <span class="traffic-lights"><i></i><i></i><i></i></span
-                  ><span>Browser</span><span class="window-icon">&#9707;</span>
-                </div>
-                <div class="browser-content">
-                  <div class="browser-address">Your next idea</div>
-                  <span class="browser-orbit" aria-hidden="true"></span>
-                  <p>A little room to explore.</p>
-                </div>
-              </div>
-            </div>
-            <div class="desktop-caption">
-              <span class="preview-status" aria-live="polite"
-                >3 windows / main + stack</span
-              ><span class="page-marker"><i></i><i></i><i></i></span
-              ><span>W1 / P1</span>
-            </div>
-          </div>
-          <div class="demo-caption">
-            <p>
-              Illustrative layout preview. Your apps keep their own appearance.
-            </p>
-            <p>Pick a window count. Find your arrangement.</p>
-          </div>
-          <noscript
-            ><p class="no-script-note">
-              Enable JavaScript to try the layout preview. The illustration
-              shows the default three-window layout.
-            </p></noscript
-          >
           <div class="feature-notes">
             <article>
               <span class="feature-number">01.</span>
@@ -332,164 +336,6 @@
           </div>
         </section>
         <section
-          class="shortcuts section"
-          id="shortcuts"
-          aria-labelledby="shortcuts-title"
-        >
-          <div class="shortcut-copy">
-            <p class="eyebrow"><span>02 /</span> ALREADY IN YOUR FINGERS</p>
-            <h2 id="shortcuts-title">
-              New flow.<br /><span>Familiar keys.</span>
-            </h2>
-            <p>
-              Built around the chords macOS already uses. Control and the arrow
-              keys take you through your space. Add Shift to bring a window
-              along.
-            </p>
-            <p class="muted">
-              No special modifier. No Caps Lock remap. Cmd+W still closes. Cmd+Q
-              still quits.
-            </p>
-            <div class="keyboard-art" aria-hidden="true">
-              <div class="keycap control-key">Control</div>
-              <div class="arrow-keys">
-                <div class="keycap up-key">Up</div>
-                <div class="keycap">Left</div>
-                <div class="keycap">Down</div>
-                <div class="keycap">Right</div>
-              </div>
-            </div>
-            <div class="system-keys">
-              <h3>Which macOS shortcuts change?</h3>
-              <p>
-                Control+Left/Right navigates minitile pages instead of native
-                Spaces. Control+Up/Down navigates workspaces instead of opening
-                Mission Control or App Expose.
-              </p>
-              <p>
-                Cmd+Tab switches windows instead of apps. Cmd+Backtick cycles
-                all windows on the current page instead of just the current
-                app's windows. Cmd+H shows minitile's shortcuts instead of
-                hiding the app, and Cmd+Option+H does nothing.
-              </p>
-              <p>
-                Bindings are configurable. Unbind a chord to leave it with
-                macOS, or quit minitile to return these shortcuts to the system.
-              </p>
-            </div>
-          </div>
-          <div class="shortcut-table">
-            <div class="shortcut-row">
-              <span>Move between pages</span
-              ><span class="keys"
-                ><kbd>Control</kbd><kbd>Left / Right</kbd></span
-              >
-            </div>
-            <div class="shortcut-row">
-              <span>Move between workspaces</span
-              ><span class="keys"><kbd>Control</kbd><kbd>Up / Down</kbd></span>
-            </div>
-            <div class="shortcut-row">
-              <span>Nudge a window to another page</span
-              ><span class="keys"
-                ><kbd>Control</kbd><kbd>Shift</kbd><kbd>Left / Right</kbd></span
-              >
-            </div>
-            <div class="shortcut-row">
-              <span>Carry a window to another workspace</span
-              ><span class="keys"
-                ><kbd>Control</kbd><kbd>Shift</kbd><kbd>Up / Down</kbd></span
-              >
-            </div>
-            <div class="shortcut-row">
-              <span>Resize a window</span
-              ><span class="keys"
-                ><kbd>Control</kbd><kbd>Option</kbd><kbd>Arrow keys</kbd></span
-              >
-            </div>
-            <div class="shortcut-row">
-              <span>Cycle layouts</span
-              ><span class="keys"
-                ><kbd>Control</kbd><kbd>Shift</kbd><kbd>Space</kbd></span
-              >
-            </div>
-            <div class="shortcut-row">
-              <span>Switch windows</span
-              ><span class="keys"><kbd>Cmd</kbd><kbd>Tab</kbd></span>
-            </div>
-            <div class="shortcut-row">
-              <span>Cycle windows on this page</span
-              ><span class="keys"><kbd>Cmd</kbd><kbd>Backtick</kbd></span>
-            </div>
-            <div class="shortcut-row">
-              <span>Swap a window with its neighbour</span
-              ><span class="keys"
-                ><kbd>Cmd</kbd><kbd>Option</kbd><kbd>Backtick</kbd></span
-              >
-            </div>
-            <div class="shortcut-row">
-              <span>Show every shortcut</span
-              ><span class="keys"><kbd>Cmd</kbd><kbd>H</kbd></span>
-            </div>
-            <p class="shortcut-footnote">
-              Hold Cmd while using the switcher; release it to focus your
-              selection. The switcher runs across the grid from the top-left.
-              Add Shift to reverse Tab and Backtick. Backtick is the key marked
-              ` on a US keyboard.
-              Control+Option is also VoiceOver's default modifier; remap those
-              bindings if you use VoiceOver.
-            </p>
-          </div>
-          <div class="gestures">
-            <div class="gestures-heading">
-              <p class="eyebrow">THE MOUSE BELONGS HERE, TOO</p>
-              <h3>Grab. Move. Make room.</h3>
-              <p>Use the same windows and edges you already reach for.</p>
-            </div>
-            <dl class="gesture-list">
-              <div>
-                <dt>Drag an edge to resize</dt>
-                <dd>
-                  Drag a tiled window's inner edge to adjust the shared divider.
-                  A corner can adjust both dividers.
-                </dd>
-              </div>
-              <div>
-                <dt>Drag onto a window to swap</dt>
-                <dd>
-                  Drop a tiled window onto another tile on the same page to swap
-                  their positions.
-                </dd>
-              </div>
-              <div>
-                <dt>Drop into a different layout</dt>
-                <dd>
-                  While dragging, a layout picker appears at the bottom of the
-                  display. Hover a tile to preview its position, then drop to
-                  place the window there.
-                </dd>
-              </div>
-              <div>
-                <dt>Hold a window and navigate</dt>
-                <dd>
-                  While dragging, press <kbd>Control</kbd> and an arrow key to
-                  move the window between pages or workspaces. The move finishes
-                  when you release the mouse.
-                </dd>
-              </div>
-              <div>
-                <dt>Swipe through your space</dt>
-                <dd>
-                  The three- or four-finger gesture you use for macOS desktop
-                  navigation moves through minitile's grid: horizontal swipes
-                  for pages, vertical swipes for workspaces. Turn this off in
-                  configuration to keep the system gestures.
-                </dd>
-              </div>
-            </dl>
-          </div>
-        </section>
-        <section
           class="open-source section"
           id="open-source"
           aria-labelledby="open-title"
@@ -515,31 +361,6 @@
               ><span>Scriptable with <code>mntl</code></span
               ><span>SIP stays enabled</span>
             </div>
-          </div>
-          <div class="open-art" aria-hidden="true">
-            <svg viewBox="0 0 340 260" fill="none">
-              <g stroke="#344256">
-                <path
-                  d="m170 20 140 80v80l-140 80L30 180v-80zM30 100l140 80 140-80M170 180v80"
-                />
-                <path
-                  d="m170 0 140 80-140 80L30 80zM170 40l105 60-105 60-105-60zM170 60l70 40-70 40-70-40z"
-                />
-                <path
-                  d="M100 60v80m70-120v160m70-120v80M30 140l140 80 140-80"
-                  stroke-dasharray="3 5"
-                />
-              </g>
-              <g class="open-art-tile" stroke="#c8ddf8">
-                <path
-                  d="m170 40 70 40-70 40-70-40z"
-                  fill="#c8ddf8"
-                  fill-opacity=".04"
-                />
-                <path d="M100 80v10l70 40 70-40V80M170 120v10" />
-              </g>
-              <circle cx="170" cy="180" r="3" fill="#c8ddf8" /></svg
-            ><span>LESS, WITH INTENTION.</span>
           </div>
         </section>
         <section
