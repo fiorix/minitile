@@ -164,12 +164,15 @@ extension Engine {
         if let id = best?.info.id, let at = positions[id] { show(at, focusWindow: false, output: &output) }
     }
 
+    /// Without an explicit `display`, navigation past the edge of the grid crosses to the display on that side.
     mutating func navigatePage(_ delta: Int, display: Int? = nil, output: inout Output) throws {
         guard let d = display ?? currentDisplay(), var at = currentLocation(display: d) else { throw CommandError("No managed display") }
         let pages = state.displays[d].workspaces[at.workspace].pages
-        if at.page + delta < 0 { return }
+        if at.page + delta < 0 || (at.page + delta >= pages.count && page(at).windows.isEmpty) {
+            if display == nil { cross(from: d, dx: delta, dy: 0, output: &output) }
+            return
+        }
         if at.page + delta >= pages.count {
-            guard delta > 0, !page(at).windows.isEmpty else { return }
             let created = PageState(id: nextSerial())
             state.displays[d].workspaces[at.workspace].pages.append(created)
         }
@@ -180,9 +183,13 @@ extension Engine {
     mutating func navigateWorkspace(_ delta: Int, display: Int? = nil, alwaysNew: Bool = false, output: inout Output) throws {
         guard let d = display ?? currentDisplay(), var at = currentLocation(display: d) else { throw CommandError("No managed display") }
         let workspaces = state.displays[d].workspaces
-        if at.workspace + delta < 0 { return }
+        let empty = !workspaces[at.workspace].pages.contains(where: { !$0.windows.isEmpty })
+        if !alwaysNew, at.workspace + delta < 0 || (at.workspace + delta >= workspaces.count && empty) {
+            if display == nil { cross(from: d, dx: 0, dy: delta, output: &output) }
+            return
+        }
         if alwaysNew || at.workspace + delta >= workspaces.count {
-            guard workspaces[at.workspace].pages.contains(where: { !$0.windows.isEmpty }) else { return }
+            guard !empty else { return }
             let workspace = newWorkspace(home: state.displays[d].info.id)
             state.displays[d].workspaces.append(workspace)
             at.workspace = state.displays[d].workspaces.count - 1
@@ -199,6 +206,30 @@ extension Engine {
             }
         }
         show(at, output: &output)
+    }
+
+    /// Crosses from display `d` to the display on the side a unit step (dx, dy) points to, if there is one. That
+    /// display becomes active and keeps its shown page, whose last focused window, or first, gets focus.
+    mutating func cross(from d: Int, dx: Int, dy: Int, output: inout Output) {
+        guard let e = neighbour(of: d, dx: dx, dy: dy), let at = currentLocation(display: e) else { return }
+        leave(d, output: &output)
+        show(at, output: &output)
+    }
+
+    /// A display that a crossing leaves showing an empty page shows the nearest page instead, and cleanup drops the
+    /// empty one: the page before it, else the page after it, else the page last viewed in the workspace above, else
+    /// the one below. Focus is left to the display crossed into, which must be shown after this.
+    mutating func leave(_ d: Int, output: inout Output) {
+        guard let at = currentLocation(display: d), page(at).windows.isEmpty else { return }
+        let workspaces = state.displays[d].workspaces
+        var target = at
+        if workspaces[at.workspace].pages.count > 1 {
+            target.page = at.page > 0 ? at.page - 1 : at.page + 1
+        } else if let w = [at.workspace - 1, at.workspace + 1].first(where: workspaces.indices.contains) {
+            target.workspace = w
+            target.page = workspaces[w].pages.firstIndex { $0.id == workspaces[w].currentPage } ?? 0
+        } else { return }
+        show(target, focusWindow: false, output: &output)
     }
 
     mutating func cleanup() {

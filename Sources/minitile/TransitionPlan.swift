@@ -41,9 +41,11 @@ enum TransitionPlan {
     }
 
     /// Per display: slide where the shown page or workspace changed, bounce where a navigation command on the
-    /// display it acts on changed nothing: the addressed display, else `context`.
-    static func plan(before: SavedState, after: SavedState, argv: [String], context: DisplayID?) -> [DisplayID: TransitionKind] {
-        let navigation = navigation(argv)
+    /// display it acts on changed nothing: the addressed display, else `context`. A navigation that `crossed` to
+    /// another display changed something, so nothing bounces.
+    static func plan(before: SavedState, after: SavedState, argv: [String], context: DisplayID?,
+                     crossed: Bool = false) -> [DisplayID: TransitionKind] {
+        let navigation = crossed ? nil : navigation(argv)
         let context = navigation?.display ?? context
         var result: [DisplayID: TransitionKind] = [:]
         for display in after.displays {
@@ -53,6 +55,16 @@ enum TransitionPlan {
             else if display.info.id == context, let navigation { result[display.info.id] = .bounce(navigation.direction) }
         }
         return result
+    }
+
+    /// The display a command crossed into past the edge of a grid. After a navigation without a display address,
+    /// the core's command display (`context` before, `contextAfter` after) is another one, which navigation within
+    /// a display never makes it; after a nudge or carry, the window it acted on (`window`) is on another display.
+    static func crossing(argv: [String], window: WindowID?, before: SavedState, after: SavedState,
+                         context: DisplayID?, contextAfter: DisplayID?) -> DisplayID? {
+        if let navigation = navigation(argv) { return navigation.display == nil && contextAfter != context ? contextAfter : nil }
+        guard let window, let to = after.windows[window]?.display, before.windows[window]?.display != to else { return nil }
+        return to
     }
 
     static func direction(before: DisplayState, after: DisplayState, from: ShownView, to: ShownView) -> TransitionDirection {

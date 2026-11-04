@@ -257,15 +257,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard started, !quitting else { return nil }
         if case .windowGone(let id) = input { reconciler?.forget(id); updateDragTracking() }
         var argv: [String]?
-        if case .command(let command) = input, transitions.enabled { argv = command }
+        if case .command(let command) = input { argv = command }
         let before = argv.map { _ in engine.savedState() }
         let context = argv.flatMap { _ in engine.commandDisplay }
         var grabbing: (argv: [String], focus: WindowID?)?
-        if case .command(let command) = input, GrabCommand.grabs(command) { grabbing = (command, engine.savedState().focus) }
+        if let argv, GrabCommand.grabs(argv) { grabbing = (argv, before?.focus) }
         let output = engine.handle(input)
+        let grab = grabbing.flatMap { GrabCommand(argv: $0.argv, focus: $0.focus, output: output) }
         // The pointer already holds a dragged window, so nothing grabs it, Ctrl+arrow during the drag included.
-        if let grabbing, let grab = GrabCommand(argv: grabbing.argv, focus: grabbing.focus, output: output),
-           grab.window != reconciler?.dragging {
+        if let grab, grab.window != reconciler?.dragging {
             grabHighlight.command(grab, session: session, focus: engine.savedState().focus)
         }
         if case .command = input, output.events.contains(where: { $0.type == "page_shown" }) {
@@ -273,7 +273,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         var plan: [DisplayID: TransitionKind] = [:]
         if let argv, let before, output.reply?.ok == true {
-            plan = TransitionPlan.plan(before: before, after: engine.savedState(), argv: argv, context: context)
+            let after = engine.savedState()
+            let crossed = TransitionPlan.crossing(argv: argv, window: grab?.window, before: before, after: after,
+                                                  context: context, contextAfter: engine.commandDisplay)
+            // A display crossed into usually keeps its shown page, which alone would not show the indicator there.
+            if let crossed { gridIndicator.show(on: crossed) }
+            plan = TransitionPlan.plan(before: before, after: after, argv: argv, context: context, crossed: crossed != nil)
         }
         let held = transitions.hold(output, plan: plan, before: before)
         if !held, discovery?.frozen != true { reconciler?.apply(output) }

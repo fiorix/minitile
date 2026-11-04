@@ -19,14 +19,20 @@ private func started(_ count: Int, displays: [DisplayInfo] = [primary], extra: [
     return engine
 }
 
-/// Run a command the way the shell does and return the transitions it plans.
-private func plan(_ engine: inout Engine, _ command: String) -> [DisplayID: TransitionKind] {
+/// Run a command the way the shell does and return the transitions it plans and the display it crossed into.
+private func run(_ engine: inout Engine, _ command: String) -> (plan: [DisplayID: TransitionKind], crossed: DisplayID?) {
     let argv = command.split(separator: " ").map(String.init)
     let before = engine.savedState(), context = engine.commandDisplay
     let output = engine.handle(.command(argv))
     #expect(output.reply?.ok == true, Comment(rawValue: output.reply?.text ?? "missing reply"))
-    return TransitionPlan.plan(before: before, after: engine.savedState(), argv: argv, context: context)
+    let after = engine.savedState()
+    let window = GrabCommand(argv: argv, focus: before.focus, output: output)?.window
+    let crossed = TransitionPlan.crossing(argv: argv, window: window, before: before, after: after,
+                                          context: context, contextAfter: engine.commandDisplay)
+    return (TransitionPlan.plan(before: before, after: after, argv: argv, context: context, crossed: crossed != nil), crossed)
 }
+
+private func plan(_ engine: inout Engine, _ command: String) -> [DisplayID: TransitionKind] { run(&engine, command).plan }
 
 private let right = TransitionKind.slide(TransitionDirection(dx: 1, dy: 0))
 private let left = TransitionKind.slide(TransitionDirection(dx: -1, dy: 0))
@@ -84,6 +90,35 @@ private let up = TransitionKind.slide(TransitionDirection(dx: 0, dy: -1))
     #expect(plan(&e, "workspace next display secondary") == ["secondary": down])
     #expect(plan(&e, "workspace next display secondary") == ["secondary": .bounce(TransitionDirection(dx: 0, dy: 1))])
     #expect(plan(&e, "page prev display primary") == ["primary": .bounce(TransitionDirection(dx: -1, dy: 0))])
+}
+
+@Test func crossingBouncesNowhereAndTheDisplayLeftBehindSlidesBack() {
+    var e = started(1, displays: [primary, secondary], extra: [info(9, display: "secondary")])
+    #expect(plan(&e, "page next") == ["primary": right])
+    // The empty page opened on primary goes, so primary slides back; secondary keeps its page.
+    #expect(run(&e, "page next") == (["primary": left], "secondary"))
+    #expect(e.commandDisplay == "secondary")
+    #expect(run(&e, "page prev") == ([:], "primary"))
+    // Nothing lies left of primary or above either display, so these bounce as before.
+    #expect(run(&e, "page prev") == (["primary": .bounce(TransitionDirection(dx: -1, dy: 0))], nil))
+    #expect(run(&e, "workspace prev") == (["primary": .bounce(TransitionDirection(dx: 0, dy: -1))], nil))
+    // A swipe names its display and never crosses.
+    #expect(run(&e, "page next display primary") == (["primary": right], nil))
+    #expect(run(&e, "page next display primary") == (["primary": .bounce(TransitionDirection(dx: 1, dy: 0))], nil))
+    #expect(e.commandDisplay == "primary")
+}
+
+@Test func nudgeAndCarryAcrossSlideOnlyWhereTheShownPageChanged() {
+    var e = started(2, displays: [primary, secondary], extra: [info(9, display: "secondary")])
+    #expect(run(&e, "window nudge right") == (["primary": right], nil))
+    // 1 is alone on the last page, so it goes to secondary's shown page, and primary slides back to the page before.
+    #expect(run(&e, "window nudge right") == (["primary": left], "secondary"))
+    #expect(e.savedState().windows[1]?.display == "secondary")
+    // 1 shares secondary's page with 9, so it gets its own page there, and then goes back left.
+    #expect(run(&e, "window nudge 1 left") == (["secondary": left], nil))
+    #expect(run(&e, "window nudge 1 left") == (["secondary": right], "primary"))
+    #expect(run(&e, "window resize 1 left").crossed == nil)
+    #expect(run(&e, "window focus 9").crossed == nil)
 }
 
 @Test func onlyNavigationCommandsCarryABounceAndAnAddress() {
@@ -177,7 +212,14 @@ private final class Harness {
         let before = argv.map { _ in engine.savedState() }
         let context = engine.commandDisplay
         let output = engine.handle(input)
-        let plan = argv.flatMap { argv in before.map { TransitionPlan.plan(before: $0, after: engine.savedState(), argv: argv, context: context) } } ?? [:]
+        var plan: [DisplayID: TransitionKind] = [:]
+        if let argv, let before {
+            let after = engine.savedState()
+            let window = GrabCommand(argv: argv, focus: before.focus, output: output)?.window
+            let crossed = TransitionPlan.crossing(argv: argv, window: window, before: before, after: after,
+                                                  context: context, contextAfter: engine.commandDisplay)
+            plan = TransitionPlan.plan(before: before, after: after, argv: argv, context: context, crossed: crossed != nil)
+        }
         return transitions.hold(output, plan: plan, before: before)
     }
 }

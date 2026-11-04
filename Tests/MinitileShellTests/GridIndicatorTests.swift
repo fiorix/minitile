@@ -22,6 +22,20 @@ import Testing
     #expect(!clock.visible(now: 14))
 }
 
+@Test func aCrossingShowsTheIndicatorAgainAtTheSamePosition() {
+    var clock = GridIndicatorTiming()
+    let none = clock.restart(now: 1)
+    #expect(!none && !clock.visible(now: 1))
+    _ = clock.update(GridPosition(workspace: 1, page: 2), now: 10)
+    #expect(!clock.visible(now: 12))
+    let restarted = clock.restart(now: 12)
+    #expect(restarted)
+    #expect(clock.visible(now: 13.49))
+    #expect(!clock.visible(now: 13.5))
+    let same = clock.update(GridPosition(workspace: 1, page: 2), now: 13)
+    #expect(!same && clock.visible(now: 13))
+}
+
 @Test func indicatorPositionUsesIdentityInsteadOfRenumberedIndicesOrCounts() {
     var display = DisplayState(info: DisplayInfo(id: "a", frame: .init(x: 0, y: 0, width: 1000, height: 800)),
                                workspaces: [WorkspaceState(id: 4, home: "a", pages: [PageState(id: 1), PageState(id: 2)], currentPage: 2)],

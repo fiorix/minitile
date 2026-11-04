@@ -73,4 +73,26 @@ extension Engine {
         }
         output.events.append(Event(type: "display_changed", data: (try? .encoding(infos)) ?? .null))
     }
+
+    /// The managed display on one side of display `d`, the side a unit step (dx, dy) points to: its facing edge lies
+    /// on `d`'s edge within 1 pt and the two edges overlap. The longest overlap wins, then the nearest centre. An
+    /// unmanaged display has no neighbours.
+    func neighbour(of d: Int, dx: Int, dy: Int) -> Int? {
+        guard state.displays[d].info.unmanagedReason == nil else { return nil }
+        let frame = state.displays[d].info.frame
+        var best: (display: Int, overlap: Double, distance: Double)?
+        for (e, display) in state.displays.enumerated() where e != d && display.info.unmanagedReason == nil {
+            let other = display.info.frame
+            let gap = dx > 0 ? other.x - frame.maxX : dx < 0 ? frame.x - other.maxX : dy > 0 ? other.y - frame.maxY : frame.y - other.maxY
+            let overlap = dx != 0 ? min(frame.maxY, other.maxY) - max(frame.y, other.y)
+                : min(frame.maxX, other.maxX) - max(frame.x, other.x)
+            guard abs(gap) <= 1, overlap > 0 else { continue }
+            let x = other.center.x - frame.center.x, y = other.center.y - frame.center.y
+            let distance = x * x + y * y
+            if best.map({ overlap > $0.overlap || (overlap == $0.overlap && distance < $0.distance) }) ?? true {
+                best = (e, overlap, distance)
+            }
+        }
+        return best?.display
+    }
 }
