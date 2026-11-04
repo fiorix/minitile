@@ -31,7 +31,7 @@ final class DropPickerPanels {
         guard let target else { self.preview?.orderOut(nil); return }
         let preview = self.preview ?? makePanel(level: Self.previewLevel, shadow: false, view: DropPreviewView(), styled: false)
         self.preview = preview
-        place(preview, Geometry.cocoaFrame(target, primaryHeight: height))
+        place(preview, DropPreviewView.frame(around: Geometry.cocoaFrame(target, primaryHeight: height)))
     }
 
     func hide() {
@@ -98,15 +98,23 @@ final class DropPickerView: NSView {
     }
 }
 
-/// An ice-blue outline of the frame the dragged window would get, over a faint fill, with a dark keyline outside it.
+/// A lit outline of the frame the dragged window would get, over a faint fill, with a dark keyline outside it.
 @MainActor
 final class DropPreviewView: NSView {
     static let radius: CGFloat = 10
 
+    /// The panel reaches past the window's frame so the outline's halo is not clipped.
+    static func frame(around target: NSRect) -> NSRect {
+        let reach = PanelStyle.preview.reach
+        return target.insetBy(dx: -reach, dy: -reach)
+    }
+
     override func draw(_ dirtyRect: NSRect) {
-        let keyline = PanelStyle.keyline
-        GridPainter.plate(bounds.insetBy(dx: keyline.width, dy: keyline.width), radius: Self.radius, fill: PanelStyle.previewFill,
+        let keyline = PanelStyle.keyline, reach = PanelStyle.preview.reach
+        let frame = bounds.insetBy(dx: reach, dy: reach)
+        GridPainter.plate(frame.insetBy(dx: keyline.width, dy: keyline.width), radius: Self.radius, fill: PanelStyle.previewFill,
                           stroke: PanelStyle.preview)
-        keyline.draw(inside: bounds, radius: Self.radius + keyline.width)
+        // Over the halo, so the outline keeps a dark edge over light windows.
+        keyline.draw(inside: frame, radius: Self.radius + keyline.width)
     }
 }

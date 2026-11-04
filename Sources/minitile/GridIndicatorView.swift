@@ -2,7 +2,7 @@ import AppKit
 import MinitileCore
 
 /// The sizes that differ between the position indicator, the window switcher and the drop picker, which draw the same
-/// miniatures. Lengths are in points; strokes are not part of them, so lines stay hairlines at any scale.
+/// miniatures. Lengths are in points; strokes and their glow are not part of them, so lines stay hairlines at any scale.
 struct GridMetrics: Equatable {
     /// Text, margins, labels and corner radii, relative to the drop picker's size.
     var scale: CGFloat = 1
@@ -230,7 +230,7 @@ struct GridPainter {
         let size = 9 * metrics.scale, font = PanelStyle.font(size: size, weight: .medium, monospaced: true)
         let line = NSRect(x: badge.minX, y: badge.midY + font.capHeight / 2 - font.ascender, width: badge.width,
                           height: font.ascender - font.descender)
-        Self.text(String(count), rect: line, size: size, weight: .medium, color: PanelStyle.secondary, alignment: .center, monospaced: true)
+        Self.text(String(count), rect: line, size: size, weight: .medium, color: PanelStyle.dim, alignment: .center, monospaced: true)
     }
 
     private func tray(_ floaters: [GridMiniature.Floater], cell: NSRect, selected: WindowID?) {
@@ -253,7 +253,7 @@ struct GridPainter {
             image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: fraction, respectFlipped: true,
                        hints: [.interpolation: NSNumber(value: NSImageInterpolation.high.rawValue)])
         } else {
-            PanelStyle.steel.opacity(0.5 * fraction).color.setFill()
+            PanelStyle.wire.opacity(0.5 * fraction).color.setFill()
             NSBezierPath(roundedRect: rect.insetBy(dx: 1, dy: 1), xRadius: 2, yRadius: 2).fill()
         }
     }
@@ -270,12 +270,12 @@ struct GridPainter {
     }
 
     static func label(_ string: String, rect: NSRect, size: CGFloat, current: Bool) {
-        text(string, rect: rect, size: size, weight: current ? .semibold : .regular, color: current ? PanelStyle.text : PanelStyle.secondary,
+        text(string, rect: rect, size: size, weight: current ? .semibold : .regular, color: current ? PanelStyle.ink : PanelStyle.dim,
              alignment: .center, monospaced: true)
     }
 
     /// `symbolTracking` adds room after each non-ASCII character, such as a chord's modifier symbols and arrows.
-    static func text(_ string: String, rect: NSRect, size: CGFloat, weight: NSFont.Weight = .regular, color: Paint = PanelStyle.text,
+    static func text(_ string: String, rect: NSRect, size: CGFloat, weight: NSFont.Weight = .regular, color: Paint = PanelStyle.ink,
                      alignment: NSTextAlignment = .left, wrap: Bool = false, monospaced: Bool = false, symbolTracking: CGFloat = 0) {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = alignment
@@ -319,20 +319,20 @@ final class GridIndicatorView: NSView {
         GridPainter.text(content.displayName, rect: NSRect(x: margin, y: 10 * s, width: width, height: 17 * s), size: 12 * s,
                          weight: .semibold)
         GridPainter.text(content.position, rect: NSRect(x: margin, y: 28 * s, width: width - 46 * s, height: 16 * s), size: 11 * s,
-                         color: PanelStyle.secondary, monospaced: true)
+                         color: PanelStyle.dim, monospaced: true)
         if content.active {
             GridPainter.text("Active", rect: NSRect(x: bounds.width - margin - 42 * s, y: 28 * s, width: 42 * s, height: 16 * s),
-                             size: 10 * s, color: PanelStyle.ice, alignment: .right, monospaced: true)
+                             size: 10 * s, color: PanelStyle.neon, alignment: .right, monospaced: true)
         }
         if let warning = content.warning {
             GridPainter.text(warning, rect: NSRect(x: margin, y: 52 * s, width: width, height: 52 * s), size: 11 * s,
-                             color: PanelStyle.secondary, wrap: true)
+                             color: PanelStyle.dim, wrap: true)
             return
         }
         GridPainter(area: content.area, metrics: geometry.metrics, icons: icons)
             .grid(content.pages, rows: content.rows, columns: content.columns, geometry: geometry, labeled: content.shown, current: content.shown)
         if content.cropped {
-            GridPainter.text("Grid cropped around current position", rect: geometry.footerRect, size: 9 * s, color: PanelStyle.secondary,
+            GridPainter.text("Grid cropped around current position", rect: geometry.footerRect, size: 9 * s, color: PanelStyle.dim,
                              monospaced: true)
         }
     }
