@@ -31,6 +31,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let gridIndicator = GridIndicator()
     let switcherPanel = SwitcherPanel()
     lazy var windowSwitcher = WindowSwitcher(presenter: switcherPanel)
+    let helpPanel = HelpPanel()
+    lazy var helpScreen = HelpScreen(presenter: helpPanel)
     let dropPanels = DropPickerPanels()
     let grabPanel = GrabPanel()
     lazy var grabHighlight = GrabHighlight(presenter: grabPanel)
@@ -177,8 +179,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         keyboard.update(config: engine.config, displays: displays, dragged: nil)
         self.keyboard = keyboard
         updateFrontmost()
-        windowSwitcher.willShow = { [weak self] in self?.checkSwitcherModifiers() }
-        updateSwitcherAvailability()
+        windowSwitcher.willShow = { [weak self] in self?.checkModalModifiers() }
+        helpScreen.expired = { [weak self] in self?.keyboard?.close($0) }
+        updateModalAvailability()
         keyboard.start()
         updateSwipes()
         let watcher = ConfigWatcher(file: paths.config)
@@ -204,14 +207,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func updateMenu() {
-        updateSwitcherAvailability()
+        updateModalAvailability()
         for key in warnings.keys where key.hasPrefix("display:") { warnings.removeValue(forKey: key) }
         for display in displays.infos {
             if let reason = display.unmanagedReason { warnings["display:\(display.id)"] = "\(display.id): \(reason)" }
         }
         let snapshot = engine.savedState()
         gridIndicator.update(state: snapshot, config: engine.config)
-        if let closed = windowSwitcher.update(state: snapshot, config: engine.config) { keyboard?.closeSwitcher(closed) }
+        if let closed = windowSwitcher.update(state: snapshot, config: engine.config) { keyboard?.close(closed) }
         updateGrab()
         let active = snapshot.activeDisplay ?? displays.infos.first(where: \.isPrimary)?.id
         let label = active.flatMap { reconciler?.scene.displays[$0]?.label } ?? "minitile"
@@ -234,7 +237,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if argv.first == "debug" { return debug(Array(argv.dropFirst())) }
         guard started, !quitting else { return Reply(ok: false, text: "minitile is starting or stopping") }
-        let readOnly = [["state"], ["help"], ["watch"]].contains(argv)
+        if argv == ["help", "show"] { return helpCommand() }
+        let readOnly = [["state"], ["help"], ["watch"], ["ignore"]].contains(argv)
             || (argv.count >= 2 && ["list", "info"].contains(argv[1]))
         if discovery?.frozen == true, !readOnly {
             return Reply(ok: false, text: "Session inactive; window changes are suspended")
@@ -362,7 +366,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !quitting else { return }
         quitting = true
         endGrab()
-        updateSwitcherAvailability()
+        updateModalAvailability()
         keyboard?.stop()
         updateSwipes()
         // Let the background socket writer flush the quit reply before stopping it.
@@ -375,6 +379,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         gridIndicator.stop()
         windowSwitcher.cancel()
         switcherPanel.stop()
+        helpScreen.close()
+        helpPanel.stop()
         dropPanels.stop()
         grabPanel.stop()
         transitions.stop()

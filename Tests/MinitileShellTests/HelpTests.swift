@@ -111,3 +111,234 @@ private func entry(_ keys: String, _ text: String) -> HelpContent.Entry { HelpCo
     #expect(moved[1].first == .header("B"))
     #expect(moved.allSatisfy { HelpLayout.height($0) <= 80 })
 }
+
+// MARK: - Key routing
+
+private let names: [UInt16: String] = [4: "h", 12: "q", 48: "tab", 53: "escape", 123: "left", 124: "right", 36: "return", 96: "f5"]
+private let h: UInt16 = 4, q: UInt16 = 12, tab: UInt16 = 48, escape: UInt16 = 53, left: UInt16 = 123, f5: UInt16 = 96
+
+private func makeRouter(_ bindings: [Chord: [String]] = Config.defaultBindings) -> KeyRouter {
+    var router = KeyRouter(bindings: bindings, names: names)
+    router.switcherAvailable = true
+    router.helpAvailable = true
+    return router
+}
+
+@Test func cmdHShowsHelpWhileCmdIsHeldAndItsRepeatsDoNotReopenIt() {
+    var router = makeRouter()
+    #expect(router.flags(.cmd) == .pass)
+    #expect(router.key(h, modifiers: .cmd, down: true) == .help(.open(held: .cmd), session: 1))
+    #expect(router.help == KeyRouter.OpenModal(kind: .help, session: 1, held: .cmd))
+    for _ in 0..<3 { #expect(router.key(h, modifiers: .cmd, down: true, autorepeat: true) == .swallow) }
+    #expect(router.help?.session == 1)
+    #expect(router.key(h, modifiers: .cmd, down: false) == .swallow)
+    #expect(router.flags([.cmd, .shift]) == .pass)
+    #expect(router.flags(.cmd) == .pass)
+    #expect(router.help?.session == 1)
+    #expect(router.flags([]) == .help(.close, session: 1))
+    #expect(router.help == nil)
+    #expect(router.flags([]) == .pass)
+    // Releasing Cmd before H closes it too, and the key-up stays swallowed.
+    #expect(router.key(h, modifiers: .cmd, down: true) == .help(.open(held: .cmd), session: 2))
+    #expect(router.flags(.shift) == .help(.close, session: 2))
+    #expect(router.key(h, modifiers: .shift, down: false) == .swallow)
+    #expect(router.key(h, modifiers: [], down: true) == .pass)
+}
+
+@Test func pressingTheHelpBindingAgainReopensItUnderANewSession() {
+    var router = makeRouter([Chord(modifiers: [.ctrl, .shift], key: "h"): ["help", "show"], Chord(key: "f5"): ["help", "show"]])
+    // Shift is not among the held modifiers.
+    #expect(router.key(h, modifiers: [.ctrl, .shift], down: true) == .help(.open(held: .ctrl), session: 1))
+    #expect(router.key(h, modifiers: [.ctrl, .shift], down: false) == .swallow)
+    #expect(router.flags(.ctrl) == .pass)
+    #expect(router.key(h, modifiers: [.ctrl, .shift], down: true) == .help(.open(held: .ctrl), session: 2))
+    #expect(router.key(h, modifiers: [.ctrl, .shift], down: false) == .swallow)
+    // A binding without modifiers opens a screen that only Esc or its timer closes.
+    #expect(router.key(f5, modifiers: [], down: true) == .help(.open(held: []), session: 3))
+    #expect(router.flags([]) == .pass)
+    #expect(router.key(f5, modifiers: [], down: false) == .swallow)
+    #expect(router.key(escape, modifiers: [], down: true) == .help(.close, session: 3))
+    #expect(router.key(escape, modifiers: [], down: false) == .swallow)
+    // A repeat whose press the tap did not see opens nothing.
+    var fresh = makeRouter()
+    #expect(fresh.key(h, modifiers: .cmd, down: true, autorepeat: true) == .swallow)
+    #expect(fresh.help == nil)
+}
+
+@Test func escClosesHelpAndEveryOtherKeyIsSwallowedWhileItIsOpen() {
+    var router = makeRouter()
+    #expect(router.key(h, modifiers: .cmd, down: true) == .help(.open(held: .cmd), session: 1))
+    let keys: [(UInt16, Modifiers)] = [(q, .cmd), (left, .ctrl), (tab, []), (left, []), (h, [.cmd, .alt])]
+    for (code, modifiers) in keys {
+        #expect(router.key(code, modifiers: modifiers, down: true) == .swallow)
+        #expect(router.key(code, modifiers: modifiers, down: true, autorepeat: true) == .swallow)
+        #expect(router.key(code, modifiers: modifiers, down: false) == .swallow)
+    }
+    #expect(router.key(escape, modifiers: .cmd, down: true) == .help(.close, session: 1))
+    #expect(router.help == nil)
+    #expect(router.key(escape, modifiers: .cmd, down: true, autorepeat: true) == .swallow)
+    #expect(router.key(escape, modifiers: .cmd, down: false) == .swallow)
+    #expect(router.flags([]) == .pass)
+    #expect(router.key(escape, modifiers: [], down: true) == .pass)
+    #expect(router.key(q, modifiers: .cmd, down: true) == .pass)
+    #expect(router.key(left, modifiers: .ctrl, down: true) == .command(["page", "prev"]))
+}
+
+@Test func ignoreBindingSwallowsItsChordLikeAnyOtherBinding() {
+    var router = makeRouter()
+    #expect(router.key(h, modifiers: [.cmd, .alt], down: true) == .command(["ignore"]))
+    #expect(router.key(h, modifiers: [.cmd, .alt], down: true, autorepeat: true) == .swallow)
+    #expect(router.key(h, modifiers: [.cmd, .alt], down: false) == .swallow)
+    #expect(router.key(h, modifiers: .alt, down: true) == .pass)
+    #expect(router.help == nil)
+}
+
+@Test func cmdHPassesToMacOSWhenHelpIsUnavailableOrUnbound() {
+    var router = makeRouter()
+    router.helpAvailable = false
+    #expect(router.key(h, modifiers: .cmd, down: true) == .pass)
+    #expect(router.key(h, modifiers: .cmd, down: true, autorepeat: true) == .pass)
+    #expect(router.key(h, modifiers: .cmd, down: false) == .pass)
+    router.helpAvailable = true
+    #expect(router.key(h, modifiers: .cmd, down: true) == .help(.open(held: .cmd), session: 1))
+    // Losing the switcher's availability leaves the help screen open; losing help's closes it.
+    router.switcherAvailable = false
+    #expect(router.help?.session == 1)
+    router.helpAvailable = false
+    #expect(router.help == nil)
+    #expect(router.key(h, modifiers: .cmd, down: false) == .swallow)
+    #expect(router.key(q, modifiers: .cmd, down: true) == .pass)
+    #expect(router.flags([]) == .pass)
+    var bindings = Config.defaultBindings
+    bindings[Chord(modifiers: .cmd, key: "h")] = nil
+    var unbound = makeRouter(bindings)
+    #expect(unbound.key(h, modifiers: .cmd, down: true) == .pass)
+}
+
+@Test func helpAndTheSwitcherReplaceEachOther() {
+    var router = makeRouter()
+    #expect(router.key(h, modifiers: .cmd, down: true) == .help(.open(held: .cmd), session: 1))
+    #expect(router.key(h, modifiers: .cmd, down: false) == .swallow)
+    #expect(router.key(tab, modifiers: .cmd, down: true) == .switcher(.open(forward: true, held: .cmd), session: 2))
+    #expect(router.help == nil)
+    #expect(router.switcher?.session == 2)
+    #expect(router.key(tab, modifiers: .cmd, down: false) == .swallow)
+    #expect(router.key(h, modifiers: .cmd, down: true) == .help(.open(held: .cmd), session: 3))
+    #expect(router.switcher == nil)
+    #expect(router.key(h, modifiers: .cmd, down: false) == .swallow)
+    // The switcher's keys no longer go to it, and the release closes the help screen without committing.
+    #expect(router.key(left, modifiers: .cmd, down: true) == .swallow)
+    #expect(router.flags([]) == .help(.close, session: 3))
+    #expect(router.flags([]) == .pass)
+    // Losing help's availability leaves an open switcher alone.
+    #expect(router.key(tab, modifiers: .cmd, down: true) == .switcher(.open(forward: true, held: .cmd), session: 4))
+    router.helpAvailable = false
+    #expect(router.switcher?.session == 4)
+}
+
+@Test func mainThreadHelpSessionsStayOpenUntilClosed() {
+    var router = makeRouter()
+    #expect(router.open(.help) == 1)
+    #expect(router.help == KeyRouter.OpenModal(kind: .help, session: 1, held: []))
+    #expect(router.flags([]) == .pass)
+    #expect(router.key(q, modifiers: .cmd, down: true) == .swallow)
+    #expect(router.key(escape, modifiers: [], down: true) == .help(.close, session: 1))
+    let timed = router.open(.help)
+    // Cmd+H on a screen `mntl` opened holds it with Cmd.
+    #expect(router.key(h, modifiers: .cmd, down: true) == .help(.open(held: .cmd), session: 3))
+    router.close(timed)
+    #expect(router.help?.session == 3)
+    router.close(3)
+    #expect(router.help == nil)
+    _ = router.open(.help)
+    #expect(router.open(.switcher) == 5)
+    #expect(router.help == nil)
+    #expect(router.switcher?.session == 5)
+}
+
+// MARK: - Screen
+
+@MainActor
+private final class FakePresenter: HelpPresenting {
+    var shown: [DisplayID?] = []
+    var hides = 0
+    func show(_ content: HelpContent, display: DisplayID?) { shown.append(display) }
+    func hide() { hides += 1 }
+}
+
+@MainActor
+private final class FakeClock {
+    var pending: [(delay: TimeInterval, work: @MainActor @Sendable () -> Void)] = []
+    func fire() {
+        let due = pending
+        pending = []
+        for item in due { item.work() }
+    }
+}
+
+@MainActor
+private func screen() -> (HelpScreen, FakePresenter, FakeClock) {
+    let presenter = FakePresenter(), clock = FakeClock()
+    return (HelpScreen(presenter: presenter) { clock.pending.append(($0, $1)) }, presenter, clock)
+}
+
+private let content = HelpContent(config: .default)
+
+@Test @MainActor func helpFromMntlClosesAfterItsTimeout() {
+    let (help, presenter, clock) = screen()
+    var expired: [Int] = []
+    help.expired = { expired.append($0) }
+    help.open(session: 1, held: false, content: content, display: "d")
+    #expect(help.isOpen && !help.held)
+    #expect(presenter.shown == ["d"])
+    #expect(clock.pending.map(\.delay) == [5])
+    #expect(HelpScreen.timeout == 5)
+    clock.fire()
+    #expect(!help.isOpen)
+    #expect(presenter.hides == 1)
+    #expect(expired == [1])
+}
+
+@Test @MainActor func reopeningRestartsTheTimeoutWithoutHidingTheScreen() {
+    let (help, presenter, clock) = screen()
+    var expired: [Int] = []
+    help.expired = { expired.append($0) }
+    help.open(session: 1, held: false, content: content, display: nil)
+    help.open(session: 2, held: false, content: content, display: nil)
+    #expect(presenter.shown == [nil, nil])
+    #expect(presenter.hides == 0)
+    #expect(clock.pending.count == 2)
+    clock.fire()
+    #expect(!help.isOpen)
+    #expect(presenter.hides == 1)
+    #expect(expired == [2])
+}
+
+@Test @MainActor func heldHelpHasNoTimerAndClosesOnlyForItsSession() {
+    let (help, presenter, clock) = screen()
+    help.open(session: 1, held: false, content: content, display: "d")
+    help.open(session: 2, held: true, content: content, display: "d")
+    #expect(help.held)
+    clock.fire()
+    #expect(help.session == 2)
+    help.close(1)
+    #expect(help.isOpen)
+    help.close(2)
+    #expect(!help.isOpen && !help.held)
+    #expect(presenter.hides == 1)
+    help.close(2)
+    #expect(presenter.hides == 1)
+    #expect(help.isStale(2) && !help.isStale(3))
+}
+
+@Test @MainActor func theSwitcherSupersedesHelpAndHelpTheSwitcher() {
+    let (help, presenter, _) = screen()
+    help.open(session: 1, held: true, content: content, display: "d")
+    help.supersede(4)
+    #expect(!help.isOpen)
+    #expect(presenter.hides == 1)
+    #expect(help.isStale(4) && !help.isStale(5))
+    help.supersede(2)
+    #expect(help.isStale(4))
+    #expect(presenter.hides == 1)
+}

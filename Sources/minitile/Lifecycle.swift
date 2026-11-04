@@ -62,7 +62,7 @@ extension AppDelegate {
             MainActor.assumeIsolated {
                 guard let self, !self.quitting else { return }
                 self.keyboard?.checkHealth()
-                self.checkSwitcherModifiers()
+                self.checkModalModifiers()
                 self.checkGrabModifiers()
                 self.swipes?.checkHealth()
                 self.warnings["secure-input"] = csl_secure_input_enabled() ? "Secure input is blocking keyboard shortcuts" : nil
@@ -130,7 +130,7 @@ extension AppDelegate {
         if enabled { dropPanels.hide(); endGrab() }
         if shouldResume { resume() }
         else if wasSuspended != !suspendedReasons.isEmpty { updateSwipes() }
-        updateSwitcherAvailability()
+        updateModalAvailability()
     }
 
     func resume() {

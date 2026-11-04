@@ -143,7 +143,7 @@ func dragCommandsAddressDraggedWindow(_ direction: String) {
     #expect(custom.key(124, modifiers: .alt, down: true) == .command(["window", "resize", "0.6"]))
     #expect(custom.key(124, modifiers: .alt, down: true, autorepeat: true) == .swallow)
     // The open switcher takes the arrows whatever the modifiers.
-    let session = router.openSwitcher()
+    let session = router.open(.switcher)
     #expect(router.key(123, modifiers: [.ctrl, .alt], down: true) == .switcher(.move(.left), session: session))
     #expect(router.key(123, modifiers: [.ctrl, .alt], down: true, autorepeat: true) == .switcher(.move(.left), session: session))
 }
