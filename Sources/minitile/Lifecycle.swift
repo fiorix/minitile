@@ -38,6 +38,9 @@ extension AppDelegate {
             self.keyboard?.update(config: self.engine.config, displays: self.displays, dragged: self.reconciler?.dragging)
         }
         observe(.default, NSApplication.didChangeScreenParametersNotification) { [weak self] _ in self?.scheduleDisplays() }
+        observe(workspace, NSWorkspace.accessibilityDisplayOptionsDidChangeNotification) { [weak self] _ in
+            self?.updateTransitions(); self?.updateMenu()
+        }
         for name in [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification] {
             observe(workspace, name) { [weak self] _ in self?.suspend("sleep", enabled: true) }
         }
@@ -105,6 +108,8 @@ extension AppDelegate {
     }
 
     func suspend(_ reason: String, enabled: Bool) {
+        // A reconcile held for a transition goes out before freezing, which would skip it.
+        if enabled { transitions.flush() }
         let shouldResume = suspension.set(reason, enabled: enabled)
         discovery?.frozen = !suspendedReasons.isEmpty
         if shouldResume { resume() }
@@ -115,7 +120,7 @@ extension AppDelegate {
         let changed = displays.refresh()
         displays.bounceFromStash()
         reconciler.refreshSpaces(invalidateFrames: true)
-        if changed { handle(.displaysChanged(displays.infos)) }
+        if changed { transitions.displaysChanged(); handle(.displaysChanged(displays.infos)) }
         do {
             if try paths.configContents() != lastConfig { _ = reloadConfig() }
         } catch { warnings["config"] = "Config: \(error)" }
@@ -147,6 +152,8 @@ extension AppDelegate {
         let now = ProcessInfo.processInfo.systemUptime
         if let lastActivation, lastActivation.pid == pid, now - lastActivation.time < 0.15 { return }
         lastActivation = (pid, now)
+        // Activation races macOS's own desktop switch, so a reconcile held for a transition goes out first.
+        transitions.flush()
         reconciler?.activation = (pid, source, received)
         defer { reconciler?.activation = nil }
         // No AX reads before this input: Cmd-Tab's desktop switch has a narrow race.
