@@ -205,7 +205,13 @@ extension Engine {
         guard let at = current?.at ?? currentDisplay().flatMap({ currentLocation(display: $0) }) else {
             throw CommandError("No managed display")
         }
-        let order = tiled(page(at)) + page(at).windows.filter { state.windows[$0]?.floating == true }
+        // Reading order (top to bottom, then left to right), which differs from slot order when the large tile is last.
+        let placed = frames(at)
+        let tiles = tiled(page(at)).sorted { a, b in
+            guard let fa = placed[a], let fb = placed[b] else { return placed[a] != nil && placed[b] == nil }
+            return fa.y != fb.y ? fa.y < fb.y : fa.x < fb.x
+        }
+        let order = tiles + page(at).windows.filter { state.windows[$0]?.floating == true }
         if let target = Self.cycle(order, from: current?.id, step: step, focusable: canFocus) { try showWindow(target, output: &output) }
     }
 

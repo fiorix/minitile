@@ -34,36 +34,38 @@ private func open(_ state: SavedState, forward: Bool = true) -> SwitcherSelectio
     SwitcherSelection(state: state, display: "d", config: .default, forward: forward)
 }
 
-@Test func switcherOpensOnTheWindowFocusedBeforeTheCurrentOne() throws {
+@Test func switcherRingRunsInGridOrderFromTheFocusedWindow() throws {
     let state = model([[[1, 2, 3, 4], [5, 6]]], focus: 1, recent: [1, 5, 2])
     var selection = try #require(open(state))
-    #expect(selection.order == [1, 5, 2, 3, 4, 6])
-    #expect(selection.selected == 5)
+    #expect(selection.order == [1, 2, 3, 4, 5, 6])
+    #expect(selection.selected == 2)
     #expect(open(state, forward: false)?.selected == 6)
     var visited: [WindowID] = []
     for _ in 0..<6 { selection.step(forward: true); visited.append(selection.selected) }
-    #expect(visited == [2, 3, 4, 6, 1, 5])
+    #expect(visited == [3, 4, 5, 6, 1, 2])
     selection.step(forward: false)
     #expect(selection.selected == 1)
     selection.step(forward: false)
     #expect(selection.selected == 6)
 }
 
-@Test func focusedWindowLeadsEvenWhenItsRecencyLags() throws {
-    let selection = try #require(open(model([[[1, 2, 3]]], focus: 3, recent: [1, 2])))
-    #expect(selection.order == [3, 1, 2])
+@Test func switcherRingVisitsTilesInReadingOrder() throws {
+    var state = model([[[1, 2, 3]], [[4]]], focus: 2)
+    state.displays[0].workspaces[0].pages[0].variant = .mirrored
+    let selection = try #require(open(state))
+    #expect(selection.order == [2, 1, 3, 4])
     #expect(selection.selected == 1)
 }
 
-@Test func switcherWithoutManagedFocusStartsAtTheMostRecentWindow() throws {
+@Test func switcherWithoutManagedFocusStartsAtTheEnds() throws {
     let state = model([[[1, 2, 3, 4], [5, 6]]], recent: [5, 2])
     let selection = try #require(open(state))
-    #expect(selection.order == [5, 2, 1, 3, 4, 6])
-    #expect(selection.selected == 5)
+    #expect(selection.order == [1, 2, 3, 4, 5, 6])
+    #expect(selection.selected == 1)
     #expect(open(state, forward: false)?.selected == 6)
     var elsewhere = state
     elsewhere.focus = 99
-    #expect(open(elsewhere)?.selected == 5)
+    #expect(open(elsewhere)?.selected == 1)
     let single = model([[[7]]], focus: 7, recent: [7])
     #expect(open(single)?.selected == 7)
     #expect(open(single, forward: false)?.selected == 7)
@@ -118,18 +120,17 @@ private func open(_ state: SavedState, forward: Bool = true) -> SwitcherSelectio
 }
 
 @Test func switcherKeepsItsOrderAndFollowsClosedWindows() throws {
-    var selection = try #require(open(model([[[1, 2, 3, 4], [5, 6]]], focus: 1, recent: [1, 5, 2])))
+    var selection = try #require(open(model([[[1, 2, 3, 4], [5, 6]]], focus: 1)))
+    for _ in 0..<3 { selection.step(forward: true) }
     #expect(selection.selected == 5)
-    // Window 5 closes, 7 opens, and 2 takes focus: the order holds, 7 joins at the end, and 2 follows 5 in it.
-    var changed = model([[[1, 2, 3, 4], [6, 7]]], focus: 2, recent: [2, 1])
+    // Window 5 closes, 7 opens, and 2 takes focus: the order holds, 7 joins at the end, and 6 follows 5 in it.
+    var changed = model([[[1, 2, 3, 4], [6, 7]]], focus: 2)
     let kept = selection.update(state: changed, config: .default)
     #expect(kept)
     #expect(selection.order == [1, 2, 3, 4, 6, 7])
-    #expect(selection.selected == 2)
-    selection.step(forward: false)
-    #expect(selection.selected == 1)
+    #expect(selection.selected == 6)
     // The last window in the order closing wraps the selection to the first.
-    selection.step(forward: false)
+    selection.step(forward: true)
     #expect(selection.selected == 7)
     changed = model([[[1, 2, 3, 4], [6]]], focus: 2, recent: [2, 1])
     let wrapped = selection.update(state: changed, config: .default)
@@ -147,7 +148,7 @@ private func open(_ state: SavedState, forward: Bool = true) -> SwitcherSelectio
 @Test func switcherCropsAroundTheSelectionAndNamesIt() throws {
     // Six workspaces of seven pages, one window each, numbered by cell.
     let grid = (0..<6).map { w in (0..<7).map { p in [WindowID(10 * w + p + 1)] } }
-    let far = try #require(open(model(grid, recent: [56], shown: GridCell(workspace: 2, page: 3))))
+    let far = try #require(open(model(grid, focus: 55, shown: GridCell(workspace: 2, page: 3))))
     let content = SwitcherContent(selection: far, state: model(grid, recent: [56]))
     #expect(content.selected == 56)
     #expect(content.cell == GridCell(workspace: 5, page: 5))
@@ -161,11 +162,11 @@ private func open(_ state: SavedState, forward: Bool = true) -> SwitcherSelectio
     #expect(content.geometry.rows == 4 && content.geometry.columns == 5 && content.geometry.cropped)
     #expect(content.pids.count == 20)
     #expect(content.pids.contains(56) && !content.pids.contains(1))
-    let near = try #require(open(model(grid, recent: [12])))
+    let near = try #require(open(model(grid, focus: 11)))
     let corner = SwitcherContent(selection: near, state: model(grid))
     #expect(corner.rows == 0..<4)
     #expect(corner.columns == 0..<5)
-    let small = try #require(open(model([[[1, 2]], [[3]]], floating: [2], recent: [1])))
+    let small = try #require(open(model([[[1, 2]], [[3]]], floating: [2])))
     let whole = SwitcherContent(selection: small, state: model([[[1, 2]], [[3]]], floating: [2]))
     #expect(!whole.cropped)
     #expect(whole.pids == [1, 2, 3])

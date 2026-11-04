@@ -240,3 +240,14 @@ func command(_ engine: inout Engine, _ args: String) -> Output {
     #expect(out.reply?.ok == true)
     #expect(!out.stateChanged)
 }
+
+@Test func focusCyclingFollowsReadingOrderWhenTheLargeTileIsLast() {
+    var e = engine(3)
+    command(&e, "page variant")
+    #expect(e.savedState().displays[0].workspaces[0].pages[0].variant == .mirrored)
+    command(&e, "window focus 2")
+    #expect(command(&e, "window focus next").actions.last == .focus(1))
+    #expect(command(&e, "window focus next").actions.last == .focus(3))
+    #expect(command(&e, "window focus next").actions.last == .focus(2))
+    #expect(command(&e, "window focus prev").actions.last == .focus(3))
+}

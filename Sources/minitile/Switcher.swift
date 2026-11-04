@@ -10,7 +10,6 @@ struct SwitcherGrid: Equatable {
         var cell: GridCell
         /// In the uncropped grid of switcher cells, so arrows cross pages and workspaces.
         var center: CGPoint
-        var recency: UInt64
     }
 
     /// The display's usable area: cells take its proportions and tiles are scaled from it.
@@ -18,8 +17,8 @@ struct SwitcherGrid: Equatable {
     var pages: [[GridMiniature]]
     /// The page being shown, which holds the focus when a window on this display has it.
     var shown: GridCell?
-    /// Tiled and floating windows without minimized and app-hidden ones, in grid order: workspaces, pages, tiles by
-    /// slot, then floating windows.
+    /// Tiled and floating windows without minimized and app-hidden ones, in ring order: workspaces top to bottom, pages
+    /// left to right, each page's tiles in reading order (top to bottom, then left to right), then its floating windows.
     var entries: [Entry]
 
     /// Nil when the display is unknown or unmanaged.
@@ -41,11 +40,11 @@ struct SwitcherGrid: Equatable {
                 let at = GridCell(workspace: w, page: p)
                 let cell = GridIndicatorGeometry.cell(row: w, column: p, size: size, spacing: metrics.spacing)
                 func entry(_ window: WindowID, _ rect: CGRect) -> Entry {
-                    Entry(window: window, cell: at, center: CGPoint(x: rect.midX, y: rect.midY), recency: state.windows[window]?.lastFocused ?? 0)
+                    Entry(window: window, cell: at, center: CGPoint(x: rect.midX, y: rect.midY))
                 }
-                for tile in miniature.tiles {
-                    guard let frame = tile.frame else { continue }
-                    entries.append(entry(tile.window, GridIndicatorGeometry.tileRect(frame, area: area, cell: cell)))
+                let placed = miniature.tiles.compactMap { tile in tile.frame.map { (tile.window, $0) } }
+                for (window, frame) in placed.sorted(by: { $0.1.y != $1.1.y ? $0.1.y < $1.1.y : $0.1.x < $1.1.x }) {
+                    entries.append(entry(window, GridIndicatorGeometry.tileRect(frame, area: area, cell: cell)))
                 }
                 let floaters = miniature.floaters.filter(\.active)
                 let tray = GridIndicatorGeometry.trayRects(count: floaters.count, cell: cell, side: metrics.trayIcon ?? 16)
@@ -53,35 +52,28 @@ struct SwitcherGrid: Equatable {
             }
         }
     }
-
-    /// Most recently focused first; grid order breaks ties, such as windows never focused.
-    var recent: [WindowID] {
-        entries.enumerated().sorted { a, b in
-            a.element.recency != b.element.recency ? a.element.recency > b.element.recency : a.offset < b.offset
-        }.map(\.element.window)
-    }
 }
 
-/// The switcher's selection over one display's windows. The order is most recently focused first, led by the focused
-/// window, and stays fixed while the switcher is open: windows that appear meanwhile join at the end.
+/// The switcher's selection over one display's windows. The order is the grid's ring and stays fixed while the switcher
+/// is open: windows that appear meanwhile join at the end.
 struct SwitcherSelection: Equatable {
     let display: DisplayID
     private(set) var grid: SwitcherGrid
     private(set) var order: [WindowID]
     private(set) var selected: WindowID
 
-    /// Next selects the window focused before the current one, or the most recent one when no window of the display has
-    /// focus; prev selects the least recently focused one. Nil when the display has no window to offer.
+    /// Next selects the window after the focused one in the ring and prev the one before it, wrapping around; with no
+    /// window of the display focused they start at the first or last window. Nil when the display has no window to offer.
     init?(state: SavedState, display: DisplayID, config: Config, forward: Bool) {
         guard let grid = SwitcherGrid(state: state, display: display, config: config) else { return nil }
-        var order = grid.recent
-        if let focus = state.focus, let index = order.firstIndex(of: focus) { order.insert(order.remove(at: index), at: 0) }
-        guard let last = order.last else { return nil }
-        let focusLeads = state.focus != nil && order.first == state.focus
+        let order = grid.entries.map(\.window)
+        guard let first = order.first, let last = order.last else { return nil }
         self.display = display
         self.grid = grid
         self.order = order
-        selected = forward ? order[focusLeads ? 1 % order.count : 0] : last
+        if let focus = state.focus, let index = order.firstIndex(of: focus) {
+            selected = order[(index + (forward ? 1 : order.count - 1)) % order.count]
+        } else { selected = forward ? first : last }
     }
 
     var entry: SwitcherGrid.Entry? { grid.entries.first { $0.window == selected } }
@@ -122,7 +114,7 @@ struct SwitcherSelection: Equatable {
     mutating func update(state: SavedState, config: Config) -> Bool {
         guard let grid = SwitcherGrid(state: state, display: display, config: config) else { return false }
         let present = Set(grid.entries.map(\.window)), old = order
-        let next = old.filter(present.contains) + grid.recent.filter { !old.contains($0) }
+        let next = old.filter(present.contains) + grid.entries.map(\.window).filter { !old.contains($0) }
         guard let first = next.first else { return false }
         if !present.contains(selected) {
             let start = old.firstIndex(of: selected) ?? 0
