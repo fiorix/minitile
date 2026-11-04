@@ -195,3 +195,14 @@ private final class Harness {
     #expect(h.transitions.reason == "transition_ms is 0")
     #expect(!h.handle(.command(["page", "next"])))
 }
+
+@Test @MainActor func secondNavigationDuringCaptureJoinsTheHeldReconcile() {
+    let h = Harness()
+    #expect(h.handle(.command(["page", "next"])))
+    #expect(h.handle(.command(["page", "next"])))
+    #expect(h.capture.requests.count == 1)
+    h.capture.requests[0].1(nil)
+    #expect(h.committed.count == 1)
+    #expect(h.committed[0].scene.displays["primary"]?.label == "1:3")
+    #expect(h.committed[0].actions.isEmpty)
+}

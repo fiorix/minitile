@@ -63,13 +63,10 @@ final class Transitions {
         }
         if var pending {
             pending.reconcile.add(output)
-            if !pending.covering {
-                for id in slides where !pending.waiting.contains(id) && pending.images[id] == nil {
-                    pending.waiting.insert(id)
-                    captureLeaving(id, serial: pending.serial)
-                }
-            }
+            let added = pending.covering ? [] : slides.filter { !pending.waiting.contains($0) && pending.images[$0] == nil }
+            pending.waiting.formUnion(added)
             self.pending = pending
+            for id in added { captureLeaving(id, serial: pending.serial) }
             return true
         }
         for (id, kind) in plan { if case .bounce(let direction) = kind { bounce(id, direction) } }

@@ -33,7 +33,7 @@ final class ScreenCapture: TransitionCapturing {
 
     func canCapture(_ id: DisplayID) -> Bool { NSScreen.screen(for: id)?.displayNumber.flatMap { filters[$0] } != nil }
 
-    /// Fetching shareable content takes about 90 ms, so it runs at start and after display changes only.
+    /// Fetching shareable content takes about 90 ms, so the filters are kept until displays change.
     func refresh() {
         loads += 1
         let load = loads
@@ -72,7 +72,7 @@ final class ScreenCapture: TransitionCapturing {
 
     func image(of id: DisplayID, done: @escaping @MainActor @Sendable (CGImage?) -> Void) {
         guard let screen = NSScreen.screen(for: id), let number = screen.displayNumber, let filter = filters[number] else {
-            done(nil); return
+            DispatchQueue.main.async { done(nil) }; return
         }
         let visible = screen.visibleFrame, scale = screen.backingScaleFactor
         let configuration = SCStreamConfiguration()
