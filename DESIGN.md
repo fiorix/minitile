@@ -2,7 +2,7 @@
 
 minitile is a tiling window manager for macOS. It runs with SIP enabled and aims for a small core that blends with macOS: a handful of keys that reuse the native desktop shortcuts, mouse gestures where macOS users already use the mouse, and every function scriptable from the `mntl` command line tool. HyprMac (github.com/zacharytgray/HyprMac) is a source of macOS behaviour to respect, not a feature list to copy.
 
-Status: core, IPC and mntl are implemented and verified with 84 core tests and 17 IPC tests. The macOS shell builds with 21 helper/fixture tests and has passed the single-display TextEdit command smoke test, including native placement, config-error retention and restart persistence. Signing and Accessibility work when launched from Terminal. Physical Ctrl and Ctrl+Shift arrows, Mission Control/App Expose suppression, tiled resize, swap, Ctrl+Right during a drag, Cmd+Tab pre-emption and trackpad stash bounce are verified on one display. The persistent position grid is visible on the laptop, and the user confirmed the correct label after connecting the external display. The complete multiple-display validation remains pending.
+Status: the core, IPC, `mntl` and the macOS shell are implemented and verified live on one display. Multiple displays and the items under "Open" are not yet verified.
 
 ## Model
 
@@ -23,9 +23,14 @@ The currently viewed empty page/workspace is retained until the view leaves it, 
 
 ### Position indicator
 
-Each display has a persistent, read-only grid in the upper-right corner of its usable area. The header names the display and states the current workspace and page. Workspaces are rows labeled W1, W2, and so on; pages are columns labeled P1, P2, and so on. The blue cell marks the shown page, including an empty page, and each cell contains its window count. "Active" identifies the remembered display used for navigation when focus is outside the managed windows.
+When a display's shown page or workspace changes, that display shows a read-only grid in the upper-right corner of its usable area for 1.5 s, then hides it. Another change within that time shows the new position and restarts the 1.5 s.
 
-The indicator shows at most six rows and eight columns, centered around the current position where possible. Cropped grids retain their full indices and say they are cropped. An unmanaged display shows its reason instead of a grid. The panel follows its physical display through topology changes, passes mouse input through, cannot become the key or main window, and stays present across native desktop switches. Light and dark appearances are supported. This is an orientation aid, not an interactive overview.
+- The header names the display and the current workspace and page.
+- Workspaces are rows labeled W1, W2, and so on; pages are columns labeled P1, P2, and so on. The shown page's cell is highlighted, including an empty page, and each cell holds its window count.
+- At most six rows and eight columns are drawn, centered on the current position where possible. A cropped grid keeps its full indices and says it is cropped.
+- The grid passes mouse input through, never takes focus, appears on whichever native desktop is current, and follows light and dark appearance.
+
+It is an orientation aid, not an interactive overview.
 
 ### Placement
 
@@ -129,7 +134,7 @@ Everything else (floating, layout variant, spatial focus, exact ratios) is a com
 
 Notes:
 
-- Validated with physical keys in the app: Ctrl+Right/Left changed pages and Ctrl+Down/Up changed workspaces. The user confirmed the expected window counts without Mission Control or App Expose opening; the watch log recorded the corresponding page/workspace transitions. The earlier session-tap probe also swallowed a HID-synthesized Ctrl+Left before the Dock switched desktops. Ctrl+Up/Down are system shortcuts 32 and 33 with the same Ctrl+fn modifiers as Ctrl+Left/Right (79 and 81).
+- Validated with physical keys: the session-level event tap receives Ctrl+Left/Right/Up/Down before the Dock, and swallowing them keeps desktops from switching and Mission Control and App Expose from opening. Ctrl+Up/Down are system shortcuts 32 and 33, and Ctrl+Left/Right are 79 and 81.
 - Arrow keys carry the fn and keypad flags, so binding matches ignore them.
 - Mission Control stays reachable through its own key and trackpad gesture. It shows the stash desktop with every hidden page's windows, which makes it an escape hatch rather than a view of the grid.
 - The event tap also swallows Desktop N shortcuts that would lead into the stash.
@@ -293,9 +298,9 @@ Rules minitile must follow:
 - Keep the Dock away from the stash. minitile owns Ctrl+arrows (see Keys) and swallows Desktop N shortcuts that lead into the stash. A slide into the stash shows it for the full 1 s.
 - Run a real `NSApplication` event loop. Without one, `activeSpaceDidChange` is never delivered.
 - Track windows in minitile's own state. `kAXWindows` does not list stashed windows.
-- At start, windows already on a stash have no AX handle, because `kAXWindows` omits them. minitile moves them to the visible desktop in one call, takes their AX handles, and lets the first reconcile stash them again. They show for a moment at start. Verified with TextEdit: both of two stashed windows returned AX handles on the first discovery pass after the move, without retries.
+- At start, windows already on a stash have no AX handle, because `kAXWindows` omits them. minitile moves them to the visible desktop in one call, takes their AX handles, and lets the first reconcile stash them again. They show for a moment at start. `kAXWindows` lists a window right after it moves to the visible desktop (measured with TextEdit).
 
-The shell tries discovery immediately, then up to four more times at 250 ms intervals. It restores windows with unreadable AX handles to their original stash and reports them. Quitting during adoption restores the temporarily exposed windows. The successful first-pass path is verified with TextEdit; retry exhaustion and abort recovery remain unverified live. Startup discovery is ordered by window ID before the core applies its visible-before-stash adoption rules.
+The shell tries discovery immediately, then up to four more times at 250 ms intervals. It restores windows with unreadable AX handles to their original stash and reports them. Quitting during adoption restores the temporarily exposed windows. Startup discovery is ordered by window ID before the core applies its visible-before-stash adoption rules.
 
 Known risks:
 
@@ -307,7 +312,8 @@ Known risks:
   - Reduce Motion on;
   - "When switching to an application, switch to a Space with open windows" turned off;
   - Dock restarts and sleep/wake;
-  - Electron apps.
+  - Electron apps;
+  - startup adoption when a stashed window's AX handle stays unreadable, and quitting during adoption.
 
 ### Required user setup
 
@@ -412,19 +418,19 @@ Scene visible/stashed lists express desktop ownership, including minimized and a
 - Windows found at start that are not in the state are adopted:
   - windows on the visible desktop fill pages of the first workspace;
   - windows on the stash follow on further pages.
-
-Adoption preserves discovery order within the visible and stash groups. Stash adoption begins after the first workspace's last populated page, even if a visible page has free slots. Unknown windows join the first workspace without changing a valid saved view; the shell's startup focus observation can show a different page. Known windows keep their saved placement regardless of macOS's observed display position. Repeated observations of the same ID are ignored after the first. Unsupported or structurally invalid saved snapshots fall back to adoption. A changed pid in a later appearance/update is treated as a new window identity. Only `SavedState` supplies defaults for absent top-level fields. `PageState`, `WorkspaceState`, `DisplayState` and `WindowState` use synthesized decoding, so a missing required key fails decoding of the entire saved-state file. The script-facing `state` shape is documented separately above.
 - On quit, stashed windows stay on the stash, where Mission Control can reach them.
 - Startup checks, in order: Accessibility permission (prompt, explain in the menu bar, and wait until granted); the SkyLight functions (refuse to run if missing); "Displays have separate Spaces"; a desktop pair per display (unmanaged displays are listed in the menu bar). If the current desktop of a display is its stash, minitile switches to the visible one.
+
+Adoption preserves discovery order within the visible and stash groups. Stash adoption begins after the first workspace's last populated page, even if a visible page has free slots. Unknown windows join the first workspace without changing a valid saved view; the shell's startup focus observation can show a different page. Known windows keep their saved placement regardless of macOS's observed display position. Repeated observations of the same ID are ignored after the first. Unsupported or structurally invalid saved snapshots fall back to adoption. A changed pid in a later appearance/update is treated as a new window identity. Only `SavedState` supplies defaults for absent top-level fields. `PageState`, `WorkspaceState`, `DisplayState` and `WindowState` use synthesized decoding, so a missing required key fails decoding of the entire saved-state file. The script-facing `state` shape is documented separately above.
 
 ## Config
 
 - The config lives in `~/.config/minitile/minitile.toml` (`MINITILE_CONFIG` overrides the path) and is reloaded when the file changes. Editors often replace the file, so the watch covers its directory.
 - It is parsed with TOMLDecoder (github.com/dduan/TOMLDecoder, from 0.4.5: pure Swift, decodes into `Codable` types, MIT). A hand-written parser can replace it later if the dependency becomes a burden.
 - A config error keeps the previous config and shows the error in the menu bar and in the reply to `mntl config reload`.
+- There is no settings GUI. The menu bar icon shows the current workspace and page (the scene label), any warnings, and offers floating, layout variant, reload, open config and quit, each a command. Page and workspace changes also show the position indicator described under "Model".
 
 An initial config error leaves the app inactive with a menu warning; Reload Config retries startup after correction. The watcher observes both the directory for atomic replacements and the file for in-place writes, debounced by 150 ms. A missing directory is watched through its nearest existing ancestor. Config reloads are deferred while the session or display topology is suspended and retried after display recovery.
-- There is no settings GUI. The menu bar icon shows the current workspace and page (the scene label), any warnings, and offers floating, layout variant, reload, open config and quit, each a command. Each display also has the read-only position indicator described above.
 
 Schema, with the defaults:
 
@@ -470,10 +476,10 @@ Discovery:
 - Treat a window as real only if the CG window list shows it at layer 0 with alpha above 0.01.
 - A failed AX read means "unknown", not "closed". A destroyed element may not report its pid, so use the observer's pid.
 - Apps can keep listing a destroyed window briefly. Confirm disappearance with a few rechecks; busy Electron apps flicker otherwise.
-
-The shell confirms disappearance after three WindowServer snapshots no longer contain the same window ID and pid. Event-triggered rechecks run at 150, 400 and 900 ms; a three-second scan catches missed notifications. An empty or failed WindowServer snapshot is unknown. Background agents with prohibited activation policy are excluded from AX observation. Sleep, session inactivity, lock and pending display reconfiguration suspend lifecycle changes.
 - Some apps (Teams, Mail) reuse window IDs on close and reopen.
 - While the session is locked or the displays sleep, the on-screen window list empties. Freeze lifecycle changes until the interruption ends.
+
+The shell confirms disappearance after three WindowServer snapshots no longer contain the same window ID and pid. Event-triggered rechecks run at 150, 400 and 900 ms; a three-second scan catches missed notifications. An empty or failed WindowServer snapshot is unknown. Background agents with prohibited activation policy are excluded from AX observation. Sleep, session inactivity, lock and pending display reconfiguration suspend lifecycle changes.
 
 Responsiveness:
 
@@ -496,10 +502,8 @@ Focus and closing:
   - `CSkyLight`, C/Objective-C: the SkyLight declarations, the `LC_SYMTAB` lookup, the bridged operations, the window-ID and focus calls;
   - `minitile`, executable, the menu bar app (AppKit), depends on the three above;
   - `mntl`, executable, depends on `MinitileIPC` only;
-  - `MinitileCoreTests` and `MinitileIPCTests`, using swift-testing.
+  - `MinitileCoreTests`, `MinitileIPCTests` and `MinitileShellTests`, using swift-testing.
 - `scripts/build-app.sh` wraps `minitile` in `build/Minitile.app` (bundle ID `com.github.fiorix.minitile`, `LSUIElement` set) and places `mntl` next to it. It signs with `MINITILE_SIGN_IDENTITY`, default "Apple Development", so the Accessibility grant survives rebuilds; an ad-hoc signature changes every build.
-
-The shell remains in Swift 6 mode. AX observer callbacks run on the main run loop; the keyboard tap owns a separate run loop and locks its small command-matching state. Letter and digit bindings use the current keyboard layout, with function and navigation keys matched by native keycode. Stash Desktop N blockers use user-desktop order from the native display-space enumeration; their multiple-display numbering remains unverified. State writes are atomic and serialized off the main thread, and quit flushes pending writes.
 - Logging uses unified logging with subsystem `minitile`.
 - Threads:
   - the main thread runs the `NSApplication` loop, AX work, the core and the reconciler;
@@ -508,26 +512,24 @@ The shell remains in Swift 6 mode. AX observer callbacks run on the main run loo
 
   If hung apps stall the main thread in practice, AX calls move to per-app threads, as AeroSpace does.
 
+The shell uses the Swift 6 language mode. AX observer callbacks run on the main run loop; the keyboard tap owns a separate run loop and locks its small command-matching state. Letter and digit bindings use the current keyboard layout, with function and navigation keys matched by native keycode. Stash Desktop N blockers use user-desktop order from the native display-space enumeration; their numbering with multiple displays is unverified. State writes are atomic and serialized off the main thread, and quit flushes pending writes.
+
 ## Development and testing
 
-- Core and IPC have unit tests run with `swift test`. They need no permissions and never touch windows.
-- The shell is tested live. Automated runs use a temporary config with `only_apps = ["com.apple.TextEdit"]` and TextEdit windows the test opens itself, so the user's windows are never moved or closed. A smoke script drives minitile through `mntl` and checks `mntl --json state`.
-
-`scripts/smoke.sh` compares the requested scene with raw WindowServer spaces and AX frames, checks invalid-config retention and restart persistence, and writes reports under `build/smoke-*`. Its temporary `MINITILE_SMOKE_DIRECTORY` restricts new window discovery to document URLs directly inside that directory. Unsaved Cmd+N documents have no matching document URL and are deliberately ignored, so they remain unmanaged during smoke runs. Without this test restriction, an unsaved document is eligible for normal discovery and placement. On restart, `MINITILE_SMOKE_WINDOWS` permits startup stash acquisition only for test-observed ID/pid pairs. These are test-harness restrictions in addition to `only_apps`. Cleanup closes only the test's documents, stops the test manager, preserves files if cleanup fails, and quits TextEdit only if the test started it and it has no remaining layer-0 windows. State-assertion failures capture health and cached desktop topology before cleanup.
-
-The automatic smoke run passed with five TextEdit documents on one 2056x1329-point display, whose visible frame was 2056x1290 at y=39. It exercised page navigation, nudge, workspace carry and empty-workspace creation, hide/show, floating toggle, swap, close and invalid-config retention. Native desktop membership and tiled frames were checked after state assertions, with a 20-point tolerance. The final four-window snapshot matched all 16 frame components exactly. Restart preserved five window assignments across two workspaces and three pages, including the alternate layout and ratios 0.4/0.7; the normalized grid snapshots were identical. Both stashed windows yielded AX handles on the first discovery pass. Cleanup removed the temporary directory, and the current desktop remained 1 with the same visible/stash pair, 1/1176. The timing report was an idle reconciliation and does not measure page-flip latency.
-
-`scripts/smoke.sh --interactive` prepares five test documents and pauses for real input, recording the user's observation, watch events and before/after state before cleanup. Physical Ctrl+arrow navigation and Mission Control/App Expose suppression are verified. The traced run recorded 25 key-down commands and 25 releases, including 12 Ctrl+Shift commands across all four directions and a Ctrl+Right drag command with an explicit window ID; all 25 commands succeeded. The user also confirmed tiled resize with neighboring tiles adjusting, drag-to-swap, Cmd+Tab restoring a hidden page and a trackpad swipe bouncing back to the visible desktop. Final native placement passed, with zero error across all 20 frame components for five windows. Cleanup removed the temporary directory and left desktop 1 current; the visible/stash pair was 1/1244.
-
-Interactive runs enable `MINITILE_TRACE_KEYS=1`. The app writes `minitile: key` JSON records to stderr for Ctrl+arrow events and their releases, including raw modifier flags, routing decisions, commands, engine focus, suspension reasons and command results. Other typing is excluded, and logging runs on the main queue rather than the event-tap thread. `debug health` exposes `key_trace_enabled`; an interactive run rejects an older bundle without tracing. The report saves the effective bindings in `config.json`. A run with only one native desktop exited before opening documents; the runner now prints each display's unmanaged reason instead of failing silently. The traced retry passed without a shortcut behavior change; an earlier reported failure was not reproduced.
-
-`scripts/smoke.sh --displays` starts with the external monitor unplugged and five isolated TextEdit documents on the laptop. It requires the position indicator and rejects older bundles that lack it; `debug health` reports its display count as `grid_indicator_displays`. It prompts for connection and two desktops on the new display, then places two documents on the laptop and three across two external pages. It checks that flipping either display preserves the other's scene, asks for Cmd+Tab activation with both displays' TextEdit pages hidden, and captures native placement throughout unplug and reconnect. The original grids, including page views, must compare equal after reconnect. The model fixture passes. A signed live run recognized the connected external display as managed with visible/stash spaces 1278/1264, and the user confirmed its correct position label. That report lacks the connected-stage and later assertions, so display independence, cross-display activation and exact grid restoration remain unverified live. Recovery from creating a second native desktop without changing the active desktop also remains unverified as a separate scenario.
-
-Smoke isolation can expose unrelated windows behind a page: Ctrl+Right from the last populated page creates a new empty page and hides the test documents, revealing unmanaged terminals that were underneath them. Those terminals are not assigned to the new page and do not contribute to its window count. The new page appears in the indicator only when created and is removed after leaving it while empty. This matches the reported P2-to-P3 behavior during the external-display run.
-
-Unified logs show a menu action followed by normal application termination before the keyboard run's final response, matching Quit Minitile; the resulting missing socket prevented final capture and cleanup. The prompt now makes clear that minitile must remain running until cleanup finishes. `--cleanup TEST_DIRECTORY` reopens a preserved test session to close its documents, retaining files if known windows remain or the manager is unavailable. It accepts only saved smoke directories directly inside TMPDIR and restricts stash recovery to saved window ID/pid pairs. A live recovery run succeeded after the test windows were already closed: both managed and raw window lists were empty, the temporary directory was removed, and desktop 1 remained current. Recovery with still-open stashed windows remains unverified live. `--no-build` reuses an already signed bundle when no application code has changed.
+- Core, IPC and the shell's pure helpers have unit tests run with `swift test`. They need no permissions and never touch windows.
+- The shell is tested live with `scripts/smoke.sh`. Runs use a temporary config with `only_apps = ["com.apple.TextEdit"]`, temporary state and socket paths, and TextEdit documents the test opens itself, so the user's windows are never moved or closed.
 - Running minitile over every app rearranges the user's desktops, so the first such run needs the user's go-ahead.
 - `dev/spikes/` holds the throwaway programs that validated the primitives, with their logs. They are reference code for SkyLight, focus, activation pre-emption and the event tap, not a base to build on. Upstream sources: yabai `src/misc/macho_dlsym.h` and `src/space_manager.c`.
+
+`scripts/smoke.sh` modes:
+
+- default: drives minitile through `mntl`, compares the requested scene with raw WindowServer spaces and AX frames (20 pt tolerance), and checks invalid-config retention and restart persistence;
+- `--interactive`: pauses for physical keys, mouse and trackpad input, with key tracing (`MINITILE_TRACE_KEYS=1` writes `minitile: key` JSON records to stderr for Ctrl+arrow events only);
+- `--displays`: starts with the external monitor unplugged, then checks display independence, cross-display activation, and unplug and reconnect restoring the original grids;
+- `--cleanup TEST_DIRECTORY`: reopens a preserved test session and closes its documents;
+- `--no-build`: reuses the signed bundle.
+
+Reports go to `build/smoke-*`. `MINITILE_SMOKE_DIRECTORY` restricts discovery to documents directly inside the test directory, so unsaved documents stay unmanaged, and `MINITILE_SMOKE_WINDOWS` restricts startup stash acquisition to the test's window ID/pid pairs. Cleanup closes only the test's documents, preserves files if cleanup fails, and quits TextEdit only if the test started it and no windows remain. `--cleanup` accepts only smoke directories directly inside TMPDIR.
 
 ## Scope
 
