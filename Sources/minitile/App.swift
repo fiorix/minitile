@@ -150,6 +150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         keyboard.update(config: engine.config, displays: displays, dragged: nil)
         self.keyboard = keyboard
+        updateFrontmost()
         keyboard.start()
         let watcher = ConfigWatcher(file: paths.config)
         watcher.changed = { [weak self] in
@@ -250,6 +251,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             discovery?.scan()
             finishReloadAdoption(attempt: 0)
             keyboard?.update(config: config, displays: displays, dragged: reconciler?.dragging)
+            updateFrontmost()
             return Reply(text: "Config reloaded")
         } catch {
             warnings["config"] = "Config: \(error)"

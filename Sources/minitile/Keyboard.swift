@@ -18,6 +18,21 @@ enum StashShortcuts {
     }
 }
 
+/// The "`" key is the key of macOS's Move focus to next window shortcut, so it follows the keyboard layout.
+enum CycleKey {
+    static let name = "`"
+    static let hotkey: Int32 = 27
+    static let fallback: UInt16 = 50
+
+    /// A key that already has a name keeps it, so remapping the native shortcut onto a letter cannot steal its bindings.
+    static func named(_ names: [UInt16: String], hotkey: UInt16?) -> [UInt16: String] {
+        let code = hotkey.flatMap { $0 < 128 ? $0 : nil } ?? fallback
+        var result = names
+        if result[code] == nil { result[code] = name }
+        return result
+    }
+}
+
 enum KeyDecision: Equatable, Sendable { case pass, swallow, command([String]) }
 
 struct KeyTrace: Sendable {
@@ -43,6 +58,7 @@ struct KeyRouter {
     var names: [UInt16: String] = [:]
     var blocked: Set<NativeChord> = []
     var dragged: WindowID?
+    var frontmostManaged = true
     private var swallowed: Set<UInt16> = []
 
     static func modifiers(_ flags: CGEventFlags) -> Modifiers {
@@ -60,9 +76,11 @@ struct KeyRouter {
         if !down { return swallowed.remove(code) != nil ? .swallow : .pass }
         if autorepeat, swallowed.contains(code) { return .swallow }
         if !autorepeat { swallowed.remove(code) }
-        let chord = names[code].map { Chord(modifiers: modifiers, key: $0) }
+        // In apps minitile does not manage, the window-cycling key keeps its native meaning.
+        let name = names[code].flatMap { $0 == CycleKey.name && !frontmostManaged ? nil : $0 }
+        let chord = name.map { Chord(modifiers: modifiers, key: $0) }
         var command: [String]?
-        if let dragged, modifiers == .ctrl, let name = names[code] {
+        if let dragged, modifiers == .ctrl, let name {
             switch name {
             case "left", "right": command = ["window", "nudge", String(dragged), name]
             case "up", "down": command = ["window", "move", String(dragged), "workspace", name == "up" ? "prev" : "next"]
@@ -111,11 +129,15 @@ final class KeyboardTap: @unchecked Sendable {
                 }
             }
         }
-        let names = Self.keyNames()
+        var key: UInt16 = 0, modifiers: UInt32 = 0, enabled = false
+        let cycle = csl_symbolic_hotkey(CycleKey.hotkey, &key, &modifiers, &enabled) ? key : nil
+        let names = CycleKey.named(Self.keyNames(), hotkey: cycle)
         lock.withLock { router.bindings = config.bindings; router.names = names; router.blocked = blocked; router.dragged = dragged }
     }
 
     func drag(_ id: WindowID?) { lock.withLock { router.dragged = id } }
+
+    func frontmost(managed: Bool) { lock.withLock { router.frontmostManaged = managed } }
 
     var unavailable: Bool { lock.withLock { failed } }
 
