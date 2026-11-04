@@ -74,15 +74,22 @@ extension Engine {
         output.events.append(Event(type: "display_changed", data: (try? .encoding(infos)) ?? .null))
     }
 
-    /// The managed display on one side of display `d`, the side a unit step (dx, dy) points to: its facing edge lies
-    /// on `d`'s edge within 1 pt and the two edges overlap. The longest overlap wins, then the nearest centre. An
-    /// unmanaged display has no neighbours.
+    /// The managed display on one side of display `d`; see `DisplayInfo.neighbour`.
     func neighbour(of d: Int, dx: Int, dy: Int) -> Int? {
-        guard state.displays[d].info.unmanagedReason == nil else { return nil }
-        let frame = state.displays[d].info.frame
+        DisplayInfo.neighbour(of: d, in: state.displays.map(\.info), dx: dx, dy: dy)
+    }
+}
+
+extension DisplayInfo {
+    /// The managed display on one side of `displays[d]`, the side a unit step (dx, dy) points to: its facing edge
+    /// lies on `d`'s edge within 1 pt and the two edges overlap. The longest overlap wins, then the nearest centre. An
+    /// unmanaged display has no neighbours. Crossing and the shell's monitor markers and switcher share this rule.
+    public static func neighbour(of d: Int, in displays: [DisplayInfo], dx: Int, dy: Int) -> Int? {
+        guard displays.indices.contains(d), displays[d].unmanagedReason == nil else { return nil }
+        let frame = displays[d].frame
         var best: (display: Int, overlap: Double, distance: Double)?
-        for (e, display) in state.displays.enumerated() where e != d && display.info.unmanagedReason == nil {
-            let other = display.info.frame
+        for (e, display) in displays.enumerated() where e != d && display.unmanagedReason == nil {
+            let other = display.frame
             let gap = dx > 0 ? other.x - frame.maxX : dx < 0 ? frame.x - other.maxX : dy > 0 ? other.y - frame.maxY : frame.y - other.maxY
             let overlap = dx != 0 ? min(frame.maxY, other.maxY) - max(frame.y, other.y)
                 : min(frame.maxX, other.maxX) - max(frame.x, other.x)
