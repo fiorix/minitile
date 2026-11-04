@@ -31,6 +31,8 @@ public struct Config: Sendable, Equatable {
     public var floatApps: [String]
     public var onlyApps: [String]
     public var bindings: [Chord: [String]]
+    /// Page slide duration in milliseconds; 0 turns slides and edge bounces off.
+    public var transitionMs: Double = 500
 
     public init(gaps: Double = 8, padding: Double = 8, floatApps: [String] = [], onlyApps: [String] = [],
                 bindings: [Chord: [String]] = Config.defaultBindings) {

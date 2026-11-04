@@ -93,6 +93,8 @@ extension AppDelegate {
                                 "grid_indicator_displays": .number(Double(gridIndicator.displayCount)),
                                 "grid_indicator_visible_displays": .number(Double(gridIndicator.visibleCount)),
                                 "grid_indicator_duration_ms": .number(GridIndicatorTiming.duration * 1000),
+                                "transitions_enabled": .bool(transitions.enabled),
+                                "transitions_disabled_reason": transitions.reason.map(JSONValue.string) ?? .null,
                                 "startup_stash_windows": .number(Double(startupStashCount)),
                                 "startup_immediate_stash_handles": .number(Double(startupImmediateHandles)),
                                 "config": .string(paths.config.path), "state": .string(paths.state.path),
