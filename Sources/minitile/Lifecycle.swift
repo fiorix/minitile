@@ -97,11 +97,19 @@ extension AppDelegate {
             guard let pid = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier else { return }
             let deliver: @MainActor @Sendable () -> Void = { [weak self] in
                 self?.activate(pid, received: received, source: "workspace")
+                self?.updateFrontmost(pid)
             }
             if Thread.isMainThread { MainActor.assumeIsolated { deliver() } }
             else { DispatchQueue.main.async(execute: deliver) }
         }
         observers.append((center, token))
+    }
+
+    /// The keyboard tap passes the window-cycling key through in apps minitile does not manage. Unlike `activate`,
+    /// this runs for every activation, including suspended sessions and minitile's own focus actions.
+    func updateFrontmost(_ pid: Int32? = nil) {
+        let app = pid.flatMap { NSRunningApplication(processIdentifier: $0) } ?? NSWorkspace.shared.frontmostApplication
+        keyboard?.frontmost(managed: app.map { discovery?.allows($0) == true } ?? false)
     }
 
     func suspend(_ reason: String, enabled: Bool) {

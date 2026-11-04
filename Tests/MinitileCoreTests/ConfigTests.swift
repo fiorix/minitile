@@ -30,13 +30,26 @@ import Testing
     #expect(config.bindings[try Chord("alt+a")] == ["debug", "spaces"])
 }
 
-@Test(arguments: ["a", "9", "ctrl+left", "cmd+shift+alt+ctrl+f1", "F20", " return ", "alt+escape", "cmd+space", "shift+tab"])
+@Test(arguments: ["a", "9", "ctrl+left", "cmd+shift+alt+ctrl+f1", "F20", " return ", "alt+escape", "cmd+space", "shift+tab", "cmd+`", "`"])
 func validChordsRoundTripCanonicalText(_ text: String) throws {
     let chord = try Chord(text)
     #expect(try Chord(chord.description) == chord)
 }
 
-@Test(arguments: ["", "ctrl", "ctrl+", "+a", "ctrl+ctrl+a", "fn+left", "hyper+a", "a+b", "f0", "f21", "f01", "é", "cmd++"])
+@Test func backtickKeyParsesAndDisplaysCanonically() throws {
+    #expect(try Chord("CMD + Shift + `") == Chord(modifiers: [.cmd, .shift], key: "`"))
+    #expect(try Chord("cmd+shift+`").description == "shift+cmd+`")
+    let config = try Config.parse("""
+    [bindings]
+    "cmd+`" = ""
+    "alt+`" = "window focus prev"
+    """)
+    #expect(config.bindings[try Chord("cmd+`")] == nil)
+    #expect(config.bindings[try Chord("shift+cmd+`")] == ["window", "focus", "prev"])
+    #expect(config.bindings[try Chord("alt+`")] == ["window", "focus", "prev"])
+}
+
+@Test(arguments: ["", "ctrl", "ctrl+", "+a", "ctrl+ctrl+a", "fn+left", "hyper+a", "a+b", "f0", "f21", "f01", "é", "cmd++", "cmd+``", "cmd+~", "cmd+'"])
 func invalidChordsNameBinding(_ text: String) {
     do { _ = try Chord(text); Issue.record("Expected invalid chord") }
     catch let error as ConfigError { #expect(error.key.hasPrefix("bindings.")) }

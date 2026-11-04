@@ -112,3 +112,82 @@ func malformedCommandsFailWithoutStateChanges(_ text: String) {
         #expect(e.handle(.command(args)).reply?.ok == true)
     }
 }
+
+@Test func nextAndPreviousFocusWalkThePageInGridOrderAndWrap() {
+    var e = engine(5)
+    command(&e, "window focus 3")
+    let out = command(&e, "window focus next")
+    #expect(out.actions == [.focus(4)])
+    #expect(out.events.contains { $0.type == "focus" })
+    #expect(!out.events.contains { $0.type == "page_shown" })
+    command(&e, "window focus next")
+    #expect(e.savedState().focus == 1)
+    command(&e, "window focus prev")
+    #expect(e.savedState().focus == 4)
+    command(&e, "window focus prev")
+    #expect(e.savedState().focus == 3)
+}
+
+@Test func focusCyclingVisitsFloatingWindowsAfterTiles() {
+    var e = engine(4)
+    command(&e, "window float 2 on")
+    command(&e, "window focus 1")
+    var visited: [WindowID?] = []
+    for _ in 0..<4 { command(&e, "window focus next"); visited.append(e.savedState().focus) }
+    #expect(visited == [3, 4, 2, 1])
+    command(&e, "window focus prev")
+    #expect(e.savedState().focus == 2)
+}
+
+@Test func focusCyclingSkipsMinimizedAndAppHiddenWindows() {
+    var e = engine(4)
+    var minimized = window(2)
+    minimized.minimized = true
+    _ = e.handle(.windowUpdated(minimized))
+    var hidden = window(3)
+    hidden.appHidden = true
+    _ = e.handle(.windowUpdated(hidden))
+    command(&e, "window focus 1")
+    command(&e, "window focus next")
+    #expect(e.savedState().focus == 4)
+    command(&e, "window focus next")
+    #expect(e.savedState().focus == 1)
+    command(&e, "window focus prev")
+    #expect(e.savedState().focus == 4)
+}
+
+@Test func focusCyclingWithoutFocusPicksTheShownPagesFirstWindow() {
+    var e = engine(6)
+    command(&e, "page next")
+    _ = e.handle(.focusChanged(nil))
+    let out = command(&e, "window focus prev")
+    #expect(out.actions == [.focus(5)])
+    #expect(e.savedState().focus == 5)
+    #expect(e.makeScene().displays["primary"]?.visible == [5, 6])
+}
+
+@Test func focusCyclingDoesNothingOnAnEmptyPageOrAlone() {
+    var e = engine(5)
+    command(&e, "window focus 5")
+    var before = e.savedState()
+    var out = command(&e, "window focus next")
+    #expect(out.actions.isEmpty)
+    #expect(out.events.isEmpty)
+    #expect(e.savedState() == before)
+    command(&e, "page next")
+    #expect(e.savedState().focus == nil)
+    before = e.savedState()
+    out = command(&e, "window focus next")
+    #expect(out.actions.isEmpty)
+    #expect(e.savedState() == before)
+}
+
+@Test func focusCycleOrderWrapsInBothDirections() {
+    let order: [WindowID] = [1, 2, 3]
+    #expect(Engine.cycle(order, from: 3, step: 1) { _ in true } == 1)
+    #expect(Engine.cycle(order, from: 1, step: -1) { _ in true } == 3)
+    #expect(Engine.cycle(order, from: 1, step: 1) { $0 == 1 } == nil)
+    #expect(Engine.cycle(order, from: nil, step: -1) { $0 != 1 } == 2)
+    #expect(Engine.cycle([], from: nil, step: 1) { _ in true } == nil)
+    #expect(Engine.cycle([7], from: 7, step: 1) { _ in true } == nil)
+}

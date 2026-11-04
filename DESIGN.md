@@ -119,7 +119,7 @@ Default bindings:
 |---|---|---|
 | Ctrl+Left/Right | Show the previous or next page. | Move left/right a space |
 | Ctrl+Up/Down | Show the workspace above or below. | Mission Control, App Expose |
-| Cmd+\` / Cmd+Shift+\` | Focus the next or previous window on the shown page: tiles in slot order, then floating windows, wrapping around. Not yet implemented. | Move focus to next window, which cycles the frontmost app's windows |
+| Cmd+\` / Cmd+Shift+\` | Focus the next or previous window on the shown page: tiles in slot order, then floating windows, wrapping around. | Move focus to next window, which cycles the frontmost app's windows |
 | Ctrl+Shift+Left/Right | Nudge the focused window. If it shares its page, it moves onto a new page of its own on that side. If it is alone, it joins the neighbouring page; if that page is full, it joins the next page with room in the same direction, or a new page at that end of the workspace. Focus follows. | Select to line start or end in text fields, which Cmd+Shift+arrows also does |
 | Ctrl+Shift+Up/Down | Carry the focused window to the workspace above or below, placed by the placement rules. Past the last workspace, it carries the window into a new one. Focus follows. | - |
 
@@ -156,7 +156,7 @@ Notes:
 - Validated with physical keys: the session-level event tap receives Ctrl+Left/Right/Up/Down before the Dock, and swallowing them keeps desktops from switching and Mission Control and App Expose from opening. Ctrl+Up/Down are system shortcuts 32 and 33, and Ctrl+Left/Right are 79 and 81.
 - Arrow keys carry the fn and keypad flags, so binding matches ignore them.
 - A held binding fires once. Key repeats of a bound chord are swallowed without running the command again.
-- The \` key is whichever key macOS assigns to Move focus to next window (system shortcut 27), so Cmd+\` follows non-US layouts. On this Mac it is keycode 50 with Cmd. In apps minitile does not manage, the chord keeps its native meaning. Not yet validated with physical keys: swallowing it must stop the app's own window cycling, including in apps that handle Cmd+\` themselves.
+- The \` key is whichever key macOS assigns to Move focus to next window (system shortcut 27), so Cmd+\` follows non-US layouts. Only the shortcut's keycode is used; binding modifiers come from the config. On this Mac it is keycode 50 with Cmd, and keycode 50 is the fallback when the shortcut cannot be read. It is reread whenever the key map is rebuilt. A key that already has another name, such as a letter, keeps it, and \` then names no key. In apps minitile does not manage, chords on the \` key keep their native meaning: the tap passes them through while the frontmost app is not allowed by the config, a flag the shell updates on every app activation and config reload. A press swallowed in a managed app stays swallowed until its key-up. Not yet validated with physical keys: swallowing it must stop the app's own window cycling, including in apps that handle Cmd+\` themselves.
 - Mission Control stays reachable through its own key and trackpad gesture. It shows the stash desktop with every hidden page's windows, which makes it an escape hatch rather than a view of the grid.
 - The event tap also swallows Desktop N shortcuts and native Move left/right a Space shortcuts that would lead into any managed display's stash. Directional blockers follow native adjacency, including fullscreen Spaces, and remain active when the corresponding minitile binding is unbound.
 
@@ -232,7 +232,7 @@ quit
 
 Page and workspace addresses are 1-based; tiled slots are 0-based. Floating and explicitly hidden windows have a null slot. Window IDs are decimal. With no focused window, commands use the most recently selected display, then the primary managed display. `page list` lists the current workspace; `workspace list` lists the current display. An explicit display UUID can inspect an unmanaged display. `info`, `show` and `variant` addresses resolve within the current context; `next`/`prev` in these addresses clamp at the ends. Only navigation commands and window moves create pages or workspaces. `workspace new` appends an empty workspace unless the current one is already empty.
 
-Window moves and swaps follow the addressed source window. A move to its existing page does nothing. Left/right moves are nudges; up/down moves carry between workspaces. Explicit moves to a full page use placement spill. Spatial focus chooses the nearest window center in the requested half-plane on the same page, with grid order breaking ties; it does not wrap. Minimized and app-hidden windows are excluded from spatial focus. Next and previous focus (planned) walk the focused window's page in grid order, tiles by slot and then floating windows, and wrap; they skip minimized and app-hidden windows. With no managed window focused, they focus the first window of the shown page in the current display context.
+Window moves and swaps follow the addressed source window. A move to its existing page does nothing. Left/right moves are nudges; up/down moves carry between workspaces. Explicit moves to a full page use placement spill. Spatial focus chooses the nearest window center in the requested half-plane on the same page, with grid order breaking ties; it does not wrap. Minimized and app-hidden windows are excluded from spatial focus. Next and previous focus walk the focused window's page in grid order, tiles by slot and then floating windows, and wrap; they skip minimized and app-hidden windows. With no managed window focused, both focus the first window of the shown page in the current display context. Like `window focus ID`, they emit a focus action. When no other window on the page can take focus, including on an empty page, they do nothing.
 
 For tiled resize, a single share applies along the layout's split axis; `WIDTHxHEIGHT` supplies physical-axis fractional shares. Cuts are clamped by the layout rules. Floating resize requires `WIDTHxHEIGHT` in positive points and emits an explicit frame-write action. `page ratio R1` leaves r2 unchanged. Config reload is completed by the shell before its socket reply; failures keep the previous config. `config open` opens the config file in the user's editor.
 
@@ -487,8 +487,8 @@ transition_ms = 500   # page slide duration; 0 turns slides and bounces off (pla
 "ctrl+shift+right" = "window nudge right"
 "ctrl+shift+up" = "window move workspace prev"
 "ctrl+shift+down" = "window move workspace next"
-"cmd+`" = "window focus next"           # planned
-"cmd+shift+`" = "window focus prev"     # planned
+"cmd+`" = "window focus next"
+"cmd+shift+`" = "window focus prev"
 ```
 
 The command strings above use the final grammar. A chord is modifiers (`ctrl`, `shift`, `alt`, `cmd`) and one key (a letter, a digit, `left`, `right`, `up`, `down`, `return`, `space`, `tab`, `escape`, `f1` to `f20`, and `` ` `` for the key of macOS's Move focus to next window shortcut), joined with `+`.
