@@ -2,22 +2,28 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 interactive=0
+display_test=0
 build=1
 recovery_directory=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --interactive) interactive=1 ;;
+        --displays) display_test=1 ;;
         --no-build) build=0 ;;
         --cleanup)
             if [ "$#" -lt 2 ] || [ -z "$2" ]; then echo '--cleanup requires a test directory.' >&2; exit 2; fi
             recovery_directory=$2
             shift
             ;;
-        --help|-h) echo 'Usage: smoke.sh [--interactive | --cleanup TEST_DIRECTORY] [--no-build]'; exit 0 ;;
+        --help|-h) echo 'Usage: smoke.sh [--interactive | --displays | --cleanup TEST_DIRECTORY] [--no-build]'; exit 0 ;;
         *) echo "Unknown argument: $1" >&2; exit 2 ;;
     esac
     shift
 done
+if [ "$display_test" = 1 ] && { [ "$interactive" = 1 ] || [ -n "$recovery_directory" ]; }; then
+    echo '--displays cannot be combined with --interactive or --cleanup.' >&2
+    exit 2
+fi
 if [ -n "$recovery_directory" ]; then
     if [ "$interactive" = 1 ]; then echo '--cleanup cannot be combined with --interactive.' >&2; exit 2; fi
     task_tmp=$(cd "${TMPDIR:-/tmp}" && pwd -P)
@@ -29,7 +35,7 @@ if [ -n "$recovery_directory" ]; then
         exit 2
     fi
 fi
-if [ "$interactive" = 1 ] && [ ! -t 0 ]; then
+if { [ "$interactive" = 1 ] || [ "$display_test" = 1 ]; } && [ ! -t 0 ]; then
     echo "Interactive checks require a Terminal." >&2
     exit 2
 fi
@@ -242,6 +248,10 @@ if [ "$interactive" = 1 ] && ! jq -e '.key_trace_enabled' "$report/health.json" 
     echo 'Shortcut tracing is unavailable. Rebuild by omitting --no-build.' >&2
     exit 1
 fi
+if [ "$display_test" = 1 ] && ! jq -e 'length == 1' "$report/initial-spaces.json" >/dev/null; then
+    echo 'Start --displays with the external monitor unplugged and the laptop display active.' >&2
+    exit 1
+fi
 for ((index=1; index<=5; index++)); do
     printf 'minitile smoke document %s\n' "$index" > "$testdir/$prefix-$index.txt"
     open -a TextEdit "$testdir/$prefix-$index.txt"
@@ -253,6 +263,12 @@ textedit_pid=$(jq -r '.windows[0].pid' "$report/state.json")
 display_id=$(jq -r '.windows[0].display' "$report/state.json")
 read -r -a ids <<< "$(jq -r '.windows | sort_by(.id) | map(.id | tostring) | join(" ")' "$report/state.json")"
 a=${ids[0]}; b=${ids[1]}; c=${ids[2]}; e=${ids[4]}
+
+if [ "$display_test" = 1 ]; then
+    # shellcheck source=scripts/smoke-displays.sh
+    source scripts/smoke-displays.sh
+    exit 0
+fi
 
 if [ "$interactive" = 1 ]; then
     "$mntl" window show "$a"
