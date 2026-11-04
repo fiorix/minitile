@@ -178,3 +178,13 @@ private func snapshot(_ records: CGWindowRecord...) -> [WindowID: CGWindowRecord
     #expect(passes.count == 2)
     #expect(abs(passes.milliseconds - 290) < 0.001)
 }
+
+@Test func popupsHaveNoMeaningfulSubroleAndNoCloseButton() {
+    // Chrome's address bar suggestions: AXUnknown, no close button.
+    #expect(WindowAttributes.popup(subrole: "AXUnknown", closeButton: false) == true)
+    #expect(WindowAttributes.popup(subrole: "AXUnknown", closeButton: true) == false)
+    #expect(WindowAttributes.popup(subrole: "AXUnknown", closeButton: nil) == nil)
+    #expect(WindowAttributes.popup(subrole: "AXStandardWindow", closeButton: nil) == false)
+    #expect(WindowAttributes.popup(subrole: "AXDialog", closeButton: false) == false)
+    #expect(WindowAttributes.popup(subrole: nil, closeButton: false) == nil)
+}

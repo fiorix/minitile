@@ -423,7 +423,7 @@ If the focused display disappears, focus moves to the primary display's currentl
 ## Floating windows
 
 - minitile tiles standard windows: role `AXWindow`, subrole `AXStandardWindow`, not modal, with a settable size.
-- Everything else floats, along with windows set floating through `mntl window float` or the menu bar, and apps on the always-float list in the config.
+- Everything else floats, along with windows set floating through `mntl window float` or the menu bar, and apps on the always-float list in the config. Popups are not managed at all (see "Discovery").
 - A floating window belongs to the page that was visible when it appeared, and is hidden and shown with that page. Sheets already travel with their parent window.
 - minitile does not try to keep floating windows above tiled ones. Without SIP it cannot set another app's window level, and HyprMac's attempts turned into a running fight with the window server.
 
@@ -717,6 +717,7 @@ Discovery:
 - Also handle NSWorkspace notifications: launch, terminate, hide, unhide, activate, active space changed.
 - Window IDs come from `_AXUIElementGetWindow` only, never matched by position.
 - Treat a window as real only if the CG window list shows it at layer 0 with alpha above 0.01.
+- Never manage popups: an `AXWindow` whose subrole is `AXUnknown` and that has no close button, such as Chrome's address bar suggestions. Chrome reuses these windows, lists them in `AXWindows` only while they are open, and cannot focus them: managed, one would become its page's focus target, and Chrome's answer would send the view to another page. A managed window that rereads as a popup is dropped.
 - A failed AX read means "unknown", not "closed". A destroyed element may not report its pid, so use the observer's pid.
 - Apps can keep listing a destroyed window briefly. Confirm disappearance with a few rechecks; busy Electron apps flicker otherwise.
 - Some apps (Teams, Mail) reuse window IDs on close and reopen.

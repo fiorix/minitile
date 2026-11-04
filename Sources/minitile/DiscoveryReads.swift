@@ -16,6 +16,16 @@ struct WindowAttributes: Equatable, Sendable {
     var tileable: Bool?
     /// Read only for a smoke run.
     var document: String?
+    /// True for a popup, which minitile never manages; nil when unknown.
+    var popup: Bool?
+
+    /// A popup, such as a browser's address bar suggestions, has no meaningful subrole and no close button. Nil
+    /// when the subrole could not be read, or the close button could not be for an `AXUnknown` window.
+    static func popup(subrole: String?, closeButton: Bool?) -> Bool? {
+        guard let subrole else { return nil }
+        guard subrole == kAXUnknownSubrole else { return false }
+        return closeButton.map { !$0 }
+    }
 }
 
 extension WindowInfo {
@@ -239,8 +249,15 @@ enum DiscoveryReader {
         result.title = AX.value(element, kAXTitleAttribute) as? String
         result.minimized = AX.value(element, kAXMinimizedAttribute) as? Bool
         result.frame = AX.frame(element)
-        if let settable = AX.settable(element, kAXSizeAttribute),
-           let subrole = AX.value(element, kAXSubroleAttribute) as? String,
+        let subrole = AX.value(element, kAXSubroleAttribute) as? String
+        var closeButton: Bool?
+        if subrole == kAXUnknownSubrole {
+            let (button, error) = AX.copy(element, kAXCloseButtonAttribute)
+            if error == .success { closeButton = button != nil }
+            else if error == .noValue || error == .attributeUnsupported { closeButton = false }
+        }
+        result.popup = WindowAttributes.popup(subrole: subrole, closeButton: closeButton)
+        if let settable = AX.settable(element, kAXSizeAttribute), let subrole,
            let modal = AX.value(element, kAXModalAttribute) as? Bool {
             result.tileable = subrole == kAXStandardWindowSubrole && !modal && settable
         }
