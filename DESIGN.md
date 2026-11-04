@@ -2,7 +2,7 @@
 
 minitile is a tiling window manager for macOS. It runs with SIP enabled and aims for a small core that blends with macOS: a handful of keys that reuse the native desktop shortcuts, mouse gestures where macOS users already use the mouse, and every function scriptable from the `mntl` command line tool. HyprMac (github.com/zacharytgray/HyprMac) is a source of macOS behaviour to respect, not a feature list to copy.
 
-Status: the core, IPC, `mntl` and the macOS shell are implemented and verified live on one display. Multiple displays and the items under "Open" are not yet verified. Page transitions, Cmd+\` window cycling and page miniatures in the position indicator are implemented and unit tested but not yet tried on screen; the transition mechanism was validated in a spike. Trackpad swipes are implemented and unit tested; the swipe mechanism was validated in a spike. The Cmd+Tab window switcher is implemented and unit tested but not yet tried on screen. Keyboard resizing and the mirrored and stacked three-window layouts are designed but not yet implemented.
+Status: the core, IPC, `mntl` and the macOS shell are implemented and verified live on one display. Multiple displays and the items under "Open" are not yet verified. Page transitions, Cmd+\` window cycling and page miniatures in the position indicator are implemented and unit tested but not yet tried on screen; the transition mechanism was validated in a spike. Trackpad swipes are implemented and unit tested; the swipe mechanism was validated in a spike. The Cmd+Tab window switcher is implemented and unit tested but not yet tried on screen. Keyboard resizing, the mirrored and stacked three-window layouts and the drop picker are designed but not yet implemented.
 
 ## Model
 
@@ -131,6 +131,14 @@ Geometry:
 
 The count for ratio resets is the number of non-minimized, non-app-hidden tiled windows. A square visible frame uses width as its long axis. Cuts are centered in gaps; frame edges are rounded individually and width/height are the differences of rounded edges. Insets and unusually large gaps never produce negative sizes. A single-cut edit preserves the other cut when enforcing three-slice spacing; setting both ratios clamps r1 first, then brings r2 above it, moving r1 back if necessary to fit within 0.8.
 
+Drop picker (not yet implemented):
+
+- While a tiled window is dragged as a move (the mouse button is down and the window has moved beyond the move tolerance without changing size), a layout picker appears at the top centre of its display's usable area. It shows each layout for the page's tiled window count as a miniature, in cycling order: two windows `standard` and `alternate`; three windows `standard`, `mirrored`, `alternate` and `stacked`; four windows the 2x2. With one tiled window there is nothing to pick and it does not appear. Edge drags (resizes) and floating windows never show it.
+- Each miniature's slots are drop targets. While the cursor is over a slot, the slot is highlighted with the dragged window's app icon and a translucent preview on the page shows the frame the window would get. Releasing the mouse there sets the page's variant to that layout and moves the dragged window into that slot; the other windows keep their relative order in the remaining slots. Ratios reset as for any variant change.
+- Releasing anywhere else keeps the behaviour below: a swap with the tiled window under the cursor, or a snap back.
+- The picker reflects the page the dragged window is on, including after Ctrl+arrow during the drag. It is click-through and never takes focus; the shell hit-tests the cursor against it while polling the drag. It uses the same miniature drawing as the position indicator and the window switcher.
+- The core command is `window place [ID] standard|alternate|mirrored|stacked SLOT`: it sets the variant of the window's page and moves the window to the 0-based slot. The variant must be defined for the page's tiled count and the slot must exist.
+
 Keyboard (not yet implemented):
 
 - Ctrl+Option+arrows resize the focused window by moving its edges, the keyboard version of dragging an edge. If the window's edge on the arrow's side is a cut, that cut moves in the arrow's direction and the window grows. If that side lies on the layout area's border, the window's cut on the opposite side moves in the arrow's direction instead and the window shrinks. So a divider always moves the way the arrow points, whichever side of it has focus.
@@ -184,7 +192,7 @@ Sharing a page includes floating and reserved minimized/app-hidden windows. A nu
 
 Mouse:
 
-- Drag a tiled window's edge to resize, or drag it onto another tile to swap (see Layout). There is no live preview.
+- Drag a tiled window's edge to resize, drag it onto another tile to swap, or drop it on a slot of the layout picker (see Layout). Edge drags have no live preview.
 - Press Ctrl+arrow while dragging a window to do to it what Ctrl+Shift+arrow does. This is how macOS moves a window to another desktop. Frames of a window being dragged are not written until the mouse button is released.
 - A move or resize that minitile did not cause, seen while the mouse button is down, is a user drag. minitile acts on release.
 
@@ -266,6 +274,7 @@ window move [ID] page|workspace INDEX|next|prev
 window move [ID] display UUID|next|prev
 window swap [ID] OTHER_ID
 window resize [ID] SHARE|WIDTHxHEIGHT|left|right|up|down
+window place [ID] standard|alternate|mirrored|stacked SLOT
 page list
 page info|show|variant [INDEX|next|prev]
 page next|prev [display UUID]
@@ -686,14 +695,15 @@ First version:
 - page transitions: slides and edge bounces;
 - trackpad swipes for pages and workspaces;
 - the Cmd+Tab window switcher;
-- keyboard resizing and the mirrored and stacked three-window layouts.
+- keyboard resizing and the mirrored and stacked three-window layouts;
+- the drop picker for dragged windows.
 
 Not planned:
 
 - focus-follows-mouse;
 - focus borders and dimming;
 - a mouse-driven overview;
-- live drag previews;
+- live previews of edge drags;
 - saved layouts;
 - a URL scheme (status bars can use `mntl watch`);
 - a settings GUI;
