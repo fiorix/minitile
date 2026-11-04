@@ -108,6 +108,7 @@ final class TransitionOverlay {
     /// Changes whenever the overlay is covered again or ends, so stale completions and captures are ignored.
     private(set) var generation = 0
     private(set) var awaitingIncoming = false
+    var ended: (() -> Void)?
 
     init() {
         panel = TransitionPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -131,6 +132,7 @@ final class TransitionOverlay {
         }
     }
 
+    var covering: Bool { panel.isVisible }
     private var size: CGSize { panel.contentView?.bounds.size ?? .zero }
     private var rest: CGPoint { CGPoint(x: size.width / 2, y: size.height / 2) }
 
@@ -231,6 +233,7 @@ final class TransitionOverlay {
         outgoing.contents = nil
         incoming.contents = nil
         CATransaction.commit()
+        ended?()
     }
 
     func close() {

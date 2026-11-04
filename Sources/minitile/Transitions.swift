@@ -26,6 +26,8 @@ final class Transitions {
     var commit: ((Output) -> Void)?
     var model: (() -> SavedState)?
     var visibleIsCurrent: ((DisplayID) -> Bool)?
+    /// Runs when an overlay goes away, so what it hid can show again.
+    var uncovered: (() -> Void)?
     private(set) var milliseconds: Double = 0
     private var gate: String? = "Not started"
     private let capture: any TransitionCapturing
@@ -83,6 +85,13 @@ final class Transitions {
         return true
     }
 
+    /// Whether the display's screen is about to slide or is sliding or bouncing: its capture for a held reconcile is
+    /// pending or arrived, or its overlay is up.
+    func covers(_ id: DisplayID) -> Bool {
+        if let pending, pending.waiting.contains(id) || pending.images[id] != nil { return true }
+        return overlays[id]?.covering == true
+    }
+
     /// Apply any held reconcile now. Slides already covering keep running; captures still in flight are dropped.
     func flush() { if pending != nil { commitPending() } }
 
@@ -104,6 +113,7 @@ final class Transitions {
     private func overlay(_ id: DisplayID) -> TransitionOverlay? {
         guard let screen = NSScreen.screen(for: id) else { return nil }
         let overlay = overlays[id] ?? TransitionOverlay()
+        if overlays[id] == nil { overlay.ended = { [weak self] in self?.uncovered?() } }
         overlays[id] = overlay
         overlay.place(on: screen)
         return overlay

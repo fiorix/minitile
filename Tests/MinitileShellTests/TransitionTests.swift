@@ -230,3 +230,17 @@ private final class Harness {
     #expect(h.committed[0].scene.displays["primary"]?.label == "1:3")
     #expect(h.committed[0].actions.isEmpty)
 }
+
+@Test @MainActor func slidingDisplayIsCoveredFromTheCommandUntilItsSlide() {
+    let h = Harness()
+    #expect(!h.transitions.covers("primary"))
+    #expect(h.handle(.command(["window", "nudge", "1", "right"])))
+    #expect(h.transitions.covers("primary"))
+    #expect(!h.transitions.covers("secondary"))
+    // Without a leaving image there is no slide, so the display shows at once.
+    h.capture.requests[0].1(nil)
+    #expect(h.committed.count == 1)
+    #expect(!h.transitions.covers("primary"))
+    #expect(!h.handle(.command(["window", "resize", "1", "left"])))
+    #expect(!h.transitions.covers("primary"))
+}
