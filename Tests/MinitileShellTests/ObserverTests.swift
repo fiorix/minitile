@@ -26,11 +26,27 @@ import Testing
     #expect(complete)
 }
 
-@Test func unsupportedAndInvalidObserversAreNotRecordedAsSuccessful() {
-    for error: AXError in [.notificationUnsupported, .invalidUIElement, .invalidUIElementObserver, .cannotComplete] {
+@Test func failedObserversAreNotRecordedAsSuccessful() {
+    for error: AXError in [.invalidUIElement, .invalidUIElementObserver, .cannotComplete, .failure] {
         var registrations = ObserverRegistrations()
         let complete = registrations.register([kAXWindowCreatedNotification]) { _ in error }
         #expect(!complete)
         #expect(registrations.names.isEmpty)
     }
+}
+
+@Test func unsupportedNotificationsSettleWithoutRetry() {
+    let required = [kAXWindowCreatedNotification, kAXApplicationActivatedNotification]
+    var registrations = ObserverRegistrations()
+    let first = registrations.register(required) { name in
+        name == kAXApplicationActivatedNotification ? .notificationUnsupported : .success
+    }
+    #expect(first)
+    #expect(registrations.names == [kAXWindowCreatedNotification])
+    #expect(registrations.unsupported == [kAXApplicationActivatedNotification])
+    let again = registrations.register(required) { _ in
+        Issue.record("Settled registrations must not be repeated")
+        return .failure
+    }
+    #expect(again)
 }

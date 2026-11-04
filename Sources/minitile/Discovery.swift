@@ -5,13 +5,18 @@ import MinitileCore
 
 struct ObserverRegistrations {
     private(set) var names: Set<String> = []
+    private(set) var unsupported: Set<String> = []
 
+    /// An unsupported notification is settled, since retrying it can never succeed; other failures are retried.
     mutating func register(_ required: [String], add: (String) -> AXError) -> Bool {
-        for name in required where !names.contains(name) {
-            let result = add(name)
-            if result == .success || result == .notificationAlreadyRegistered { names.insert(name) }
+        for name in required where !names.contains(name) && !unsupported.contains(name) {
+            switch add(name) {
+            case .success, .notificationAlreadyRegistered: names.insert(name)
+            case .notificationUnsupported: unsupported.insert(name)
+            default: break
+            }
         }
-        return required.allSatisfy(names.contains)
+        return required.allSatisfy { names.contains($0) || unsupported.contains($0) }
     }
 }
 
