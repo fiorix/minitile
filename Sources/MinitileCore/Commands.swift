@@ -20,7 +20,7 @@ extension Engine {
     window move [ID] page|workspace INDEX|next|prev
     window move [ID] display UUID|next|prev
     window swap [ID] OTHER_ID
-    window resize [ID] SHARE|WIDTHxHEIGHT
+    window resize [ID] SHARE|WIDTHxHEIGHT|left|right|up|down
     page list
     page info|show|variant [INDEX|next|prev]
     page next|prev [display UUID]
@@ -38,6 +38,7 @@ extension Engine {
     Pages and workspaces use 1-based indices; tiled slots use 0-based indices.
     Window IDs default to the focused window. Page/workspace context is its display.
     Tiled resize uses fractional shares; floating resize uses WIDTHxHEIGHT in points.
+    Directional resize moves an edge by 0.05 of the layout area.
     """
 
     mutating func command(_ argv: [String], output: inout Output) throws -> Reply {
@@ -167,8 +168,9 @@ extension Engine {
             guard args.count == 1, let other = WindowID(args[0]) else { throw CommandError("Expected window swap [ID] OTHER_ID") }
             try swap(id, other, output: &output)
         case "resize":
-            guard args.count == 1 else { throw CommandError("Expected window resize [ID] SHARE|WIDTHxHEIGHT") }
-            try resize(id, size: args[0], output: &output)
+            guard args.count == 1 else { throw CommandError("Expected window resize [ID] SHARE|WIDTHxHEIGHT|left|right|up|down") }
+            if ["left", "right", "up", "down"].contains(args[0]) { try resizeStep(id, direction: args[0], output: &output) }
+            else { try resize(id, size: args[0], output: &output) }
         default: throw CommandError("Expected window list|info|show|hide|focus|float|move|nudge|swap|resize|close")
         }
         return Reply(text: "OK")

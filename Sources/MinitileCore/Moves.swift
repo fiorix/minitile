@@ -148,6 +148,35 @@ extension Engine {
         output.rewrite.insert(id)
     }
 
+    /// Moves the cut on the arrow's side of the window, or the one on the opposite side when the arrow's side lies on the
+    /// layout area's border, by 0.05 in the arrow's direction. A floating window changes its width or height instead.
+    mutating func resizeStep(_ id: WindowID, direction: String, output: inout Output) throws {
+        guard let window = state.windows[id] else { throw CommandError("Unknown window") }
+        let horizontal = direction == "left" || direction == "right"
+        let forward = direction == "right" || direction == "down"
+        if window.floating {
+            guard let d = displayIndex(window.display) else { throw CommandError("Window has no display") }
+            let area = Layout.area(frame: state.displays[d].info.visibleFrame, padding: config.padding)
+            var frame = window.info.frame
+            let (origin, size) = horizontal ? (frame.x, frame.width) : (frame.y, frame.height)
+            let (start, length) = horizontal ? (area.x, area.width) : (area.y, area.height)
+            // Grows until its far edge reaches the layout area's and shrinks to a fifth of the area; past a limit it stays.
+            let target = forward ? min(size + 0.05 * length, max(size, start + length - origin))
+                : max(size - 0.05 * length, min(size, 0.2 * length))
+            guard target.rounded() != size else { return }
+            if horizontal { frame.width = target.rounded() } else { frame.height = target.rounded() }
+            state.windows[id]?.info.frame = frame
+            output.actions.append(.setFrame(id, frame))
+            return
+        }
+        guard let (at, tile) = activeTile(id) else { throw CommandError("Window has no active tile") }
+        let span = tile.span(long: horizontal == isLandscape(at))
+        guard let cut = (forward ? span.end : span.start) ?? (forward ? span.start : span.end) else { return }
+        var cuts = [page(at).r1, page(at).r2]
+        cuts[cut] += forward ? 0.05 : -0.05
+        setRatios(at, cuts[0], cuts[1], preserveFirst: cut != 0, preserveSecond: cut != 1)
+    }
+
     mutating func resizeCuts(_ id: WindowID, at: Location, frame: Rect) {
         guard let original = frames(at)[id], let (_, tile) = activeTile(id) else { return }
         let p = page(at)

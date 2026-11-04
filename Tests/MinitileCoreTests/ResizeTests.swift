@@ -83,3 +83,93 @@ func physicalSharesSetTheTileExtentOnEachSplitAxis(_ kind: LayoutKind) {
     command(&portrait, "window resize 1 0.4")
     #expect(tileFrames(portrait)[1] == Rect(x: -800, y: 200, width: 320, height: 1000))
 }
+
+@Test(arguments: layoutKinds)
+func arrowsMoveTheEdgeOnTheirSideOrShrinkFromTheOtherOne(_ kind: LayoutKind) {
+    for slot in 0..<kind.count {
+        for direction in ["left", "right", "up", "down"] {
+            var e = layoutEngine(kind)
+            let id = WindowID(slot + 1)
+            let area = e.state.displays[0].info.visibleFrame
+            let before = tileFrames(e)
+            let out = command(&e, "window resize \(id) \(direction)")
+            let f = before[id]!
+            let horizontal = direction == "left" || direction == "right"
+            let forward = direction == "right" || direction == "down"
+            let step = (forward ? 0.05 : -0.05) * (horizontal ? area.width : area.height)
+            var low = horizontal ? f.x : f.y, high = horizontal ? f.maxX : f.maxY
+            let inner = (low: low > (horizontal ? area.x : area.y), high: high < (horizontal ? area.maxX : area.maxY))
+            // The edge on the arrow's side moves when it is inner; otherwise the opposite inner edge moves the same way.
+            if forward ? inner.high : inner.low { if forward { high += step } else { low += step } }
+            else if forward ? inner.low : inner.high { if forward { low += step } else { high += step } }
+            let expected = horizontal ? Rect(x: low, y: f.y, width: high - low, height: f.height)
+                : Rect(x: f.x, y: low, width: f.width, height: high - low)
+            let actual = out.scene.displays["primary"]!.frames[id]!
+            #expect(near(actual, expected), "\(kind) slot \(slot) \(direction): \(actual) != \(expected)")
+            if !inner.low && !inner.high {
+                #expect(out.scene.displays["primary"]!.frames == before)
+                #expect(out.events.isEmpty && out.actions.isEmpty && out.rewrite.isEmpty && !out.stateChanged)
+            } else {
+                #expect(out.stateChanged && out.rewrite.isEmpty && out.actions.isEmpty)
+            }
+        }
+    }
+}
+
+@Test func arrowsStopAtTheClampAndTheThreeSliceSpacing() {
+    var e = layoutEngine(LayoutKind(count: 3, variant: .stacked, portrait: false))
+    for _ in 0..<8 { command(&e, "window resize 1 down") }
+    var page = e.page(e.currentLocation(display: 0)!)
+    #expect(abs(page.r2 - 2.0 / 3) < 0.00001 && abs(page.r1 - (2.0 / 3 - 0.2)) < 0.00001)
+    let stuck = command(&e, "window resize 1 down")
+    #expect(!stuck.stateChanged && stuck.events.isEmpty && stuck.rewrite.isEmpty)
+    for _ in 0..<8 { command(&e, "window resize 2 up") }
+    page = e.page(e.currentLocation(display: 0)!)
+    #expect(page.r1 == 0.2 && abs(page.r2 - 2.0 / 3) < 0.00001)
+    command(&e, "window focus 3")
+    for _ in 0..<8 { command(&e, "window resize up") }
+    page = e.page(e.currentLocation(display: 0)!)
+    #expect(page.r1 == 0.2 && abs(page.r2 - 0.4) < 0.00001)
+    var four = layoutEngine(LayoutKind(count: 4, variant: .standard, portrait: true))
+    for _ in 0..<8 { command(&four, "window resize 4 left") }
+    #expect(four.page(four.currentLocation(display: 0)!).r2 == 0.2)
+    #expect(four.page(four.currentLocation(display: 0)!).r1 == 0.5)
+}
+
+@Test func floatingArrowsResizeFromTheTopLeftWithinTheLayoutArea() {
+    var e = engine(3, config: Config(gaps: 0, padding: 0))
+    command(&e, "window float 3 on")
+    command(&e, "window focus 3")
+    #expect(command(&e, "window resize right").actions == [.setFrame(3, Rect(x: 120, y: 80, width: 450, height: 300))])
+    #expect(command(&e, "window resize down").actions == [.setFrame(3, Rect(x: 120, y: 80, width: 450, height: 340))])
+    #expect(command(&e, "window resize up").actions == [.setFrame(3, Rect(x: 120, y: 80, width: 450, height: 300))])
+    #expect(e.savedState().windows[3]?.info.frame == Rect(x: 120, y: 80, width: 450, height: 300))
+    // Shrinking stops at a fifth of the layout area.
+    for _ in 0..<4 { command(&e, "window resize left") }
+    #expect(e.savedState().windows[3]?.info.frame.width == 250)
+    #expect(command(&e, "window resize left").actions == [.setFrame(3, Rect(x: 120, y: 80, width: 200, height: 300))])
+    let floor = command(&e, "window resize left")
+    #expect(floor.actions.isEmpty && !floor.stateChanged)
+    // Growing stops at the layout area's edge, and a window already past it keeps its size.
+    var moved = window(3)
+    moved.frame = Rect(x: 820, y: 700, width: 250, height: 150)
+    _ = e.handle(.windowUpdated(moved))
+    #expect(command(&e, "window resize right").actions == [.setFrame(3, Rect(x: 820, y: 700, width: 300, height: 150))])
+    #expect(command(&e, "window resize right").actions.isEmpty)
+    #expect(command(&e, "window resize down").actions == [.setFrame(3, Rect(x: 820, y: 700, width: 300, height: 180))])
+    moved.frame = Rect(x: 1000, y: 80, width: 400, height: 300)
+    _ = e.handle(.windowUpdated(moved))
+    let past = command(&e, "window resize right")
+    #expect(past.actions.isEmpty && !past.stateChanged)
+    #expect(command(&e, "window resize left").actions == [.setFrame(3, Rect(x: 1000, y: 80, width: 350, height: 300))])
+}
+
+@Test func directionalResizeNeedsAnActiveTileOrAFloatingWindow() {
+    var e = engine(2)
+    var minimized = window(2)
+    minimized.minimized = true
+    _ = e.handle(.windowUpdated(minimized))
+    #expect(e.handle(.command(["window", "resize", "2", "left"])).reply?.ok == false)
+    #expect(e.handle(.command(["window", "resize", "1", "sideways"])).reply?.ok == false)
+    #expect(Engine.help.contains("window resize [ID] SHARE|WIDTHxHEIGHT|left|right|up|down"))
+}
