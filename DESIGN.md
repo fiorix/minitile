@@ -29,14 +29,14 @@ The first managed view after startup or display attachment also shows the indica
 
 - The header names the display and the current workspace and page.
 - Workspaces are rows labeled W1, W2, and so on; pages are columns labeled P1, P2, and so on.
-- Each cell is a miniature of its page, about 64x40 pt in the proportions of the display's usable area. Tiles are drawn at their real proportions (layout variant and ratios, with gaps scaled down), each holding its app's icon at 10-14 pt. Reserved slots of minimized and app-hidden windows are dimmed. Floating windows show as a count badge in the cell's corner. An empty page is an empty outline.
-- The shown page's cell is highlighted, including an empty page, and so is its focused tile.
+- Each cell is a miniature of its page, about 64x40 pt in the proportions of the display's usable area, so portrait displays get tall cells. Its tiles are the core's layout of the page, shown or not (window count, variant and ratios, with gaps and padding scaled down), each holding its app's icon at 10-14 pt, smaller only when the tile is. Minimized and app-hidden windows have no tile, since their page re-tiles without them; their reserved slots show as dimmed app icons along the cell's bottom-left corner. Floating windows show as a count badge on the cell's top-right corner. An empty page is an empty outline.
+- The shown page's cell is highlighted, including an empty page, and so is the focused window's tile when it is on that page.
 - At most four rows and five columns are drawn, centered on the current position where possible. A cropped grid keeps its full indices and says it is cropped.
 - The grid passes mouse input through, never takes focus, appears on whichever native desktop is current, and follows light and dark appearance.
 
 It is an orientation aid, not an interactive overview.
 
-Not yet implemented: the shell currently draws each cell as a window count, cropped to six rows and eight columns.
+Cells keep the area of 64x40 pt at any aspect ratio, clamped to 3:1 either way. Tile frames come from the same layout function as the scene, with the config's gaps and padding, and are scaled into the cell on half-point edges; each tile is inset by half a point so neighbours stay apart where scaled gaps fall below a point. The floating count includes minimized floating windows. App icons come from the running application and are cached per pid until no managed window has that pid. The panel is sized from the number of drawn cells, with a minimum width for the header.
 
 ### Placement
 

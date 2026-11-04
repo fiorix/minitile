@@ -180,7 +180,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let reason = display.unmanagedReason { warnings["display:\(display.id)"] = "\(display.id): \(reason)" }
         }
         let snapshot = engine.savedState()
-        gridIndicator.update(state: snapshot)
+        gridIndicator.update(state: snapshot, config: engine.config)
         let active = snapshot.activeDisplay ?? displays.infos.first(where: \.isPrimary)?.id
         let label = active.flatMap { reconciler?.scene.displays[$0]?.label } ?? "minitile"
         status.update(label: label, warnings: warnings.values.sorted(),
