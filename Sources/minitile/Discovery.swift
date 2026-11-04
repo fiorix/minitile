@@ -3,11 +3,24 @@ import AppKit
 import CSkyLight
 import MinitileCore
 
+struct ObserverRegistrations {
+    private(set) var names: Set<String> = []
+
+    mutating func register(_ required: [String], add: (String) -> AXError) -> Bool {
+        for name in required where !names.contains(name) {
+            let result = add(name)
+            if result == .success || result == .notificationAlreadyRegistered { names.insert(name) }
+        }
+        return required.allSatisfy(names.contains)
+    }
+}
+
 @MainActor
 final class Discovery {
     struct Window {
         var info: WindowInfo
         var element: AXUIElement
+        var registrations = ObserverRegistrations()
     }
 
     @MainActor final class Application {
@@ -41,6 +54,8 @@ final class Discovery {
     var acceptsFocus: ((Int32) -> Bool)?
     var moved: ((WindowID) -> Void)?
     var suppressGeometry: ((WindowID) -> Bool)?
+    private let windowNotifications = [kAXUIElementDestroyedNotification, kAXMovedNotification, kAXResizedNotification,
+                                       kAXTitleChangedNotification, kAXWindowMiniaturizedNotification, kAXWindowDeminiaturizedNotification]
 
     init(config: Config, displays: DisplayCatalog) { self.config = config; self.displays = displays }
 
@@ -62,12 +77,18 @@ final class Discovery {
         }, &observer)
         guard result == .success, let observer else { return }
         context.observer = observer
-        applications[context.pid] = context
         AXUIElementSetMessagingTimeout(context.element, 1)
-        for name in [kAXWindowCreatedNotification, kAXFocusedWindowChangedNotification,
-                     kAXMainWindowChangedNotification, kAXApplicationActivatedNotification] {
+        var registrations = ObserverRegistrations()
+        let complete = registrations.register([kAXWindowCreatedNotification, kAXFocusedWindowChangedNotification,
+                                               kAXMainWindowChangedNotification, kAXApplicationActivatedNotification]) { name in
             AXObserverAddNotification(observer, context.element, name as CFString, Unmanaged.passUnretained(context).toOpaque())
         }
+        guard complete else {
+            for name in registrations.names { AXObserverRemoveNotification(observer, context.element, name as CFString) }
+            logger.debug("AX app notifications incomplete for pid \(context.pid); retrying on the next scan")
+            return
+        }
+        applications[context.pid] = context
         CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .commonModes)
     }
 
@@ -102,12 +123,13 @@ final class Discovery {
     }
 
     func scan(_ app: NSRunningApplication, cg: [WindowID: CGWindowRecord]? = nil) {
-        guard !frozen, allows(app), let context = applications[app.processIdentifier],
-              let cg = cg ?? CGWindowRecord.snapshot() else { return }
-        let listed = AX.value(context.element, kAXWindowsAttribute) as? [AXUIElement] ?? []
+        guard !frozen, allows(app), let cg = cg ?? CGWindowRecord.snapshot() else { return }
+        let element = applications[app.processIdentifier]?.element ?? AXUIElementCreateApplication(app.processIdentifier)
+        let listed = AX.value(element, kAXWindowsAttribute) as? [AXUIElement] ?? []
         for element in listed { discover(element, app: app, cg: cg) }
         // AXWindows omits stashed windows; retained elements remain readable.
         for (id, window) in Array(windows) where window.info.pid == app.processIdentifier && cg[id]?.pid == app.processIdentifier {
+            registerWindow(id)
             update(id, app: app)
         }
     }
@@ -130,13 +152,17 @@ final class Discovery {
                               onStash: adoption[id] != nil || spaces.contains(display.info.stashSpace ?? 0))
         windows[id] = Window(info: info, element: element)
         readInfo(id, app: app)
-        if let context = applications[app.processIdentifier], let observer = context.observer {
-            for name in [kAXUIElementDestroyedNotification, kAXMovedNotification, kAXResizedNotification,
-                         kAXTitleChangedNotification, kAXWindowMiniaturizedNotification, kAXWindowDeminiaturizedNotification] {
-                AXObserverAddNotification(observer, element, name as CFString, Unmanaged.passUnretained(context).toOpaque())
-            }
-        }
+        registerWindow(id)
         if let info = windows[id]?.info { input?(.windowAppeared(info)) }
+    }
+
+    private func registerWindow(_ id: WindowID) {
+        guard var window = windows[id], let context = applications[window.info.pid], let observer = context.observer else { return }
+        let complete = window.registrations.register(windowNotifications) { name in
+            AXObserverAddNotification(observer, window.element, name as CFString, Unmanaged.passUnretained(context).toOpaque())
+        }
+        if !complete { logger.debug("AX window notifications incomplete for window \(id); retrying on the next scan") }
+        windows[id] = window
     }
 
     private func readInfo(_ id: WindowID, app: NSRunningApplication) {
@@ -167,8 +193,7 @@ final class Discovery {
     func remove(_ id: WindowID) {
         guard let window = windows.removeValue(forKey: id) else { return }
         if let observer = applications[window.info.pid]?.observer {
-            for name in [kAXUIElementDestroyedNotification, kAXMovedNotification, kAXResizedNotification,
-                         kAXTitleChangedNotification, kAXWindowMiniaturizedNotification, kAXWindowDeminiaturizedNotification] {
+            for name in window.registrations.names {
                 AXObserverRemoveNotification(observer, window.element, name as CFString)
             }
         }
