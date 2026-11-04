@@ -186,9 +186,12 @@ extension Engine {
             let workspace = newWorkspace(home: state.displays[d].info.id)
             state.displays[d].workspaces.append(workspace)
             at.workspace = state.displays[d].workspaces.count - 1
-        } else { at.workspace += delta }
-        let target = state.displays[d].workspaces[at.workspace]
-        at.page = target.pages.firstIndex { $0.id == target.currentPage } ?? 0
+            at.page = 0
+        } else {
+            // Moving up or down the grid keeps the page position, clamped to the target workspace's last page.
+            at.workspace += delta
+            at.page = min(at.page, state.displays[d].workspaces[at.workspace].pages.count - 1)
+        }
         show(at, output: &output)
     }
 

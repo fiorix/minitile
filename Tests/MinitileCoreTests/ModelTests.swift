@@ -73,7 +73,7 @@ func command(_ engine: inout Engine, _ args: String) -> Output {
     #expect(grid(e) == [[[1]], [[2]]])
 }
 
-@Test func pageRemembersFocusAndWorkspaceRemembersPage() {
+@Test func pageRemembersFocusAndWorkspaceNavigationKeepsPosition() {
     var e = engine(6)
     command(&e, "window focus 3")
     command(&e, "page next")
@@ -81,9 +81,26 @@ func command(_ engine: inout Engine, _ args: String) -> Output {
     command(&e, "workspace next")
     _ = e.handle(.windowAppeared(window(7)))
     let out = command(&e, "workspace prev")
-    #expect(out.scene.displays["primary"]?.visible == [5, 6])
-    #expect(out.actions.last == .focus(6))
-    #expect(command(&e, "page prev").actions.last == .focus(3))
+    #expect(out.scene.displays["primary"]?.visible == [1, 2, 3, 4])
+    #expect(out.actions.last == .focus(3))
+    #expect(command(&e, "page next").actions.last == .focus(6))
+}
+
+@Test func workspaceNavigationMovesStraightUpOrDownTheGrid() {
+    var e = engine(6)
+    command(&e, "window focus 6")
+    command(&e, "workspace next")
+    _ = e.handle(.windowAppeared(window(7)))
+    command(&e, "page next")
+    _ = e.handle(.windowAppeared(window(8)))
+    #expect(grid(e) == [[[1, 2, 3, 4], [5, 6]], [[7], [8]]])
+    #expect(command(&e, "workspace prev").scene.displays["primary"]?.visible == [5, 6])
+    #expect(command(&e, "workspace next").scene.displays["primary"]?.visible == [8])
+    command(&e, "workspace next")
+    _ = e.handle(.windowAppeared(window(9)))
+    #expect(command(&e, "workspace prev").scene.displays["primary"]?.visible == [7])
+    command(&e, "page next")
+    #expect(command(&e, "workspace next").scene.displays["primary"]?.visible == [9])
 }
 
 @Test func externalFocusShowsHiddenPageWithoutFocusEcho() {
