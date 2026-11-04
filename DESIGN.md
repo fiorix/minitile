@@ -2,7 +2,7 @@
 
 minitile is a tiling window manager for macOS. It runs with SIP enabled and aims for a small core that blends with macOS: a handful of keys that reuse the native desktop shortcuts, mouse gestures where macOS users already use the mouse, and every function scriptable from the `mntl` command line tool. HyprMac (github.com/zacharytgray/HyprMac) is a source of macOS behaviour to respect, not a feature list to copy.
 
-Status: the core, IPC, `mntl` and the macOS shell are implemented and verified live on one display. Multiple displays and the items under "Open" are not yet verified. Page transitions are designed and validated in a spike but not yet implemented.
+Status: the core, IPC, `mntl` and the macOS shell are implemented and verified live on one display. Multiple displays and the items under "Open" are not yet verified. Page transitions and Cmd+\` window cycling are designed but not yet implemented; transitions are validated in a spike.
 
 ## Model
 
@@ -39,7 +39,7 @@ It is an orientation aid, not an interactive overview.
 - A new window goes to the workspace being viewed. It takes the first free slot, scanning from the current page to the right; if none is free, it goes onto a new page at the end of the workspace.
 - If a new window from the frontmost app lands on a page that is not shown, that page is shown, since macOS focuses such windows. Windows from background apps are placed without changing the view.
 - When a window closes, the remaining windows on its page re-tile, and the freed slot is reused by the next new window. Windows never flow back from later pages.
-- When focus moves to a window on a hidden page by any means (Cmd+`, the Dock, a notification, `mntl window focus`), that page is shown.
+- When focus moves to a window on a hidden page by any means (the Dock, a notification, `mntl window focus`), that page is shown.
 - When an app with no window on a shown page is activated (Cmd-Tab, the Dock), the page holding its most recently focused window is shown. macOS does the focusing. Minimized windows do not count as being on a shown page; windows of a hidden app do, since activation unhides them. See "Rules minitile must follow" for the timing.
 
 ### Navigation and focus
@@ -107,7 +107,7 @@ The move tolerance is 3 points per dimension. Edge drags are converted from the 
 
 ## Keys
 
-minitile takes over the Ctrl+arrow shortcuts macOS uses for desktops and Mission Control, and gives them the same meaning on its grid. There is no Hypr key and no Caps Lock remap. Closing and quitting stay on Cmd+W and Cmd+Q.
+minitile takes over the Ctrl+arrow shortcuts macOS uses for desktops and Mission Control, and the Cmd+\` shortcut for cycling windows, and gives them the same meaning on its grid. There is no Hypr key and no Caps Lock remap. Closing and quitting stay on Cmd+W and Cmd+Q.
 
 Default bindings:
 
@@ -115,6 +115,7 @@ Default bindings:
 |---|---|---|
 | Ctrl+Left/Right | Show the previous or next page. | Move left/right a space |
 | Ctrl+Up/Down | Show the workspace above or below. | Mission Control, App Expose |
+| Cmd+\` / Cmd+Shift+\` | Focus the next or previous window on the shown page: tiles in slot order, then floating windows, wrapping around. Not yet implemented. | Move focus to next window, which cycles the frontmost app's windows |
 | Ctrl+Shift+Left/Right | Nudge the focused window. If it shares its page, it moves onto a new page of its own on that side. If it is alone, it joins the neighbouring page; if that page is full, it joins the next page with room in the same direction, or a new page at that end of the workspace. Focus follows. | Select to line start or end in text fields, which Cmd+Shift+arrows also does |
 | Ctrl+Shift+Up/Down | Carry the focused window to the workspace above or below, placed by the placement rules. Past the last workspace, it carries the window into a new one. Focus follows. | - |
 
@@ -151,6 +152,7 @@ Notes:
 - Validated with physical keys: the session-level event tap receives Ctrl+Left/Right/Up/Down before the Dock, and swallowing them keeps desktops from switching and Mission Control and App Expose from opening. Ctrl+Up/Down are system shortcuts 32 and 33, and Ctrl+Left/Right are 79 and 81.
 - Arrow keys carry the fn and keypad flags, so binding matches ignore them.
 - A held binding fires once. Key repeats of a bound chord are swallowed without running the command again.
+- The \` key is whichever key macOS assigns to Move focus to next window (system shortcut 27), so Cmd+\` follows non-US layouts. On this Mac it is keycode 50 with Cmd. In apps minitile does not manage, the chord keeps its native meaning. Not yet validated with physical keys: swallowing it must stop the app's own window cycling, including in apps that handle Cmd+\` themselves.
 - Mission Control stays reachable through its own key and trackpad gesture. It shows the stash desktop with every hidden page's windows, which makes it an escape hatch rather than a view of the grid.
 - The event tap also swallows Desktop N shortcuts and native Move left/right a Space shortcuts that would lead into any managed display's stash. Directional blockers follow native adjacency, including fullscreen Spaces, and remain active when the corresponding minitile binding is unbound.
 
@@ -186,7 +188,7 @@ Commands are noun then verb. Windows are addressed by window ID and default to t
 | `mntl window swap [id] <id>` | Swap two tiled windows. |
 | `mntl window resize [id] <size>` | Tiled: set the page cuts so the window gets that share. Floating: set its size. |
 | `mntl window float [id] [on, off]` | Toggle or set floating. |
-| `mntl window focus [id, dir]` | Focus by ID, or spatially on the page. |
+| `mntl window focus [id, dir]` | Focus by ID, spatially on the page, or the next or previous window on the page. |
 | `mntl window close [id]` | Press the window's close button. |
 | `mntl page <verb>` | `list`, `info`, `show`, `next`, `prev`, `variant`, `ratio`. |
 | `mntl workspace <verb>` | `list`, `info`, `show`, `next`, `prev`, `new`. |
@@ -203,7 +205,7 @@ state
 watch
 window list
 window info|show|hide|close [ID]
-window focus [ID|left|right|up|down]
+window focus [ID|left|right|up|down|next|prev]
 window float [ID] [on|off]
 window nudge [ID] left|right
 window move [ID] left|right|up|down
@@ -226,7 +228,7 @@ quit
 
 Page and workspace addresses are 1-based; tiled slots are 0-based. Floating and explicitly hidden windows have a null slot. Window IDs are decimal. With no focused window, commands use the most recently selected display, then the primary managed display. `page list` lists the current workspace; `workspace list` lists the current display. An explicit display UUID can inspect an unmanaged display. `info`, `show` and `variant` addresses resolve within the current context; `next`/`prev` in these addresses clamp at the ends. Only navigation commands and window moves create pages or workspaces. `workspace new` appends an empty workspace unless the current one is already empty.
 
-Window moves and swaps follow the addressed source window. A move to its existing page does nothing. Left/right moves are nudges; up/down moves carry between workspaces. Explicit moves to a full page use placement spill. Spatial focus chooses the nearest window center in the requested half-plane on the same page, with grid order breaking ties; it does not wrap. Minimized and app-hidden windows are excluded from spatial focus.
+Window moves and swaps follow the addressed source window. A move to its existing page does nothing. Left/right moves are nudges; up/down moves carry between workspaces. Explicit moves to a full page use placement spill. Spatial focus chooses the nearest window center in the requested half-plane on the same page, with grid order breaking ties; it does not wrap. Minimized and app-hidden windows are excluded from spatial focus. Next and previous focus (planned) walk the focused window's page in grid order, tiles by slot and then floating windows, and wrap; they skip minimized and app-hidden windows. With no managed window focused, they focus the first window of the shown page in the current display context.
 
 For tiled resize, a single share applies along the layout's split axis; `WIDTHxHEIGHT` supplies physical-axis fractional shares. Cuts are clamped by the layout rules. Floating resize requires `WIDTHxHEIGHT` in positive points and emits an explicit frame-write action. `page ratio R1` leaves r2 unchanged. Config reload is completed by the shell before its socket reply; failures keep the previous config. `config open` opens the config file in the user's editor.
 
@@ -481,9 +483,11 @@ transition_ms = 500   # page slide duration; 0 turns slides and bounces off (pla
 "ctrl+shift+right" = "window nudge right"
 "ctrl+shift+up" = "window move workspace prev"
 "ctrl+shift+down" = "window move workspace next"
+"cmd+`" = "window focus next"           # planned
+"cmd+shift+`" = "window focus prev"     # planned
 ```
 
-The command strings above use the final grammar. A chord is modifiers (`ctrl`, `shift`, `alt`, `cmd`) and one key (a letter, a digit, `left`, `right`, `up`, `down`, `return`, `space`, `tab`, `escape`, `f1` to `f20`), joined with `+`.
+The command strings above use the final grammar. A chord is modifiers (`ctrl`, `shift`, `alt`, `cmd`) and one key (a letter, a digit, `left`, `right`, `up`, `down`, `return`, `space`, `tab`, `escape`, `f1` to `f20`, and `` ` `` for the key of macOS's Move focus to next window shortcut), joined with `+`.
 
 `Config.parse` accepts file contents, with nil for an absent file; file I/O stays in the shell. Gaps and padding must be finite, nonnegative numbers. App lists contain nonempty bundle ID strings without surrounding whitespace. Unknown config keys, invalid field types, unsupported keys, repeated modifiers and duplicate normalized chords are rejected. Chords accept case and modifier-order variations and are displayed as ctrl, shift, alt, cmd, then key. Binding commands are split on whitespace; they are not shell commands and do not perform shell expansion. Command validation happens when executed, allowing shell-owned debug verbs.
 
