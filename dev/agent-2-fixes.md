@@ -17,7 +17,7 @@ You continue the macOS shell of minitile, a small tiling window manager for macO
 
 ## Step 0
 
-1. `DESIGN.md` has uncommitted edits from the design session: the position indicator now shows for 1.5 s on page and workspace changes, and run history was removed. Commit them unchanged, together with this file, before your own work.
+1. `DESIGN.md` has uncommitted edits from the design session: the position indicator now shows for 1.5 s on page and workspace changes, a held binding fires once, and run history was removed. Commit them unchanged, together with this file, before your own work.
 2. A previous run left `/var/folders/q2/3g45h5q10wb0pfzx3t_2yjgr0000gn/T/minitile-smoke.n2jP9E`. It holds only test files; TextEdit is not running and nothing is on the stash. Delete that exact directory, or ask the user to.
 
 ## Step 1: fixes
@@ -46,7 +46,7 @@ A design review found these. Items 1 to 4 and 8 were confirmed by reading the co
    - Tap-disabled events do not clear the set.
    - Autorepeat re-runs bound commands.
 
-   Fix: clear `swallowed` on tap-disabled events, and honour it on key-down only for autorepeat events. Swallow the autorepeat of a bound chord without running the command again, so a held binding fires once. State that rule under "Keys" in `DESIGN.md`.
+   Fix: clear `swallowed` on tap-disabled events, and honour it on key-down only for autorepeat events. Swallow the autorepeat of a bound chord without running the command again, so a held binding fires once, as "Keys" in `DESIGN.md` states.
 
 5. AX observer registration errors are ignored (`Discovery.swift:66-69`, `133-136`). Apps that are still launching often refuse registration. They are recorded as observed anyway and never retried, so their windows are seen only by the three-second scan. Fix: check the results, and do not mark an app observed until its app-level registrations succeed; retry on the next scan.
 

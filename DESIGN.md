@@ -136,6 +136,7 @@ Notes:
 
 - Validated with physical keys: the session-level event tap receives Ctrl+Left/Right/Up/Down before the Dock, and swallowing them keeps desktops from switching and Mission Control and App Expose from opening. Ctrl+Up/Down are system shortcuts 32 and 33, and Ctrl+Left/Right are 79 and 81.
 - Arrow keys carry the fn and keypad flags, so binding matches ignore them.
+- A held binding fires once. Key repeats of a bound chord are swallowed without running the command again.
 - Mission Control stays reachable through its own key and trackpad gesture. It shows the stash desktop with every hidden page's windows, which makes it an escape hatch rather than a view of the grid.
 - The event tap also swallows Desktop N shortcuts that would lead into the stash.
 
