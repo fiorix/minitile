@@ -56,6 +56,18 @@ enum KeyDecision: Equatable, Sendable {
     case switcher(SwitcherKey, session: Int)
     case help(HelpKey, session: Int)
     case grabReleased(Int)
+
+    /// The route and arguments for key traces and logs.
+    var route: (name: String, argv: [String]) {
+        switch self {
+        case .pass: ("pass", [])
+        case .swallow: ("swallow", [])
+        case .command(let command, _): ("command", command)
+        case .switcher(let key, _): ("switcher", [String(describing: key)])
+        case .help(let key, _): ("help", [String(describing: key)])
+        case .grabReleased: ("grab_released", [])
+        }
+    }
 }
 
 struct KeyTrace: Sendable {
@@ -279,9 +291,11 @@ final class KeyboardTap: @unchecked Sendable {
     private var stopping = false
     private var failed = false
     let traceEnabled: Bool
-    private let handle: @MainActor @Sendable (KeyDecision, KeyTrace?) -> Void
+    /// Every dispatched decision carries the uptime its event reached the tap, so the main thread can tell how long it
+    /// waited.
+    private let handle: @MainActor @Sendable (KeyDecision, KeyTrace?, TimeInterval) -> Void
 
-    init(traceEnabled: Bool = false, handle: @escaping @MainActor @Sendable (KeyDecision, KeyTrace?) -> Void) {
+    init(traceEnabled: Bool = false, handle: @escaping @MainActor @Sendable (KeyDecision, KeyTrace?, TimeInterval) -> Void) {
         self.traceEnabled = traceEnabled
         self.handle = handle
     }
@@ -386,10 +400,11 @@ final class KeyboardTap: @unchecked Sendable {
             if let port = lock.withLock({ port }) { CGEvent.tapEnable(tap: port, enable: true) }
             return Unmanaged.passUnretained(event)
         }
+        let received = ProcessInfo.processInfo.systemUptime
         if type == .flagsChanged {
             let modifiers = KeyRouter.modifiers(event.flags)
             let decisions = lock.withLock { [router.flags(modifiers), router.grabFlags(modifiers)] }
-            for decision in decisions where decision != .pass { DispatchQueue.main.async { [handle] in handle(decision, nil) } }
+            for decision in decisions where decision != .pass { DispatchQueue.main.async { [handle] in handle(decision, nil, received) } }
             return Unmanaged.passUnretained(event)
         }
         guard type == .keyDown || type == .keyUp else { return Unmanaged.passUnretained(event) }
@@ -401,14 +416,14 @@ final class KeyboardTap: @unchecked Sendable {
             let decision = router.key(code, modifiers: modifiers, down: down,
                                       autorepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0)
             let trace = traceEnabled && traceFilter.includes(code, modifiers: modifiers, down: down)
-                ? KeyTrace(time: ProcessInfo.processInfo.systemUptime, keycode: code, flags: flags, down: down) : nil
+                ? KeyTrace(time: received, keycode: code, flags: flags, down: down) : nil
             return (decision, trace)
         }
         switch decision {
         case .command, .switcher, .help, .grabReleased:
-            DispatchQueue.main.async { [handle] in handle(decision, trace) }
+            DispatchQueue.main.async { [handle] in handle(decision, trace, received) }
         case .pass, .swallow:
-            if trace != nil { DispatchQueue.main.async { [handle] in handle(decision, trace) } }
+            if trace != nil { DispatchQueue.main.async { [handle] in handle(decision, trace, received) } }
         }
         return decision == .pass ? Unmanaged.passUnretained(event) : nil
     }

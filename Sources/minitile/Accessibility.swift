@@ -13,33 +13,38 @@ enum FocusObservation: Equatable {
     }
 }
 
+/// Reads are nonisolated so background discovery can use them; writes and focus reads stay on the main thread.
 @MainActor
 enum AX {
     static func focus(_ app: AXUIElement) -> FocusObservation {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(app, kAXFocusedWindowAttribute as CFString, &value) == .success else { return .unknown }
+        let (value, error) = copy(app, kAXFocusedWindowAttribute)
+        guard error == .success else { return .unknown }
         guard let value else { return .known(nil) }
         guard CFGetTypeID(value) == AXUIElementGetTypeID(), let id = id(value as! AXUIElement) else { return .unknown }
         return .known(id)
     }
 
-    static func value(_ element: AXUIElement, _ attribute: String) -> CFTypeRef? {
+    nonisolated static func copy(_ element: AXUIElement, _ attribute: String) -> (value: CFTypeRef?, error: AXError) {
         var result: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &result) == .success else { return nil }
-        return result
+        let error = timed(element, attribute) { AXUIElementCopyAttributeValue(element, attribute as CFString, &result) }
+        return (error == .success ? result : nil, error)
     }
 
-    static func element(_ parent: AXUIElement, _ attribute: String) -> AXUIElement? {
+    nonisolated static func value(_ element: AXUIElement, _ attribute: String) -> CFTypeRef? {
+        copy(element, attribute).value
+    }
+
+    nonisolated static func element(_ parent: AXUIElement, _ attribute: String) -> AXUIElement? {
         guard let value = value(parent, attribute), CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
         return (value as! AXUIElement)
     }
 
-    static func id(_ element: AXUIElement) -> WindowID? {
+    nonisolated static func id(_ element: AXUIElement) -> WindowID? {
         var id: UInt32 = 0
-        return csl_window_id(element, &id) ? id : nil
+        return timed(element, "window id") { csl_window_id(element, &id) } ? id : nil
     }
 
-    static func frame(_ element: AXUIElement) -> Rect? {
+    nonisolated static func frame(_ element: AXUIElement) -> Rect? {
         guard let position = value(element, kAXPositionAttribute), CFGetTypeID(position) == AXValueGetTypeID(),
               let size = value(element, kAXSizeAttribute), CFGetTypeID(size) == AXValueGetTypeID() else { return nil }
         var point = CGPoint.zero, dimensions = CGSize.zero
@@ -48,8 +53,34 @@ enum AX {
         return Rect(x: point.x, y: point.y, width: dimensions.width, height: dimensions.height)
     }
 
+    /// Nil when the read fails.
+    nonisolated static func settable(_ element: AXUIElement, _ attribute: String) -> Bool? {
+        var settable: DarwinBoolean = false
+        let error = timed(element, attribute + " settable") { AXUIElementIsAttributeSettable(element, attribute as CFString, &settable) }
+        return error == .success ? settable.boolValue : nil
+    }
+
     @discardableResult static func set(_ element: AXUIElement, _ attribute: String, _ value: CFTypeRef) -> AXError {
-        AXUIElementSetAttributeValue(element, attribute as CFString, value)
+        timed(element, attribute) { AXUIElementSetAttributeValue(element, attribute as CFString, value) }
+    }
+
+    @discardableResult static func perform(_ element: AXUIElement, _ action: String) -> AXError {
+        timed(element, action) { AXUIElementPerformAction(element, action as CFString) }
+    }
+
+    /// Input waits behind the main thread, so an AX call that holds it for long is logged with its app.
+    nonisolated static func timed<T>(_ element: AXUIElement, _ name: String, _ call: () -> T) -> T {
+        guard Thread.isMainThread else { return call() }
+        let start = ProcessInfo.processInfo.systemUptime
+        let result = call()
+        let milliseconds = (ProcessInfo.processInfo.systemUptime - start) * 1000
+        if milliseconds > Slow.mainThreadAXCall {
+            var pid: pid_t = 0
+            AXUIElementGetPid(element, &pid)
+            let app = NSRunningApplication(processIdentifier: pid)?.localizedName ?? "unknown app"
+            logger.notice("Slow AX call \(name, privacy: .public) to \(app, privacy: .public) (pid \(pid)) took \(Int(milliseconds)) ms on the main thread")
+        }
+        return result
     }
 
     static func setFrame(_ element: AXUIElement, _ frame: Rect) {
@@ -69,7 +100,7 @@ enum AX {
     }
 }
 
-struct CGWindowRecord: Codable {
+struct CGWindowRecord: Codable, Sendable {
     var id: WindowID
     var pid: Int32
     var app: String

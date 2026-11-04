@@ -3,18 +3,14 @@ import CSkyLight
 import MinitileCore
 
 extension AppDelegate {
-    func handleKey(_ decision: KeyDecision, trace: KeyTrace?) {
+    /// `received` is when the tap saw the event; nil for a decision made on the main thread.
+    func handleKey(_ decision: KeyDecision, trace: KeyTrace?, received: TimeInterval? = nil) {
+        let (route, argv) = decision.route
+        // Pass and swallow reach the main thread only for traces.
+        if let received, decision != .pass, decision != .swallow {
+            inputWaited("Key \(([route] + argv).joined(separator: " "))", since: received)
+        }
         if let trace {
-            let route: String
-            let argv: [String]
-            switch decision {
-            case .pass: route = "pass"; argv = []
-            case .swallow: route = "swallow"; argv = []
-            case .command(let command, _): route = "command"; argv = command
-            case .switcher(let key, _): route = "switcher"; argv = [String(describing: key)]
-            case .help(let key, _): route = "help"; argv = [String(describing: key)]
-            case .grabReleased: route = "grab_released"; argv = []
-            }
             let key = [123: "left", 124: "right", 125: "down", 126: "up"][Int(trace.keycode)] ?? String(trace.keycode)
             let chord = Chord(modifiers: KeyRouter.modifiers(CGEventFlags(rawValue: trace.flags)), key: key)
             logKey(["phase": .string("received"), "event_time": .number(trace.time),
@@ -32,12 +28,20 @@ extension AppDelegate {
             let start = ProcessInfo.processInfo.systemUptime
             let reply = command(argv, grab: grab)
             let ms = (ProcessInfo.processInfo.systemUptime - start) * 1000
-            if ms > 100 { logger.notice("Slow key command \(argv.joined(separator: " "), privacy: .public) took \(Int(ms)) ms") }
+            if ms > Slow.keyCommand { logger.notice("Slow key command \(argv.joined(separator: " "), privacy: .public) took \(Int(ms)) ms") }
             if let trace {
                 logKey(["phase": .string("result"), "event_time": .number(trace.time),
                         "ok": .bool(reply.ok), "text": .string(reply.text),
                         "focus": engine.savedState().focus.map { .number(Double($0)) } ?? .null])
             }
+        }
+    }
+
+    /// Logs a key binding or swipe that waited long for the main thread, measured from its tap callback.
+    func inputWaited(_ input: String, since received: TimeInterval) {
+        let milliseconds = (ProcessInfo.processInfo.systemUptime - received) * 1000
+        if inputWaits.record(milliseconds) {
+            logger.notice("\(input, privacy: .public) waited \(Int(milliseconds)) ms for the main thread")
         }
     }
 
@@ -91,6 +95,8 @@ extension AppDelegate {
                 data = .object(["reconcile_ms": .number(reconciler?.lastMilliseconds ?? 0),
                                 "focus_ms": .number(reconciler?.lastFocusMilliseconds ?? 0),
                                 "resume_ms": .number(lastResumeMilliseconds),
+                                "input_wait_ms": .number(inputWaits.latest),
+                                "input_wait_max_ms": .number(inputWaits.longest),
                                 "activation_moves": try .encoding(reconciler?.activationTimings ?? []),
                                 "full_scans": .number(Double(discovery?.fullScans ?? 0)),
                                 "full_scan_ms": .number(discovery?.fullScanMilliseconds ?? 0),

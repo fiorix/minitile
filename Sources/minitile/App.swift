@@ -66,6 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Keeps App Nap away: a windowless accessory app looks idle, and a napping one handles keys and gestures late.
     var napActivity: NSObjectProtocol?
     var lastResumeMilliseconds = 0.0
+    var inputWaits = InputWaits()
     var viewEchoUntil: TimeInterval = 0
     var lastConfig: String?
     var quitting = false
@@ -178,8 +179,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         transitions.uncovered = { [weak self] in self?.updateGrab() }
         grabHighlight.due = { [weak self] in self?.updateGrab() }
         updateTransitions()
-        let keyboard = KeyboardTap(traceEnabled: ProcessInfo.processInfo.environment["MINITILE_TRACE_KEYS"] == "1") { [weak self] decision, trace in
-            self?.handleKey(decision, trace: trace)
+        let keyboard = KeyboardTap(traceEnabled: ProcessInfo.processInfo.environment["MINITILE_TRACE_KEYS"] == "1") { [weak self] decision, trace, received in
+            self?.handleKey(decision, trace: trace, received: received)
         }
         keyboard.update(config: engine.config, displays: displays, dragged: nil)
         self.keyboard = keyboard
@@ -311,7 +312,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Apply a reconcile that waited for a transition capture, with the same ordering as `handle`.
     func commitHeld(_ output: Output) {
-        if discovery?.frozen != true { reconciler?.apply(output) }
+        if discovery?.frozen != true { reconciler?.apply(output, held: true) }
         for action in output.actions {
             if case .focus(let id) = action { reconciler?.focus(id) }
         }

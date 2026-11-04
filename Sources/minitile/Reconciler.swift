@@ -146,7 +146,8 @@ final class Reconciler {
         return ReconcilePlan.acceptsMove(suppressed: suppressed, mouseDown: mouseDown, actual: actual, lastWrite: frames[id])
     }
 
-    func apply(_ output: Output) {
+    /// `held` marks a reconcile that waited for a slide's capture, for the slow reconcile log.
+    func apply(_ output: Output, held: Bool = false) {
         let start = ProcessInfo.processInfo.systemUptime
         scene = output.scene
         let moves = ReconcilePlan.moves(scene: scene, displays: displays.infos,
@@ -167,6 +168,9 @@ final class Reconciler {
             if case .close(let id) = action { close(id) }
         }
         lastMilliseconds = (ProcessInfo.processInfo.systemUptime - start) * 1000
+        if lastMilliseconds > Slow.reconcile {
+            logger.notice("\(held ? "Held reconcile" : "Reconcile", privacy: .public) took \(Int(self.lastMilliseconds)) ms")
+        }
     }
 
     private func submit(_ move: SpaceMove, verify: Bool = true) {
@@ -252,14 +256,14 @@ final class Reconciler {
         defer { lastFocusMilliseconds = (ProcessInfo.processInfo.systemUptime - start) * 1000 }
         AX.set(window.element, kAXMainAttribute, kCFBooleanTrue)
         AX.set(window.element, kAXFocusedAttribute, kCFBooleanTrue)
-        AXUIElementPerformAction(window.element, kAXRaiseAction as CFString)
+        AX.perform(window.element, kAXRaiseAction)
         app.activate(options: [])
         if !csl_focus_window(window.info.pid, id) { warning?("Could not focus window \(id)") }
     }
 
     private func close(_ id: WindowID) {
         guard let window = discovery.windows[id], let button = AX.element(window.element, kAXCloseButtonAttribute) else { return }
-        AXUIElementPerformAction(button, kAXPressAction as CFString)
+        AX.perform(button, kAXPressAction)
         discovery.recheckSoon(pids: [window.info.pid])
     }
 }
