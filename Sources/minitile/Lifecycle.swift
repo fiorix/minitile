@@ -114,7 +114,7 @@ extension AppDelegate {
         guard started, !quitting, let discovery, let reconciler else { return }
         let changed = displays.refresh()
         displays.bounceFromStash()
-        reconciler.refreshSpaces()
+        reconciler.refreshSpaces(invalidateFrames: true)
         if changed { handle(.displaysChanged(displays.infos)) }
         do {
             if try paths.configContents() != lastConfig { _ = reloadConfig() }

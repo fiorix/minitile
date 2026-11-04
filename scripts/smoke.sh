@@ -253,11 +253,15 @@ if [ -z "$recovery_directory" ]; then write_config; fi
 launch
 "$mntl" --json config info > "$report/config.json"
 jq -e '.only_apps == ["com.apple.TextEdit"]' "$report/config.json" >/dev/null
+"$mntl" --json debug spaces > "$report/initial-spaces.json"
+if ! jq -e 'all(.[]; .current == .info.visibleSpace)' "$report/initial-spaces.json" >/dev/null; then
+    echo 'Run smoke tests from the first native desktop on each display; move this Terminal window there before retrying.' >&2
+    exit 1
+fi
 if [ -n "$recovery_directory" ]; then
     echo 'Recovered the saved test session; closing its documents through normal cleanup.'
     exit 0
 fi
-"$mntl" --json debug spaces > "$report/initial-spaces.json"
 if ! jq -e 'length > 0 and all(.[]; .info.unmanagedReason == null)' "$report/initial-spaces.json" >/dev/null; then
     echo 'Smoke test cannot manage the current displays:' >&2
     jq -r 'if length == 0 then "  No displays were discovered."

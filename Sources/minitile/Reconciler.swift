@@ -89,7 +89,8 @@ final class Reconciler {
         if dragging == id { dragging = nil }
     }
 
-    func refreshSpaces() {
+    func refreshSpaces(invalidateFrames: Bool = false) {
+        if invalidateFrames { frames.removeAll() }
         spaces = [:]
         for id in discovery.windows.keys {
             let current = displays.windowSpaces(id)
