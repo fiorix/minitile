@@ -90,6 +90,13 @@ extension AppDelegate {
                                 "suspended_reasons": .array(suspendedReasons.sorted().map(JSONValue.string)),
                                 "secure_input": .bool(csl_secure_input_enabled()), "tap_unavailable": .bool(keyboard?.unavailable == true),
                                 "key_trace_enabled": .bool(keyboard?.traceEnabled == true),
+                                "trackpad_swipes": .bool(engine.config.trackpadSwipes),
+                                "swipe_tap_running": .bool(swipes?.running == true),
+                                "swipe_tap_unavailable": .bool(swipes?.unavailable == true),
+                                "last_swipe": try swipes?.last.map { last in
+                                    .object(["location": try .encoding(last.location), "display": last.display.map(JSONValue.string) ?? .null,
+                                             "command": last.command.map { .string($0.joined(separator: " ")) } ?? .null])
+                                } ?? .null,
                                 "grid_indicator_displays": .number(Double(gridIndicator.displayCount)),
                                 "grid_indicator_visible_displays": .number(Double(gridIndicator.visibleCount)),
                                 "grid_indicator_duration_ms": .number(GridIndicatorTiming.duration * 1000),
