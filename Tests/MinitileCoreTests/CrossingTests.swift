@@ -245,6 +245,18 @@ func neighbourEdgeMayBeOffByAPoint(_ x: Double, _ found: Bool) {
     #expect(e.commandDisplay == "centre")
 }
 
+@Test func aDraggedWindowNeverCrosses() {
+    var e = plus([(1, "centre"), (2, "left")], focus: 1)
+    e.dragging = 1
+    command(&e, "window nudge 1 left")
+    command(&e, "window move 1 workspace prev")
+    #expect(grid(e, "centre") == [[[1]]])
+    #expect(grid(e, "left") == [[[2]]])
+    e.dragging = nil
+    command(&e, "window nudge 1 left")
+    #expect(grid(e, "left") == [[[2, 1]]])
+}
+
 @Test func aCarryUpFromTheFirstWorkspaceMovesTheWindowToTheDisplayAbove() {
     var e = plus([(1, "centre"), (2, "centre"), (3, "above")], focus: 1)
     let out = command(&e, "window move workspace prev")

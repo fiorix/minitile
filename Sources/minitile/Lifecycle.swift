@@ -227,6 +227,7 @@ extension AppDelegate {
 
     func updateDragTracking() {
         keyboard?.drag(reconciler?.dragging)
+        engine.dragging = reconciler?.dragging
         guard reconciler?.dragging != nil else {
             dragTimer?.invalidate()
             dragTimer = nil

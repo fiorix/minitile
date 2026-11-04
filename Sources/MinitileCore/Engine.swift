@@ -2,6 +2,8 @@
 public struct Engine: Sendable {
     public private(set) var config: Config
     var state = SavedState()
+    /// The window the mouse is dragging, which never crosses to another display. Not saved.
+    public var dragging: WindowID?
 
     public init(config: Config = .default) { self.config = config }
 

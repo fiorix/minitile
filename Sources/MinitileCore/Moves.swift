@@ -41,10 +41,12 @@ extension Engine {
     }
 
     /// Moves the window onto the shown page of the display on the side a unit step (dx, dy) points to, by the
-    /// placement rules, with focus following it. False, changing nothing, without a display there.
+    /// placement rules, with focus following it. False, changing nothing, without a display there or while the mouse
+    /// drags the window, since the pointer still holds it on this display.
     @discardableResult
     mutating func carryAcross(_ id: WindowID, from at: Location, dx: Int, dy: Int, output: inout Output) -> Bool {
-        guard let e = neighbour(of: at.display, dx: dx, dy: dy), let start = currentLocation(display: e) else { return false }
+        guard id != dragging, let e = neighbour(of: at.display, dx: dx, dy: dy),
+              let start = currentLocation(display: e) else { return false }
         removeFromPage(id)
         leave(at.display, output: &output)
         move(id, to: start, output: &output)
