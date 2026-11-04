@@ -72,6 +72,20 @@ private extension SavedState {
     #expect(grabbing(&unfocused, "window nudge left") == nil)
 }
 
+@Test func aNudgeAcrossDisplaysGrabsAndTheOutlineFollowsTheWindow() {
+    let right = DisplayInfo(id: "e", frame: Rect(x: 1512, y: 0, width: 1512, height: 982), visibleFrame: Rect(x: 1512, y: 0, width: 1512, height: 982))
+    var e = Engine()
+    _ = e.handle(.started(saved: nil, windows: [WindowInfo(id: 1, pid: 101, display: "d"), WindowInfo(id: 2, pid: 102, display: "e")],
+                          displays: [display, right], focus: 1))
+    #expect(grabbing(&e, "window nudge right") == GrabCommand(window: 1, acted: true))
+    let placed = GrabPlacement.frame(of: 1, scene: scene(&e), state: e.savedState())
+    #expect(placed?.display == "e")
+    #expect(placed.map { $0.frame.x >= 1512 } == true)
+    // Nothing lies right of the right display.
+    #expect(grabbing(&e, "window nudge right") == GrabCommand(window: 1, acted: true))
+    #expect(grabbing(&e, "window nudge right") == GrabCommand(window: 1, acted: false))
+}
+
 @Test func bindingGrabLastsUntilItsSessionIsReleased() {
     var lifetime = GrabLifetime()
     lifetime.command(GrabCommand(window: 1, acted: true), session: 3, focus: 1, now: 10)

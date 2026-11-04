@@ -28,6 +28,13 @@ struct GridIndicatorTiming {
         return true
     }
 
+    /// Shows the same position again for the full duration, as a change would.
+    mutating func restart(now: TimeInterval) -> Bool {
+        guard position != nil else { return false }
+        visibleUntil = now + Self.duration
+        return true
+    }
+
     func visible(now: TimeInterval) -> Bool { position != nil && now < visibleUntil }
 }
 
@@ -169,18 +176,25 @@ final class GridIndicator {
     private var timing: [DisplayID: GridIndicatorTiming] = [:]
     private var hideWork: [DisplayID: DispatchWorkItem] = [:]
     private var icons = AppIconCache<NSImage>()
+    private var requested: Set<DisplayID> = []
     var displayCount: Int { timing.count }
     var visibleCount: Int { panels.values.filter(\.isVisible).count }
+
+    /// Shows the indicator on a display at the next update although its position did not change.
+    func show(on id: DisplayID) { requested.insert(id) }
 
     func update(state: SavedState, config: Config) {
         icons.prune(keeping: Set(state.windows.values.map(\.info.pid)))
         var present = Set<DisplayID>()
         let now = ProcessInfo.processInfo.systemUptime
+        let requested = requested
+        self.requested = []
         for screen in NSScreen.screens {
             guard let id = DisplayCatalog.id(for: screen), let display = state.displays.first(where: { $0.info.id == id }) else { continue }
             present.insert(id)
             var clock = timing[id] ?? GridIndicatorTiming()
-            let changed = clock.update(GridPosition(display: display), now: now)
+            var changed = clock.update(GridPosition(display: display), now: now)
+            if !changed, requested.contains(id) { changed = clock.restart(now: now) }
             timing[id] = clock
             if changed {
                 hideWork.removeValue(forKey: id)?.cancel()
