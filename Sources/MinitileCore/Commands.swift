@@ -32,6 +32,7 @@ extension Engine {
     display list
     display info [UUID|next|prev]
     config list|info|reload|open
+    switcher next|prev|commit|cancel
     quit
 
     Pages and workspaces use 1-based indices; tiled slots use 0-based indices.

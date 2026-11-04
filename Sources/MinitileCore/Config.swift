@@ -55,5 +55,7 @@ public struct Config: Sendable, Equatable {
         Chord(modifiers: .cmd, key: "`"): ["window", "focus", "next"],
         Chord(modifiers: [.cmd, .shift], key: "`"): ["window", "focus", "prev"],
         Chord(modifiers: [.ctrl, .shift], key: "space"): ["page", "variant"],
+        Chord(modifiers: .cmd, key: "tab"): ["switcher", "next"],
+        Chord(modifiers: [.cmd, .shift], key: "tab"): ["switcher", "prev"],
     ]
 }

@@ -11,6 +11,7 @@ extension AppDelegate {
             case .pass: route = "pass"; argv = []
             case .swallow: route = "swallow"; argv = []
             case .command(let command): route = "command"; argv = command
+            case .switcher(let key, _): route = "switcher"; argv = [String(describing: key)]
             }
             let key = [123: "left", 124: "right", 125: "down", 126: "up"][Int(trace.keycode)] ?? String(trace.keycode)
             let chord = Chord(modifiers: KeyRouter.modifiers(CGEventFlags(rawValue: trace.flags)), key: key)
@@ -22,6 +23,7 @@ extension AppDelegate {
                     "focus": engine.savedState().focus.map { .number(Double($0)) } ?? .null,
                     "suspended": .array(suspendedReasons.sorted().map(JSONValue.string))])
         }
+        if case .switcher(let key, let session) = decision { switcherKey(key, session: session) }
         if case .command(let argv) = decision {
             let reply = command(argv)
             if let trace {
@@ -100,6 +102,8 @@ extension AppDelegate {
                                 "grid_indicator_displays": .number(Double(gridIndicator.displayCount)),
                                 "grid_indicator_visible_displays": .number(Double(gridIndicator.visibleCount)),
                                 "grid_indicator_duration_ms": .number(GridIndicatorTiming.duration * 1000),
+                                "switcher_open": .bool(windowSwitcher.isOpen),
+                                "switcher_selected": windowSwitcher.selection.map { .number(Double($0.selected)) } ?? .null,
                                 "transitions_enabled": .bool(transitions.enabled),
                                 "transitions_disabled_reason": transitions.reason.map(JSONValue.string) ?? .null,
                                 "startup_stash_windows": .number(Double(startupStashCount)),

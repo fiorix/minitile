@@ -62,6 +62,7 @@ func malformedCommandsFailWithoutStateChanges(_ text: String) {
 @Test func helpAndLifecycleCommandsAreAvailableWithoutDisplays() {
     var e = Engine()
     #expect(command(&e, "help").reply?.text.contains("window resize") == true)
+    #expect(command(&e, "help").reply?.text.contains("switcher next|prev|commit|cancel") == true)
     #expect(command(&e, "config reload").actions == [.reloadConfig])
     #expect(command(&e, "config open").actions == [.openConfig])
     #expect(command(&e, "quit").actions == [.quit])
@@ -106,7 +107,8 @@ func malformedCommandsFailWithoutStateChanges(_ text: String) {
 }
 
 @Test func everyDefaultBindingUsesAcceptedGrammar() {
-    for args in Config.default.bindings.values {
+    // The app shell answers switcher commands, so the core grammar check skips them; the shell tests cover them.
+    for args in Config.default.bindings.values where args.first != "switcher" {
         var e = engine(4)
         command(&e, "window focus 1")
         #expect(e.handle(.command(args)).reply?.ok == true)

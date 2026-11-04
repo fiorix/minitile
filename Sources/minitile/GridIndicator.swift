@@ -31,10 +31,17 @@ struct GridIndicatorTiming {
     func visible(now: TimeInterval) -> Bool { position != nil && now < visibleUntil }
 }
 
+/// Never key or main, so showing it leaves focus where it is.
 @MainActor
-private final class GridIndicatorPanel: NSPanel {
+final class GridPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+}
+
+/// A cell of a display's grid by 0-based workspace and page index.
+struct GridCell: Equatable, Hashable {
+    var workspace: Int
+    var page: Int
 }
 
 /// One page as the core lays it out: tiled slots in order, with target frames for active windows only.
@@ -48,10 +55,17 @@ struct GridMiniature: Equatable {
         var dimmed: Bool { frame == nil }
     }
 
-    var slots: [Slot] = []
-    var floating = 0
+    struct Floater: Equatable {
+        var window: WindowID
+        var pid: Int32
+        /// False for minimized and app-hidden floating windows, which the indicator counts and the switcher leaves out.
+        var active = true
+    }
 
-    init(slots: [Slot] = [], floating: Int = 0) { self.slots = slots; self.floating = floating }
+    var slots: [Slot] = []
+    var floaters: [Floater] = []
+
+    init(slots: [Slot] = [], floaters: [Floater] = []) { self.slots = slots; self.floaters = floaters }
 
     /// Mirrors `Engine.tiled` and `Engine.frames`, so stashed pages match what showing them would lay out.
     init(page: PageState, windows: [WindowID: WindowState], focus: WindowID?, area: Rect, config: Config) {
@@ -61,10 +75,13 @@ struct GridMiniature: Equatable {
                                    gaps: config.gaps, padding: config.padding)
         let targets = Dictionary(uniqueKeysWithValues: zip(active, frames))
         slots = tiled.compactMap { id in windows[id].map { Slot(window: id, pid: $0.info.pid, frame: targets[id], focused: id == focus) } }
-        floating = page.windows.count { windows[$0]?.floating == true }
+        floaters = page.windows.compactMap { id in
+            windows[id].flatMap { $0.floating ? Floater(window: id, pid: $0.info.pid, active: !$0.info.minimized && !$0.info.appHidden) : nil }
+        }
     }
 
-    var empty: Bool { slots.isEmpty && floating == 0 }
+    var floating: Int { floaters.count }
+    var empty: Bool { slots.isEmpty && floaters.isEmpty }
     var tiles: [Slot] { slots.filter { !$0.dimmed } }
     var reserved: [Slot] { slots.filter(\.dimmed) }
 }
@@ -85,6 +102,7 @@ struct GridIndicatorContent: Equatable {
     var rows: Range<Int> { Self.viewport(count: pages.count, selected: workspace, limit: Self.rowLimit) }
     var columns: Range<Int> { Self.viewport(count: pageCount, selected: page, limit: Self.columnLimit) }
     var cropped: Bool { rows.count < pages.count || columns.count < pageCount }
+    var shown: GridCell? { workspace.flatMap { w in page.map { GridCell(workspace: w - 1, page: $0 - 1) } } }
     var position: String {
         if warning != nil { return "Display not managed" }
         guard let workspace, let page else { return "No active workspace" }
@@ -182,7 +200,7 @@ final class GridIndicator {
             let panel: NSPanel
             if let existing = panels[id] { panel = existing }
             else {
-                panel = GridIndicatorPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+                panel = GridPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
                 panel.isReleasedWhenClosed = false
                 panel.isFloatingPanel = true
                 panel.hidesOnDeactivate = false
