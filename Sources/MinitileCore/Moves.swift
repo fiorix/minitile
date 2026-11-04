@@ -22,7 +22,10 @@ extension Engine {
         } else {
             let pages = state.displays[at.display].workspaces[at.workspace].pages
             var index = at.page + direction
-            guard pages.indices.contains(index) else { return }
+            guard pages.indices.contains(index) else {
+                carryAcross(id, from: at, dx: direction, dy: 0, output: &output)
+                return
+            }
             while pages.indices.contains(index), state.windows[id]?.floating != true, tiled(pages[index]).count >= 4 {
                 index += direction
             }
@@ -35,6 +38,27 @@ extension Engine {
             target.page = index
             move(id, to: target, output: &output)
         }
+    }
+
+    /// Moves the window onto the shown page of the display on the side a unit step (dx, dy) points to, by the
+    /// placement rules, with focus following it. False, changing nothing, without a display there.
+    @discardableResult
+    mutating func carryAcross(_ id: WindowID, from at: Location, dx: Int, dy: Int, output: inout Output) -> Bool {
+        guard let e = neighbour(of: at.display, dx: dx, dy: dy), let start = currentLocation(display: e) else { return false }
+        removeFromPage(id)
+        leave(at.display, output: &output)
+        move(id, to: start, output: &output)
+        return true
+    }
+
+    /// A carry up from the first workspace, or down from a last workspace the window is alone in, would change
+    /// nothing on its display, so it goes to the display above or below.
+    mutating func carryPastGrid(_ id: WindowID, from at: Location, address: String, output: inout Output) -> Bool {
+        let workspaces = state.displays[at.display].workspaces
+        if address == "prev", at.workspace == 0 { return carryAcross(id, from: at, dx: 0, dy: -1, output: &output) }
+        guard address == "next", at.workspace == workspaces.count - 1,
+              workspaces[at.workspace].pages.allSatisfy({ $0.windows.allSatisfy { $0 == id } }) else { return false }
+        return carryAcross(id, from: at, dx: 0, dy: 1, output: &output)
     }
 
     mutating func moveTarget(_ id: WindowID, noun: String, address: String, output: inout Output) throws {
@@ -51,6 +75,7 @@ extension Engine {
             }
             target.page = index
         case "workspace":
+            if let source = location(id), carryPastGrid(id, from: source, address: address, output: &output) { return }
             let workspaces = state.displays[d].workspaces
             let index = try addressedIndex(address, current: target.workspace, count: workspaces.count, allowNext: true)
             if index == workspaces.count {

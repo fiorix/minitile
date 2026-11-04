@@ -117,7 +117,8 @@ extension Engine {
             if verb == "show" { show(at, output: &output) }
             else { variant(at) }
         } else if verb == "next" || verb == "prev", args.isEmpty || (args.count == 2 && args[0] == "display") {
-            let target = try args.last.map(managedDisplay) ?? d
+            // An addressed display never crosses to another one, so swipes bounce at the edges.
+            let target = try args.last.map(managedDisplay)
             if noun == "page" { try navigatePage(verb == "next" ? 1 : -1, display: target, output: &output) }
             else { try navigateWorkspace(verb == "next" ? 1 : -1, display: target, output: &output) }
         } else if noun == "workspace", verb == "new", args.isEmpty {
