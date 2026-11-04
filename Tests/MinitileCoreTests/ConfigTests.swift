@@ -46,6 +46,8 @@ func invalidChordsNameBinding(_ text: String) {
 @Test(arguments: [
     ("gaps = -1", "gaps"), ("padding = nan", "padding"), ("gaps = inf", "gaps"),
     ("padding = 'bad'", "padding"), ("float_apps = [3]", "float_apps"),
+    ("transition_ms = -1", "transition_ms"), ("transition_ms = 2001", "transition_ms"),
+    ("transition_ms = nan", "transition_ms"), ("transition_ms = 'fast'", "transition_ms"),
     ("only_apps = ['']", "only_apps"), ("other = 3", "other"),
     ("[bindings]\n'ctrl+a' = 3", "bindings"),
     ("[bindings]\n'ctrl+a' = '   '", "bindings.ctrl+a"),
@@ -63,4 +65,15 @@ func configErrorsNameTheKey(_ test: (String, String)) {
     #expect(e.config.gaps == 22)
     _ = e.handle(.configLoaded(Config(gaps: 4)))
     #expect(e.config.gaps == 4)
+}
+
+@Test func transitionDurationDefaultsAndAcceptsZeroAndBounds() throws {
+    #expect(Config.default.transitionMs == 500)
+    #expect(try Config.parse("transition_ms = 0").transitionMs == 0)
+    #expect(try Config.parse("transition_ms = 250.5").transitionMs == 250.5)
+    #expect(try Config.parse("transition_ms = 2000").transitionMs == 2000)
+    var e = engine(1)
+    _ = e.handle(.configLoaded(try Config.parse("transition_ms = 300")))
+    guard case .object(let fields)? = command(&e, "config info").reply?.data else { Issue.record("Expected config object"); return }
+    #expect(fields["transition_ms"] == .number(300))
 }

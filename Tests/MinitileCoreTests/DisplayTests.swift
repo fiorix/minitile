@@ -85,3 +85,15 @@ func twoDisplays() -> Engine {
     #expect(e.savedState().windows[1]?.display == "secondary")
     #expect(out.actions.last == .focus(1))
 }
+
+@Test func commandDisplayFollowsFocusThenActiveDisplay() {
+    var e = Engine()
+    _ = e.handle(.started(saved: nil, windows: [window(1), window(2, display: "secondary")], displays: [testDisplay, secondDisplay], focus: nil))
+    #expect(e.commandDisplay == "primary")
+    _ = e.handle(.focusChanged(2))
+    #expect(e.commandDisplay == "secondary")
+    _ = e.handle(.focusChanged(nil))
+    #expect(e.commandDisplay == "secondary")
+    _ = e.handle(.focusChanged(1))
+    #expect(e.commandDisplay == "primary")
+}

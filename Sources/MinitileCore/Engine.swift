@@ -45,4 +45,7 @@ public struct Engine: Sendable {
 
     /// Return a snapshot suitable for atomic JSON persistence by the shell.
     public func savedState() -> SavedState { state }
+
+    /// The display a command without an explicit address acts on, as `page next` resolves it.
+    public var commandDisplay: DisplayID? { currentDisplay().map { state.displays[$0].info.id } }
 }
