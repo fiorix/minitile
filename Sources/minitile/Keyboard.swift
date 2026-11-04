@@ -8,6 +8,16 @@ struct NativeChord: Hashable {
     var modifiers: Modifiers
 }
 
+enum StashShortcuts {
+    static func ids(spaces: [NativeSpace], current: UInt64, stash: UInt64, desktopNumber: Int?) -> Set<Int32> {
+        var ids: Set<Int32> = desktopNumber.map { [Int32(118 + $0 - 1)] } ?? []
+        guard let index = spaces.firstIndex(where: { $0.id == current }) else { return ids }
+        if index > 0, spaces[index - 1].id == stash { ids.insert(79) }
+        if index + 1 < spaces.count, spaces[index + 1].id == stash { ids.insert(81) }
+        return ids
+    }
+}
+
 enum KeyDecision: Equatable, Sendable { case pass, swallow, command([String]) }
 
 struct KeyTrace: Sendable {
@@ -92,11 +102,13 @@ final class KeyboardTap: @unchecked Sendable {
     @MainActor func update(config: Config, displays: DisplayCatalog, dragged: WindowID?) {
         var blocked = Set<NativeChord>()
         for display in displays.displays {
-            guard display.info.unmanagedReason == nil, let stash = display.info.stashSpace,
-                  let number = displays.desktopNumbers[stash] else { continue }
-            var key: UInt16 = 0, modifiers: UInt32 = 0, enabled = false
-            if csl_symbolic_hotkey(Int32(118 + number - 1), &key, &modifiers, &enabled), enabled {
-                blocked.insert(NativeChord(keycode: key, modifiers: KeyRouter.modifiers(CGEventFlags(rawValue: UInt64(modifiers)))))
+            guard display.info.unmanagedReason == nil, let stash = display.info.stashSpace else { continue }
+            let current = csl_current_space(display.identifier as CFString)
+            for id in StashShortcuts.ids(spaces: display.spaces, current: current, stash: stash, desktopNumber: displays.desktopNumbers[stash]) {
+                var key: UInt16 = 0, modifiers: UInt32 = 0, enabled = false
+                if csl_symbolic_hotkey(id, &key, &modifiers, &enabled), enabled {
+                    blocked.insert(NativeChord(keycode: key, modifiers: KeyRouter.modifiers(CGEventFlags(rawValue: UInt64(modifiers)))))
+                }
             }
         }
         let names = Self.keyNames()
@@ -128,7 +140,12 @@ final class KeyboardTap: @unchecked Sendable {
                 CFRunLoopRemoveSource(runLoop, source, .commonModes)
             }
             CFMachPortInvalidate(tap)
-            lock.withLock { port = nil; loop = nil }
+            lock.withLock {
+                port = nil; loop = nil
+                if !stopping { failed = true }
+                router.resetHeld()
+                traceFilter = KeyTraceFilter()
+            }
         }
         thread.name = "minitile.keys"
         thread.qualityOfService = .userInteractive
@@ -185,18 +202,20 @@ final class KeyboardTap: @unchecked Sendable {
         guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
               let pointer = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else { return names }
         let data = Unmanaged<CFData>.fromOpaque(pointer).takeUnretainedValue()
-        guard let bytes = CFDataGetBytePtr(data) else { return names }
-        let layout = UnsafeRawPointer(bytes).assumingMemoryBound(to: UCKeyboardLayout.self)
-        for code: UInt16 in 0..<128 where names[code] == nil {
-            var dead: UInt32 = 0, count = 0
-            var characters = [UniChar](repeating: 0, count: 4)
-            let result = UCKeyTranslate(layout, code, UInt16(kUCKeyActionDown), 0, UInt32(LMGetKbdType()),
-                                        OptionBits(kUCKeyTranslateNoDeadKeysMask), &dead, characters.count, &count, &characters)
-            if result == noErr, count == 1, let scalar = UnicodeScalar(characters[0]),
-               ("a"..."z").contains(String(scalar).lowercased()) || ("0"..."9").contains(String(scalar)) {
-                names[code] = String(scalar).lowercased()
+        return withExtendedLifetime((source, data)) {
+            guard let bytes = CFDataGetBytePtr(data) else { return names }
+            let layout = UnsafeRawPointer(bytes).assumingMemoryBound(to: UCKeyboardLayout.self)
+            for code: UInt16 in 0..<128 where names[code] == nil {
+                var dead: UInt32 = 0, count = 0
+                var characters = [UniChar](repeating: 0, count: 4)
+                let result = UCKeyTranslate(layout, code, UInt16(kUCKeyActionDown), 0, UInt32(LMGetKbdType()),
+                                            OptionBits(kUCKeyTranslateNoDeadKeysMask), &dead, characters.count, &count, &characters)
+                if result == noErr, count == 1, let scalar = UnicodeScalar(characters[0]),
+                   ("a"..."z").contains(String(scalar).lowercased()) || ("0"..."9").contains(String(scalar)) {
+                    names[code] = String(scalar).lowercased()
+                }
             }
+            return names
         }
-        return names
     }
 }

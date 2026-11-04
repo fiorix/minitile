@@ -208,7 +208,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @discardableResult func handle(_ input: Input) -> Reply? {
         guard started, !quitting else { return nil }
-        if case .windowGone(let id) = input { reconciler?.forget(id); keyboard?.drag(reconciler?.dragging) }
+        if case .windowGone(let id) = input { reconciler?.forget(id); updateDragTracking() }
         let output = engine.handle(input)
         if discovery?.frozen != true { reconciler?.apply(output) }
         var reply = output.reply

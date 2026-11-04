@@ -35,6 +35,7 @@ extension AppDelegate {
             self.displays.bounceFromStash()
             self.reconciler?.refreshSpaces()
             self.discovery?.recheckSoon()
+            self.keyboard?.update(config: self.engine.config, displays: self.displays, dragged: self.reconciler?.dragging)
         }
         observe(.default, NSApplication.didChangeScreenParametersNotification) { [weak self] _ in self?.scheduleDisplays() }
         for name in [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification] {
@@ -72,9 +73,6 @@ extension AppDelegate {
                 }
                 self.updateMenu()
             }
-        }
-        dragTimer = Timer.scheduledTimer(withTimeInterval: 0.03, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.finishDragIfReleased() }
         }
         for number in [SIGTERM, SIGINT] {
             signal(number, SIG_IGN)
@@ -163,15 +161,30 @@ extension AppDelegate {
         reconciler.externalMove(id)
         if mouseDown, reconciler.dragging == nil {
             reconciler.dragging = id
-            keyboard?.drag(id)
+            updateDragTracking()
         }
+    }
+
+    func updateDragTracking() {
+        keyboard?.drag(reconciler?.dragging)
+        guard reconciler?.dragging != nil else {
+            dragTimer?.invalidate()
+            dragTimer = nil
+            return
+        }
+        guard dragTimer == nil else { return }
+        let timer = Timer(timeInterval: 0.03, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.finishDragIfReleased() }
+        }
+        dragTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     func finishDragIfReleased() {
         guard discovery?.frozen == false, let reconciler, let id = reconciler.dragging,
               NSEvent.pressedMouseButtons & 1 == 0 else { return }
         reconciler.dragging = nil
-        keyboard?.drag(nil)
+        updateDragTracking()
         guard let element = discovery?.windows[id]?.element, let frame = AX.frame(element),
               let location = CGEvent(source: nil)?.location else { return }
         handle(.dragEnded(id, frame: frame, cursor: Point(x: location.x, y: location.y)))
