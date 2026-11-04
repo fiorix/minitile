@@ -25,8 +25,9 @@ extension AppDelegate {
                     "suspended": .array(suspendedReasons.sorted().map(JSONValue.string))])
         }
         if case .switcher(let key, let session) = decision { switcherKey(key, session: session) }
-        if case .command(let argv, _) = decision {
-            let reply = command(argv)
+        if case .grabReleased(let session) = decision { grabHighlight.released(session); updateGrab() }
+        if case .command(let argv, let grab) = decision {
+            let reply = command(argv, grab: grab)
             if let trace {
                 logKey(["phase": .string("result"), "event_time": .number(trace.time),
                         "ok": .bool(reply.ok), "text": .string(reply.text),
@@ -106,6 +107,9 @@ extension AppDelegate {
                                 "grid_indicator_duration_ms": .number(GridIndicatorTiming.duration * 1000),
                                 "switcher_open": .bool(windowSwitcher.isOpen),
                                 "switcher_selected": windowSwitcher.selection.map { .number(Double($0.selected)) } ?? .null,
+                                "grab_window": grabHighlight.window.map { .number(Double($0)) } ?? .null,
+                                "grab_held": .bool(grabHighlight.session != nil),
+                                "grab_visible": .bool(grabPanel.visible),
                                 "transitions_enabled": .bool(transitions.enabled),
                                 "transitions_disabled_reason": transitions.reason.map(JSONValue.string) ?? .null,
                                 "startup_stash_windows": .number(Double(startupStashCount)),

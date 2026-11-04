@@ -32,6 +32,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let switcherPanel = SwitcherPanel()
     lazy var windowSwitcher = WindowSwitcher(presenter: switcherPanel)
     let dropPanels = DropPickerPanels()
+    let grabPanel = GrabPanel()
+    lazy var grabHighlight = GrabHighlight(presenter: grabPanel)
     let transitions = Transitions()
     var screenRecordingRequested = false
     var permissionTimer: Timer?
@@ -166,6 +168,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let display = self?.displays.displays.first(where: { $0.info.id == id }), let visible = display.info.visibleSpace else { return true }
             return csl_current_space(display.identifier as CFString) == visible
         }
+        transitions.uncovered = { [weak self] in self?.updateGrab() }
+        grabHighlight.due = { [weak self] in self?.updateGrab() }
         updateTransitions()
         let keyboard = KeyboardTap(traceEnabled: ProcessInfo.processInfo.environment["MINITILE_TRACE_KEYS"] == "1") { [weak self] decision, trace in
             self?.handleKey(decision, trace: trace)
@@ -208,13 +212,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let snapshot = engine.savedState()
         gridIndicator.update(state: snapshot, config: engine.config)
         if let closed = windowSwitcher.update(state: snapshot, config: engine.config) { keyboard?.closeSwitcher(closed) }
+        updateGrab()
         let active = snapshot.activeDisplay ?? displays.infos.first(where: \.isPrimary)?.id
         let label = active.flatMap { reconciler?.scene.displays[$0]?.label } ?? "minitile"
         status.update(label: label, warnings: warnings.values.sorted(),
                       state: started ? "\(snapshot.windows.count) windows, \(displays.infos.count) displays" : "Starting")
     }
 
-    @discardableResult func command(_ argv: [String]) -> Reply {
+    /// `grab` is the key router's session of a binding whose modifiers hold a grab; commands without one grab for a
+    /// moment.
+    @discardableResult func command(_ argv: [String], grab: Int? = nil) -> Reply {
         if argv == ["quit"], !started || discovery?.frozen == true { requestQuit(); return Reply() }
         if !started, argv == ["config", "open"] {
             do { try paths.openConfig(); return Reply() }
@@ -233,17 +240,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return Reply(ok: false, text: "Session inactive; window changes are suspended")
         }
         if argv.first == "switcher" { return switcherCommand(argv) }
-        return handle(.command(argv)) ?? Reply()
+        return handle(.command(argv), grab: grab) ?? Reply()
     }
 
-    @discardableResult func handle(_ input: Input) -> Reply? {
+    @discardableResult func handle(_ input: Input, grab session: Int? = nil) -> Reply? {
         guard started, !quitting else { return nil }
         if case .windowGone(let id) = input { reconciler?.forget(id); updateDragTracking() }
         var argv: [String]?
         if case .command(let command) = input, transitions.enabled { argv = command }
         let before = argv.map { _ in engine.savedState() }
         let context = argv.flatMap { _ in engine.commandDisplay }
+        var grabbing: (argv: [String], focus: WindowID?)?
+        if case .command(let command) = input, GrabCommand.grabs(command) { grabbing = (command, engine.savedState().focus) }
         let output = engine.handle(input)
+        // The pointer already holds a dragged window, so nothing grabs it, Ctrl+arrow during the drag included.
+        if let grabbing, let grab = GrabCommand(argv: grabbing.argv, focus: grabbing.focus, output: output),
+           grab.window != reconciler?.dragging {
+            grabHighlight.command(grab, session: session, focus: engine.savedState().focus)
+        }
         if case .command = input, output.events.contains(where: { $0.type == "page_shown" }) {
             viewEchoUntil = ProcessInfo.processInfo.systemUptime + ViewChangeEcho.interval
         }
@@ -347,6 +361,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func requestQuit() {
         guard !quitting else { return }
         quitting = true
+        endGrab()
         updateSwitcherAvailability()
         keyboard?.stop()
         updateSwipes()
@@ -361,6 +376,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windowSwitcher.cancel()
         switcherPanel.stop()
         dropPanels.stop()
+        grabPanel.stop()
         transitions.stop()
         permissionTimer?.invalidate(); healthTimer?.invalidate(); dragTimer?.invalidate(); displayWork?.cancel(); activationFocusRead?.cancel()
         for (center, token) in observers { center.removeObserver(token) }

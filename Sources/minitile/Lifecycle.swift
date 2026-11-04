@@ -63,6 +63,7 @@ extension AppDelegate {
                 guard let self, !self.quitting else { return }
                 self.keyboard?.checkHealth()
                 self.checkSwitcherModifiers()
+                self.checkGrabModifiers()
                 self.swipes?.checkHealth()
                 self.warnings["secure-input"] = csl_secure_input_enabled() ? "Secure input is blocking keyboard shortcuts" : nil
                 self.warnings["keyboard"] = self.keyboard?.unavailable == true ? "Keyboard tap unavailable; check Accessibility and restart" : nil
@@ -126,7 +127,7 @@ extension AppDelegate {
         let wasSuspended = !suspendedReasons.isEmpty
         let shouldResume = suspension.set(reason, enabled: enabled)
         discovery?.frozen = !suspendedReasons.isEmpty
-        if enabled { dropPanels.hide() }
+        if enabled { dropPanels.hide(); endGrab() }
         if shouldResume { resume() }
         else if wasSuspended != !suspendedReasons.isEmpty { updateSwipes() }
         updateSwitcherAvailability()
@@ -202,6 +203,7 @@ extension AppDelegate {
             reconciler.dragging = id
             dragTile = reconciler.scene.displays.values.lazy.compactMap { $0.frames[id] }.first
             updateDragTracking()
+            endGrab()
         }
     }
 

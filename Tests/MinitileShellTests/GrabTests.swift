@@ -270,6 +270,14 @@ private func highlight() -> (GrabHighlight, FakeOutline, FakeTimer) {
     #expect(timer.pending.isEmpty)
 }
 
+@Test @MainActor func outlineSitsAboveWindowsAndBelowTheOtherPanels() {
+    #expect(GrabPanel.level.rawValue > NSWindow.Level.normal.rawValue)
+    #expect(GrabPanel.level.rawValue < TransitionOverlay.level.rawValue)
+    #expect(GrabPanel.level.rawValue < DropPickerPanels.previewLevel.rawValue)
+    #expect(GrabPanel.level.rawValue < NSWindow.Level.floating.rawValue)
+    #expect(GrabPanel.level.rawValue < SwitcherPanel.level.rawValue)
+}
+
 private let arrows: [UInt16: String] = [123: "left", 124: "right", 125: "down", 126: "up", 49: "space", 48: "tab", 0: "a", 96: "f5"]
 
 @Test func grabbingBindingHoldsUntilAnyOfItsModifiersIsReleased() {
