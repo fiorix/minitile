@@ -6,7 +6,8 @@
 #include <stdint.h>
 
 // Initialize once on the main thread. All operations except secure-input status
-// are main-thread only. Copy functions return owned CF objects (or NULL).
+// and window IDs are main-thread only. Copy functions return owned CF objects
+// (or NULL).
 bool csl_init(char *error, size_t length);
 CFArrayRef csl_copy_managed_display_spaces(void) CF_RETURNS_RETAINED;
 uint64_t csl_current_space(CFStringRef display);

@@ -22,10 +22,14 @@ struct ObserverRegistrations {
 
 @MainActor
 final class Discovery {
+    typealias Ticket = DiscoveryLedger.Ticket
+
     struct Window {
         var info: WindowInfo
         var element: AXUIElement
         var registrations = ObserverRegistrations()
+        /// The ledger stamp when the window became known.
+        var added = 0
     }
 
     @MainActor final class Application {
@@ -47,24 +51,33 @@ final class Discovery {
 
     private(set) var windows: [WindowID: Window] = [:]
     private(set) var applications: [Int32: Application] = [:]
-    private var misses: [WindowID: Int] = [:]
+    private var misses = PresenceMisses()
     private var rechecks = PresenceRechecks()
     private var recheckWork: DispatchWorkItem?
+    /// A recheck pass is waiting for its snapshot; the next pass is scheduled once it arrives.
+    private var rechecking = false
     private var creations: [Int32: [AXUIElement]] = [:]
     private var adoption: [WindowID: (pid: Int32, display: NativeDisplay)] = [:]
+    private var ledger = DiscoveryLedger()
+    private var passes = ScanPasses()
+    /// Snapshots and app reads run here, one task per app, so a hung app delays only its own results. New windows are
+    /// read here too, so the queue is not a low priority one.
+    private let background = DispatchQueue(label: "minitile.discovery", qos: .userInitiated, attributes: .concurrent)
     var config: Config
     let displays: DisplayCatalog
     let smokeScope = SmokeScope()
     private let traceFocus = ProcessInfo.processInfo.environment["MINITILE_TRACE_FOCUS"] == "1"
-    var frozen = false
+    var frozen = false {
+        didSet { if frozen { ledger.suspend() } }
+    }
     var input: ((Input) -> Void)?
     var activated: ((Int32, TimeInterval) -> Void)?
     var focused: ((WindowID?) -> Void)?
     var acceptsFocus: ((Int32) -> Bool)?
     var moved: ((WindowID) -> Void)?
     var suppressGeometry: ((WindowID) -> Bool)?
-    private(set) var fullScans = 0
-    private(set) var fullScanMilliseconds = 0.0
+    var fullScans: Int { passes.count }
+    var fullScanMilliseconds: Double { passes.milliseconds }
     private(set) var recheckRequests = 0
     private(set) var recheckPasses = 0
     private let windowNotifications = [kAXUIElementDestroyedNotification, kAXMovedNotification, kAXResizedNotification,
@@ -77,7 +90,9 @@ final class Discovery {
             && (config.onlyApps.isEmpty || app.bundleIdentifier.map(config.onlyApps.contains) == true)
     }
 
-    func observe(_ app: NSRunningApplication) {
+    /// Registration messages the app, so it runs only once the app's latest read was answered; a hung app would hold
+    /// the main thread for the full timeout on each one.
+    private func observe(_ app: NSRunningApplication) {
         guard allows(app), applications[app.processIdentifier] == nil else { return }
         let context = Application(pid: app.processIdentifier, owner: self)
         var observer: AXObserver?
@@ -94,10 +109,14 @@ final class Discovery {
         var registrations = ObserverRegistrations()
         let complete = registrations.register([kAXWindowCreatedNotification, kAXFocusedWindowChangedNotification,
                                                kAXMainWindowChangedNotification, kAXApplicationActivatedNotification]) { name in
-            AXObserverAddNotification(observer, context.element, name as CFString, Unmanaged.passUnretained(context).toOpaque())
+            AX.timed(context.element, name) {
+                AXObserverAddNotification(observer, context.element, name as CFString, Unmanaged.passUnretained(context).toOpaque())
+            }
         }
         guard complete else {
-            for name in registrations.names { AXObserverRemoveNotification(observer, context.element, name as CFString) }
+            for name in registrations.names {
+                AX.timed(context.element, name) { AXObserverRemoveNotification(observer, context.element, name as CFString) }
+            }
             logger.debug("AX app notifications incomplete for pid \(context.pid); retrying on the next scan")
             return
         }
@@ -120,119 +139,205 @@ final class Discovery {
             for id in windows.keys where windows[id]?.info.pid == pid { remove(id) }
             context.stop()
             applications.removeValue(forKey: pid)
+            ledger.forget(pid)
         }
     }
 
-    func scan() {
-        guard !frozen, let cg = CGWindowRecord.snapshot() else { return }
-        let start = ProcessInfo.processInfo.systemUptime
-        fullScans += 1
-        defer { fullScanMilliseconds += (ProcessInfo.processInfo.systemUptime - start) * 1000 }
-        for app in NSWorkspace.shared.runningApplications where allows(app) {
-            observe(app)
-            scan(app, cg: cg)
-        }
-        checkPresence(cg, pids: Set(windows.values.map { $0.info.pid }))
-    }
+    /// A full scan off the main thread: a WindowServer snapshot, then one read per app, each applied here as it
+    /// finishes. It catches missed notifications and retries incomplete observer registrations.
+    func scan() { scan(pids: nil) }
 
-    private func checkPresence(_ cg: [WindowID: CGWindowRecord], pids: Set<Int32>) {
-        for id in Array(windows.keys) where windows[id].map({ pids.contains($0.info.pid) }) == true {
-            guard let window = windows[id] else { continue }
-            if cg[id]?.pid == window.info.pid { misses.removeValue(forKey: id) }
-            else {
-                misses[id, default: 0] += 1
-                if misses[id, default: 0] >= 3 { remove(id) }
+    /// Reads the given apps off the main thread, as a full scan does, without its presence check.
+    func scan(pids: Set<Int32>?) {
+        guard !frozen else { return }
+        let pass = pids == nil ? passes.begin(at: ProcessInfo.processInfo.systemUptime) : nil
+        let ticket = ledger.beginSnapshot()
+        background.async { [weak self] in
+            let cg = CGWindowRecord.snapshot()
+            DispatchQueue.main.async { [weak self] in
+                MainActor.assumeIsolated { self?.scanned(cg, pids: pids, pass: pass, ticket: ticket) }
             }
         }
     }
 
-    func scan(_ app: NSRunningApplication, cg: [WindowID: CGWindowRecord]? = nil) {
-        guard !frozen, allows(app), let cg = cg ?? CGWindowRecord.snapshot() else { return }
-        let element = applications[app.processIdentifier]?.element ?? AXUIElementCreateApplication(app.processIdentifier)
-        let listed = AX.value(element, kAXWindowsAttribute) as? [AXUIElement] ?? []
-        for element in listed { discover(element, app: app, cg: cg) }
-        // AXWindows omits stashed windows; retained elements remain readable.
-        for (id, window) in Array(windows) where window.info.pid == app.processIdentifier && cg[id]?.pid == app.processIdentifier {
-            registerWindow(id)
-            update(id, app: app)
+    private func scanned(_ cg: [WindowID: CGWindowRecord]?, pids: Set<Int32>?, pass: Int?, ticket: Ticket) {
+        // The reads share the snapshot's ticket, so they begin before it ends.
+        defer { ledger.endSnapshot() }
+        guard ledger.accepts(ticket, frozen: frozen), let cg else {
+            if let pass { passes.cancel(pass) }
+            return
+        }
+        if pids == nil { checkPresence(cg, pids: Set(windows.values.map { $0.info.pid }), taken: ticket.stamp) }
+        let apps = pids.map { $0.compactMap { NSRunningApplication(processIdentifier: $0) } } ?? NSWorkspace.shared.runningApplications
+        let started = selection(apps, cg: cg, reading: ledger.reading).filter { startRead($0, cg: cg, ticket: ticket, pass: pass) }
+        if let pass { passes.reading(pass, reads: started.count, at: ProcessInfo.processInfo.systemUptime) }
+    }
+
+    /// Startup and adoption need every readable handle before they go on, so they scan on the main thread.
+    func scanNow() {
+        guard !frozen, let cg = CGWindowRecord.snapshot() else { return }
+        let start = ProcessInfo.processInfo.systemUptime
+        let taken = ledger.stamp
+        for app in selection(NSWorkspace.shared.runningApplications, cg: cg, reading: []) {
+            let request = readRequest(app, cg: cg)
+            let ticket = ledger.ticket
+            let read = DiscoveryReader.read(request)
+            apply(read, records: request.records, ticket: ticket)
+            ledger.record(read.pid, answered: read.answered)
+        }
+        checkPresence(cg, pids: Set(windows.values.map { $0.info.pid }), taken: taken)
+        passes.add(milliseconds: (ProcessInfo.processInfo.systemUptime - start) * 1000)
+    }
+
+    private func selection(_ apps: [NSRunningApplication], cg: [WindowID: CGWindowRecord], reading: Set<Int32>) -> [NSRunningApplication] {
+        let allowed = apps.filter(allows)
+        let candidates = allowed.map { AppCandidate(pid: $0.processIdentifier, regular: $0.activationPolicy == .regular) }
+        let pids = Set(DiscoveryPlan.reads(candidates, snapshot: cg, reading: reading))
+        return allowed.filter { pids.contains($0.processIdentifier) }
+    }
+
+    private func readRequest(_ app: NSRunningApplication, cg: [WindowID: CGWindowRecord], candidates: [AXUIElement]? = nil) -> AppReadRequest {
+        let pid = app.processIdentifier
+        let records = cg.filter { $0.value.pid == pid }
+        let known = candidates != nil ? [] : windows.compactMap { id, window in
+            window.info.pid == pid && records[id] != nil ? KnownElement(id: id, element: AXRef(window.element)) : nil
+        }
+        return AppReadRequest(pid: pid, app: AXRef(applications[pid]?.element ?? AXUIElementCreateApplication(pid)), known: known,
+                              candidates: candidates?.map(AXRef.init), records: records, documents: smokeScope.directory != nil)
+    }
+
+    /// False when the app's previous read is still running.
+    private func startRead(_ app: NSRunningApplication, cg: [WindowID: CGWindowRecord], candidates: [AXUIElement]? = nil,
+                           ticket: Ticket, pass: Int?) -> Bool {
+        guard ledger.beginRead(app.processIdentifier) else { return false }
+        let request = readRequest(app, cg: cg, candidates: candidates)
+        let name = app.localizedName ?? "unknown app"
+        background.async { [weak self] in
+            let read = DiscoveryReader.read(request)
+            DispatchQueue.main.async { [weak self] in
+                MainActor.assumeIsolated { self?.finished(read, name: name, records: request.records, ticket: ticket, pass: pass) }
+            }
+        }
+        return true
+    }
+
+    private func finished(_ read: AppRead, name: String, records: [WindowID: CGWindowRecord], ticket: Ticket, pass: Int?) {
+        // Staleness checks need the touches kept while this read runs, so it ends after them.
+        defer {
+            ledger.endRead(read.pid, answered: read.answered)
+            if let pass { passes.readFinished(pass, at: ProcessInfo.processInfo.systemUptime) }
+        }
+        if read.milliseconds > Slow.backgroundRead {
+            logger.notice("Background read of \(name, privacy: .public) (pid \(read.pid)) took \(Int(read.milliseconds)) ms")
+        }
+        guard ledger.accepts(ticket, frozen: frozen) else { return }
+        apply(read, records: records, ticket: ticket)
+        keepUnresolved(read)
+    }
+
+    private func apply(_ read: AppRead, records: [WindowID: CGWindowRecord], ticket: Ticket) {
+        guard let app = NSRunningApplication(processIdentifier: read.pid), allows(app) else { return }
+        let answers = read.answered ?? ledger.answers(read.pid)
+        if answers { observe(app) }
+        for window in read.windows where !ledger.stale(window.id, since: ticket) {
+            if window.listed { discover(window, app: app, record: records[window.id], register: answers) }
+            else { reread(window, app: app, register: answers) }
         }
     }
 
-    private func discover(_ element: AXUIElement, app: NSRunningApplication, cg: [WindowID: CGWindowRecord]) {
-        guard let id = AX.id(element), let record = cg[id], record.pid == app.processIdentifier, record.real,
-              AX.value(element, kAXRoleAttribute) as? String == kAXWindowRole,
-              smokeScope.allows(document: AX.value(element, kAXDocumentAttribute) as? String) else { return }
+    private func checkPresence(_ cg: [WindowID: CGWindowRecord], pids: Set<Int32>, taken: Int) {
+        let known = windows.map { PresenceMisses.Known(id: $0.key, pid: $0.value.info.pid, added: $0.value.added) }
+        for id in misses.check(known, pids: pids, snapshot: cg, taken: taken) { remove(id) }
+    }
+
+    private func discover(_ read: WindowRead, app: NSRunningApplication, record: CGWindowRecord?, register: Bool) {
+        let id = read.id, element = read.element.element
+        guard let record, record.real, smokeScope.allows(document: read.attributes.document) else { return }
         if let previous = windows[id] {
             if previous.info.pid == app.processIdentifier && CFEqual(previous.element, element) { return }
             remove(id)
         }
         let spaces = displays.windowSpaces(id)
         guard let display = adoption[id]?.display ?? displays.owner(spaces: spaces),
-              let frame = AX.frame(element) else { return }
-        let info = WindowInfo(id: id, pid: app.processIdentifier, bundleID: app.bundleIdentifier,
+              let frame = read.attributes.frame else { return }
+        var info = WindowInfo(id: id, pid: app.processIdentifier, bundleID: app.bundleIdentifier,
                               appName: app.localizedName ?? record.app, title: record.title, frame: frame,
                               tileable: false, appHidden: app.isHidden,
                               fromFrontmostApp: app.isActive, display: display.info.id,
                               onStash: adoption[id] != nil || spaces.contains(display.info.stashSpace ?? 0))
-        windows[id] = Window(info: info, element: element)
-        readInfo(id, app: app)
-        registerWindow(id)
-        if let info = windows[id]?.info {
-            if traceFocus {
-                startupLog("Window appeared id=\(id) pid=\(info.pid) app_active=\(info.fromFrontmostApp) frontmost=\(NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0)")
-            }
-            input?(.windowAppeared(info))
+        info.apply(read.attributes, appHidden: app.isHidden, geometry: suppressGeometry?(id) != true)
+        windows[id] = Window(info: info, element: element, added: ledger.touch(id))
+        if register { registerWindow(id) }
+        if traceFocus {
+            startupLog("Window appeared id=\(id) pid=\(info.pid) app_active=\(info.fromFrontmostApp) frontmost=\(NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0)")
         }
+        input?(.windowAppeared(info))
+    }
+
+    private func reread(_ read: WindowRead, app: NSRunningApplication, register: Bool) {
+        // A window removed meanwhile, or replaced under the same ID, is ignored.
+        guard let window = windows[read.id], CFEqual(window.element, read.element.element) else { return }
+        if register { registerWindow(read.id) }
+        applyAttributes(read.attributes, to: read.id, app: app)
+    }
+
+    private func applyAttributes(_ attributes: WindowAttributes, to id: WindowID, app: NSRunningApplication) {
+        guard let old = windows[id] else { return }
+        if smokeScope.directory != nil, let document = attributes.document, !smokeScope.allows(document: document) { remove(id); return }
+        var info = old.info
+        info.apply(attributes, appHidden: app.isHidden, geometry: suppressGeometry?(id) != true)
+        windows[id]?.info = info
+        if info != old.info { input?(.windowUpdated(info)) }
     }
 
     private func registerWindow(_ id: WindowID) {
         guard var window = windows[id], let context = applications[window.info.pid], let observer = context.observer else { return }
         let complete = window.registrations.register(windowNotifications) { name in
-            AXObserverAddNotification(observer, window.element, name as CFString, Unmanaged.passUnretained(context).toOpaque())
+            AX.timed(window.element, name) {
+                AXObserverAddNotification(observer, window.element, name as CFString, Unmanaged.passUnretained(context).toOpaque())
+            }
         }
         if !complete { logger.debug("AX window notifications incomplete for window \(id); retrying on the next scan") }
         windows[id] = window
     }
 
-    private func readInfo(_ id: WindowID, app: NSRunningApplication) {
-        guard var window = windows[id] else { return }
-        let element = window.element
-        window.info.title = AX.value(element, kAXTitleAttribute) as? String ?? window.info.title
-        window.info.minimized = AX.value(element, kAXMinimizedAttribute) as? Bool ?? window.info.minimized
-        window.info.appHidden = app.isHidden
-        if suppressGeometry?(id) != true { window.info.frame = AX.frame(element) ?? window.info.frame }
-        var settable: DarwinBoolean = false
-        if AXUIElementIsAttributeSettable(element, kAXSizeAttribute as CFString, &settable) == .success,
-           let subrole = AX.value(element, kAXSubroleAttribute) as? String,
-           let modal = AX.value(element, kAXModalAttribute) as? Bool {
-            window.info.tileable = subrole == kAXStandardWindowSubrole && !modal && settable.boolValue
-        }
-        windows[id] = window
+    /// Rereads a window on the main thread, as its notifications ask. Background reads begun earlier become stale.
+    func update(_ id: WindowID) {
+        guard !frozen, let old = windows[id], let app = NSRunningApplication(processIdentifier: old.info.pid) else { return }
+        ledger.touch(id)
+        applyAttributes(DiscoveryReader.attributes(old.element, documents: smokeScope.directory != nil), to: id, app: app)
     }
 
-    func update(_ id: WindowID, app: NSRunningApplication? = nil) {
-        guard !frozen, let old = windows[id],
-              let app = app ?? NSRunningApplication(processIdentifier: old.info.pid) else { return }
-        if smokeScope.directory != nil, let document = AX.value(old.element, kAXDocumentAttribute) as? String,
-           !smokeScope.allows(document: document) { remove(id); return }
-        readInfo(id, app: app)
-        if let info = windows[id]?.info, info != old.info { input?(.windowUpdated(info)) }
+    /// minitile wrote the window's frame, so background reads begun earlier are stale.
+    func wroteFrame(_ id: WindowID) { ledger.touch(id) }
+
+    /// Hiding changes no attribute read through AX, so the app's windows update at once; the app is then read in the
+    /// background.
+    func hiddenChanged(_ app: NSRunningApplication) {
+        guard !frozen, allows(app) else { return }
+        for (id, window) in windows where window.info.pid == app.processIdentifier && window.info.appHidden != app.isHidden {
+            windows[id]?.info.appHidden = app.isHidden
+            if let info = windows[id]?.info { input?(.windowUpdated(info)) }
+        }
+        scan(pids: [app.processIdentifier])
     }
 
     func remove(_ id: WindowID) {
         guard let window = windows.removeValue(forKey: id) else { return }
+        ledger.touch(id)
         if let observer = applications[window.info.pid]?.observer {
             for name in window.registrations.names {
-                AXObserverRemoveNotification(observer, window.element, name as CFString)
+                AX.timed(window.element, name) { AXObserverRemoveNotification(observer, window.element, name as CFString) }
             }
         }
-        misses.removeValue(forKey: id)
+        misses.forget(id)
         input?(.windowGone(id))
     }
 
     func terminated(_ pid: Int32) {
         applications.removeValue(forKey: pid)?.stop()
         creations.removeValue(forKey: pid)
+        ledger.forget(pid)
         recheckSoon(pids: [pid])
     }
 
@@ -243,37 +348,63 @@ final class Discovery {
     }
 
     private func scheduleRecheck() {
-        guard recheckWork == nil, !rechecks.isEmpty else { return }
-        let work = DispatchWorkItem { [weak self] in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.recheckWork = nil
-                guard !self.frozen else {
-                    self.rechecks = PresenceRechecks()
-                    self.creations.removeAll()
-                    return
-                }
-                let pids = self.rechecks.take()
-                self.recheckPasses += 1
-                if let cg = CGWindowRecord.snapshot() {
-                    self.checkPresence(cg, pids: pids)
-                    // Only new-window elements need AX reads; focus/destroy bursts use CG presence alone.
-                    for pid in pids {
-                        guard let app = NSRunningApplication(processIdentifier: pid), self.allows(app) else { continue }
-                        let candidates = self.creations.removeValue(forKey: pid) ?? []
-                        for element in candidates {
-                            self.discover(element, app: app, cg: cg)
-                            if let id = AX.id(element), self.windows[id] != nil { continue }
-                            self.creations[pid, default: []].append(element)
-                        }
-                    }
-                }
-                if self.rechecks.isEmpty { self.creations.removeAll() }
-                self.scheduleRecheck()
-            }
-        }
+        guard recheckWork == nil, !rechecking, !rechecks.isEmpty else { return }
+        let work = DispatchWorkItem { [weak self] in MainActor.assumeIsolated { self?.recheck() } }
         recheckWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + rechecks.delay, execute: work)
+    }
+
+    private func recheck() {
+        recheckWork = nil
+        guard !frozen else {
+            rechecks = PresenceRechecks()
+            creations.removeAll()
+            return
+        }
+        let pids = rechecks.take()
+        recheckPasses += 1
+        rechecking = true
+        let ticket = ledger.beginSnapshot()
+        background.async { [weak self] in
+            let cg = CGWindowRecord.snapshot()
+            DispatchQueue.main.async { [weak self] in
+                MainActor.assumeIsolated { self?.rechecked(cg, pids: pids, ticket: ticket) }
+            }
+        }
+    }
+
+    private func rechecked(_ cg: [WindowID: CGWindowRecord]?, pids: Set<Int32>, ticket: Ticket) {
+        // The candidate reads share the snapshot's ticket, so they begin before it ends.
+        defer { ledger.endSnapshot() }
+        rechecking = false
+        guard !frozen else {
+            rechecks = PresenceRechecks()
+            creations.removeAll()
+            return
+        }
+        if ledger.accepts(ticket, frozen: frozen), let cg {
+            checkPresence(cg, pids: pids, taken: ticket.stamp)
+            // Only new-window elements need AX reads; focus/destroy bursts use CG presence alone. An app whose read
+            // is running keeps its candidates for the next pass.
+            for pid in pids {
+                guard let app = NSRunningApplication(processIdentifier: pid), allows(app),
+                      let candidates = creations[pid], !candidates.isEmpty, !ledger.reading.contains(pid) else { continue }
+                creations.removeValue(forKey: pid)
+                _ = startRead(app, cg: cg, candidates: candidates, ticket: ticket, pass: nil)
+            }
+        }
+        if rechecks.isEmpty { creations.removeAll() }
+        scheduleRecheck()
+    }
+
+    /// Creation candidates that are not windows yet wait for the next pass of the same recheck sequence.
+    private func keepUnresolved(_ read: AppRead) {
+        guard !rechecks.isEmpty else { return }
+        for candidate in read.candidates {
+            if let id = candidate.id, windows[id] != nil { continue }
+            let element = candidate.element.element
+            if creations[read.pid]?.contains(where: { CFEqual($0, element) }) != true { creations[read.pid, default: []].append(element) }
+        }
     }
 
     private func notification(pid: Int32, element: AXUIElement, name: String) {

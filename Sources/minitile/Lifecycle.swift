@@ -18,8 +18,8 @@ extension AppDelegate {
         let workspace = NSWorkspace.shared.notificationCenter
         observeActivation(workspace)
         observe(workspace, NSWorkspace.didLaunchApplicationNotification) { [weak self] pid in
-            guard let pid, let app = NSRunningApplication(processIdentifier: pid) else { return }
-            self?.discovery?.observe(app); self?.discovery?.scan(app); self?.discovery?.recheckSoon(pids: [pid])
+            guard let pid else { return }
+            self?.discovery?.scan(pids: [pid]); self?.discovery?.recheckSoon(pids: [pid])
         }
         observe(workspace, NSWorkspace.didTerminateApplicationNotification) { [weak self] pid in
             if let pid { self?.discovery?.terminated(pid) }
@@ -27,7 +27,7 @@ extension AppDelegate {
         for name in [NSWorkspace.didHideApplicationNotification, NSWorkspace.didUnhideApplicationNotification] {
             observe(workspace, name) { [weak self] pid in
                 guard let pid, let app = NSRunningApplication(processIdentifier: pid) else { return }
-                self?.discovery?.scan(app)
+                self?.discovery?.hiddenChanged(app)
             }
         }
         observe(workspace, NSWorkspace.activeSpaceDidChangeNotification) { [weak self] _ in
@@ -153,21 +153,21 @@ extension AppDelegate {
         do {
             if try paths.configContents() != lastConfig { _ = reloadConfig() }
         } catch { warnings["config"] = "Config: \(error)" }
-        let scanStart = ProcessInfo.processInfo.systemUptime
-        discovery.scan()
-        let scanMs = since(scanStart)
         discovery.recheckSoon()
         finishDragIfReleased()
         discovery.refreshFocus()
         let applyStart = ProcessInfo.processInfo.systemUptime
         reconciler.apply(Output(scene: reconciler.scene))
         let applyMs = since(applyStart)
+        // The scan runs off the main thread and reports what changed as it finishes. Started after the frame writes
+        // above, its reads of those windows are not stale.
+        discovery.scan()
         keyboard?.update(config: engine.config, displays: displays, dragged: reconciler.dragging)
         updateSwipes()
         updateMenu()
         lastResumeMilliseconds = since(start)
         // Input waits behind this work on the main thread, so its cost is worth seeing in the log.
-        logger.notice("Resume took \(Int(self.lastResumeMilliseconds)) ms: displays \(Int(displaysMs)), scan \(Int(scanMs)), reconcile \(Int(applyMs))")
+        logger.notice("Resume took \(Int(self.lastResumeMilliseconds)) ms: displays \(Int(displaysMs)), reconcile \(Int(applyMs))")
     }
 
     func scheduleDisplays() {

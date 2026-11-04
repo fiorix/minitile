@@ -113,9 +113,10 @@ final class SwipeTap: @unchecked Sendable {
     private var loop: CFRunLoop?
     private var stopping = false
     private var failed = false
-    private let handle: @MainActor @Sendable ([String]) -> Void
+    /// A command carries the uptime its last event reached the tap, so the main thread can tell how long it waited.
+    private let handle: @MainActor @Sendable ([String], TimeInterval) -> Void
 
-    init(handle: @escaping @MainActor @Sendable ([String]) -> Void) { self.handle = handle }
+    init(handle: @escaping @MainActor @Sendable ([String], TimeInterval) -> Void) { self.handle = handle }
 
     func update(_ policy: SwipePolicy) { lock.withLock { self.policy = policy } }
 
@@ -169,6 +170,7 @@ final class SwipeTap: @unchecked Sendable {
     }
 
     private func receive(_ type: CGEventType, _ event: CGEvent) -> Unmanaged<CGEvent>? {
+        let received = ProcessInfo.processInfo.systemUptime
         // Swipes go to macOS while the tap is disabled. A swipe already decided keeps its decision.
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let port = lock.withLock({ port }) { CGEvent.tapEnable(tap: port, enable: true) }
@@ -177,7 +179,7 @@ final class SwipeTap: @unchecked Sendable {
         guard type.rawValue == SwipeEvent.eventType else { return Unmanaged.passUnretained(event) }
         let swipe = SwipeEvent(event)
         let decision = lock.withLock { tracker.receive(swipe, policy: policy) }
-        if case .command(let argv) = decision { DispatchQueue.main.async { [handle] in handle(argv) } }
+        if case .command(let argv) = decision { DispatchQueue.main.async { [handle] in handle(argv, received) } }
         return decision == .pass ? Unmanaged.passUnretained(event) : nil
     }
 }
@@ -186,7 +188,7 @@ extension AppDelegate {
     /// Run the swipe tap while minitile is started and `trackpad_swipes` is on, with a current policy snapshot.
     func updateSwipes() {
         guard started, !quitting, engine.config.trackpadSwipes else { swipes?.stop(); swipes = nil; return }
-        let tap = swipes ?? SwipeTap { [weak self] argv in self?.swiped(argv) }
+        let tap = swipes ?? SwipeTap { [weak self] argv, received in self?.swiped(argv, received: received) }
         tap.update(swipePolicy())
         if swipes == nil { swipes = tap; tap.start() }
     }
@@ -198,7 +200,8 @@ extension AppDelegate {
     }
 
     /// The same path as a key binding, so swipes slide, bounce and focus like Ctrl+arrows.
-    func swiped(_ argv: [String]) {
+    func swiped(_ argv: [String], received: TimeInterval) {
+        inputWaited("Swipe \(argv.joined(separator: " "))", since: received)
         let reply = command(argv)
         if !reply.ok { logger.info("Swipe \(argv.joined(separator: " "), privacy: .public): \(reply.text, privacy: .public)") }
     }

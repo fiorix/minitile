@@ -66,6 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Keeps App Nap away: a windowless accessory app looks idle, and a napping one handles keys and gestures late.
     var napActivity: NSObjectProtocol?
     var lastResumeMilliseconds = 0.0
+    var inputWaits = InputWaits()
     var viewEchoUntil: TimeInterval = 0
     var lastConfig: String?
     var quitting = false
@@ -139,7 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do { saved = try stateWriter.read() }
         catch { warnings["state"] = "Cannot restore saved state: \(error)" }
         discovery.prepareStash()
-        discovery.scan()
+        discovery.scanNow()
         startupStashCount = discovery.adoptionCount
         startupImmediateHandles = startupStashCount - discovery.missingAdoptionHandles.count
         logger.info("Startup stash handles immediately available: \(self.startupImmediateHandles)/\(self.startupStashCount)")
@@ -150,7 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let discovery, let reconciler, !quitting else { return }
         if !discovery.missingAdoptionHandles.isEmpty, attempt < 4 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-                self?.discovery?.scan(); self?.finishStart(attempt: attempt + 1)
+                self?.discovery?.scanNow(); self?.finishStart(attempt: attempt + 1)
             }
             return
         }
@@ -178,8 +179,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         transitions.uncovered = { [weak self] in self?.updateGrab() }
         grabHighlight.due = { [weak self] in self?.updateGrab() }
         updateTransitions()
-        let keyboard = KeyboardTap(traceEnabled: ProcessInfo.processInfo.environment["MINITILE_TRACE_KEYS"] == "1") { [weak self] decision, trace in
-            self?.handleKey(decision, trace: trace)
+        let keyboard = KeyboardTap(traceEnabled: ProcessInfo.processInfo.environment["MINITILE_TRACE_KEYS"] == "1") { [weak self] decision, trace, received in
+            self?.handleKey(decision, trace: trace, received: received)
         }
         keyboard.update(config: engine.config, displays: displays, dragged: nil)
         self.keyboard = keyboard
@@ -311,7 +312,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Apply a reconcile that waited for a transition capture, with the same ordering as `handle`.
     func commitHeld(_ output: Output) {
-        if discovery?.frozen != true { reconciler?.apply(output) }
+        if discovery?.frozen != true { reconciler?.apply(output, held: true) }
         for action in output.actions {
             if case .focus(let id) = action { reconciler?.focus(id) }
         }
@@ -343,7 +344,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             discovery?.config = config
             discovery?.pruneIgnored()
             discovery?.prepareStash()
-            discovery?.scan()
+            discovery?.scanNow()
             finishReloadAdoption(attempt: 0)
             keyboard?.update(config: config, displays: displays, dragged: reconciler?.dragging)
             // A reload retries a swipe tap that could not be created.
@@ -362,7 +363,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !quitting, let discovery else { return }
         if !discovery.missingAdoptionHandles.isEmpty, attempt < 4 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-                self?.discovery?.scan(); self?.finishReloadAdoption(attempt: attempt + 1)
+                self?.discovery?.scanNow(); self?.finishReloadAdoption(attempt: attempt + 1)
             }
         } else { discovery.finishAdoption() }
     }
