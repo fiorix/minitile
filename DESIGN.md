@@ -2,7 +2,7 @@
 
 minitile is a tiling window manager for macOS. It runs with SIP enabled and aims for a small core that blends with macOS: a handful of keys that reuse the native desktop shortcuts, mouse gestures where macOS users already use the mouse, and every function scriptable from the `mntl` command line tool. HyprMac (github.com/zacharytgray/HyprMac) is a source of macOS behaviour to respect, not a feature list to copy.
 
-Status: the core, IPC, `mntl` and the macOS shell are implemented and verified live on one display. Multiple displays and the items under "Open" are not yet verified. Page transitions, Cmd+\` window cycling and page miniatures in the position indicator are implemented and unit tested but not yet tried on screen; the transition mechanism was validated in a spike.
+Status: the core, IPC, `mntl` and the macOS shell are implemented and verified live on one display. Multiple displays and the items under "Open" are not yet verified. Page transitions, Cmd+\` window cycling and page miniatures in the position indicator are implemented and unit tested but not yet tried on screen; the transition mechanism was validated in a spike. Trackpad swipes are designed and validated in a spike but not yet implemented.
 
 ## Model
 
@@ -149,6 +149,14 @@ Mouse:
 - Press Ctrl+arrow while dragging a window to do to it what Ctrl+Shift+arrow does. This is how macOS moves a window to another desktop. Frames of a window being dragged are not written until the mouse button is released.
 - A move or resize that minitile did not cause, seen while the mouse button is down, is a user drag. minitile acts on release.
 
+Trackpad (not yet implemented; the mechanism is under "Trackpad swipe mechanism"):
+
+- The swipe macOS uses to switch desktops and open Mission Control and App Expose (three or four fingers, as set in System Settings) navigates the grid instead. Fingers left show the next page, fingers right the previous page, fingers up the workspace below and fingers down the workspace above. These run the same commands as Ctrl+Right, Ctrl+Left, Ctrl+Down and Ctrl+Up, with the same slides and edge bounces.
+- A swipe acts when it ends, if it travelled at least 30% of the way or was still moving fast (end velocity of at least 2). A shorter, slower swipe does nothing.
+- It acts on the display under the pointer, as the native swipe does.
+- minitile leaves the whole swipe to macOS when, as it begins, the display under the pointer is unmanaged or not showing its visible desktop (for example a fullscreen app's Space), when minitile is not started or is suspended, or when `trackpad_swipes` is false.
+- Mission Control and App Expose stay reachable through their keys and the Dock.
+
 Everything else (floating, layout variant, spatial focus, exact ratios) is a command: reachable from `mntl`, from the menu bar where it makes sense, and bindable to keys in the config.
 
 Notes:
@@ -157,7 +165,7 @@ Notes:
 - Arrow keys carry the fn and keypad flags, so binding matches ignore them.
 - A held binding fires once. Key repeats of a bound chord are swallowed without running the command again.
 - The \` key is whichever key macOS assigns to Move focus to next window (system shortcut 27), so Cmd+\` follows non-US layouts. Only the shortcut's keycode is used; binding modifiers come from the config. On this Mac it is keycode 50 with Cmd, and keycode 50 is the fallback when the shortcut cannot be read. It is reread whenever the key map is rebuilt. A key that already has another name, such as a letter, keeps it, and \` then names no key. In apps minitile does not manage, chords on the \` key keep their native meaning: the tap passes them through while the frontmost app is not allowed by the config, a flag the shell updates on every app activation and config reload. A press swallowed in a managed app stays swallowed until its key-up. Not yet validated with physical keys: swallowing it must stop the app's own window cycling, including in apps that handle Cmd+\` themselves.
-- Mission Control stays reachable through its own key and trackpad gesture. It shows the stash desktop with every hidden page's windows, which makes it an escape hatch rather than a view of the grid.
+- Mission Control stays reachable through its own key and the Dock, and through the trackpad when `trackpad_swipes` is false. It shows the stash desktop with every hidden page's windows, which makes it an escape hatch rather than a view of the grid.
 - The event tap also swallows Desktop N shortcuts and native Move left/right a Space shortcuts that would lead into any managed display's stash. Directional blockers follow native adjacency, including fullscreen Spaces, and remain active when the corresponding minitile binding is unbound.
 
 ## Command line: mntl
@@ -360,6 +368,17 @@ minitile's transitions:
 - Enabling: transitions run when `transition_ms` is above 0, Reduce Motion is off (observed through `NSWorkspace`'s accessibility display options notification), Screen Recording is granted (`CGPreflightScreenCaptureAccess`, checked at start, on config reload and when Reduce Motion changes) and shareable content is loaded. When only the permission is missing, minitile calls `CGRequestScreenCaptureAccess()` once per run and the menu shows "Grant Screen Recording to Minitile.app for page transitions".
 - Untested in minitile: the implementation as a whole, multiple displays, navigation during a slide, Reduce Motion, other apps' windows, and whether macOS 26 and 27 ask the user to re-approve Screen Recording periodically, as macOS 15 does.
 
+### Trackpad swipe mechanism
+
+Validated with `dev/spikes/gesture` on macOS 27 with the built-in trackpad and four-finger swipes:
+
+- A session-level event tap receives no swipe events. An event tap at the HID level (`kCGHIDEventTap`) receives each swipe as private event type 30 with HID event type 23 (field 110), the Dock swipe.
+- Fields: 132 is the phase (1 began, 2 changed, 4 ended; cancelled was not seen), 123 the axis (1 sideways, 2 vertical), 124 the signed progress, and 129 the velocity on the ended event. Sideways progress is positive for fingers left; vertical progress is negative for fingers up. Across 23 swipes, each sent 17-81 events over 80-370 ms and ended at progress 0.19-1.32 with end velocity 1.4-8.6.
+- Raw touch frames arrive alongside as event type 29 with HID event type 0; they are not needed.
+- An active HID tap that swallows every type 30 event stops desktop switching, Mission Control and App Expose: 621 events over 11 swipes were swallowed, the tap was never disabled, and the screen did not change.
+- minitile's tap for swipes listens to event type 30 only, so other input never passes through it. It decides at the began event whether it owns the swipe and then swallows or passes every event of that swipe, so macOS never sees half a gesture. If the fields stop matching (another HID event type, an unknown axis), the swipe passes to macOS. If macOS disables the tap, swipes fall back to macOS until it is re-enabled.
+- Untested: three-finger swipes, Magic Mouse swipes, external trackpads and multiple displays.
+
 ### Required user setup
 
 - Two desktops per display.
@@ -486,6 +505,7 @@ padding = 8           # points between tiles and the layout area's edge
 float_apps = []       # bundle IDs that always float
 only_apps = []        # bundle IDs; when non-empty, minitile manages only these apps
 transition_ms = 500   # page slide duration, 0 to 2000; 0 turns slides and bounces off
+trackpad_swipes = true  # swipes navigate pages and workspaces; false leaves them to macOS (planned)
 
 [bindings]            # merged over the defaults; a chord bound to "" is unbound
 "ctrl+left" = "page prev"
@@ -600,9 +620,8 @@ First version:
 - the command set, the socket and `mntl`;
 - the config file with reload, the menu bar icon and the state file;
 - activation pre-emption;
-- page transitions: slides and edge bounces.
-
-Maybe: trackpad swipes that switch pages the way they switch desktops. This needs a test that the event tap can catch the gesture events.
+- page transitions: slides and edge bounces;
+- trackpad swipes for pages and workspaces.
 
 Not planned:
 
