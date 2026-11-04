@@ -100,7 +100,8 @@ func command(_ engine: inout Engine, _ args: String) -> Output {
     _ = e.handle(.windowAppeared(window(9)))
     #expect(command(&e, "workspace prev").scene.displays["primary"]?.visible == [7])
     command(&e, "page next")
-    #expect(command(&e, "workspace next").scene.displays["primary"]?.visible == [9])
+    #expect(command(&e, "workspace next").scene.displays["primary"]?.visible == [])
+    #expect(grid(e) == [[[1, 2, 3, 4], [5, 6]], [[7], [8]], [[9], []]])
 }
 
 @Test func externalFocusShowsHiddenPageWithoutFocusEcho() {
@@ -185,4 +186,26 @@ func command(_ engine: inout Engine, _ args: String) -> Output {
     #expect(e.savedState() == before)
     #expect(out.actions.isEmpty)
     #expect(out.events.isEmpty)
+}
+
+@Test func workspaceNavigationOpensTheSlotJustPastAShorterWorkspace() {
+    var e = engine(6)
+    command(&e, "window focus 6")
+    command(&e, "workspace next")
+    _ = e.handle(.windowAppeared(window(7)))
+    command(&e, "page next")
+    _ = e.handle(.windowAppeared(window(8)))
+    command(&e, "page next")
+    _ = e.handle(.windowAppeared(window(9)))
+    command(&e, "page next")
+    _ = e.handle(.windowAppeared(window(10)))
+    #expect(grid(e) == [[[1, 2, 3, 4], [5, 6]], [[7], [8], [9], [10]]])
+    command(&e, "page prev")
+    let up = command(&e, "workspace prev")
+    #expect(grid(e) == [[[1, 2, 3, 4], [5, 6], []], [[7], [8], [9], [10]]])
+    #expect(up.scene.displays["primary"]?.visible == [])
+    command(&e, "workspace next")
+    #expect(grid(e) == [[[1, 2, 3, 4], [5, 6]], [[7], [8], [9], [10]]])
+    command(&e, "page next")
+    #expect(command(&e, "workspace prev").scene.displays["primary"]?.visible == [5, 6])
 }

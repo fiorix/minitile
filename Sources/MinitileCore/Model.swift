@@ -188,9 +188,15 @@ extension Engine {
             at.workspace = state.displays[d].workspaces.count - 1
             at.page = 0
         } else {
-            // Moving up or down the grid keeps the page position, clamped to the target workspace's last page.
+            // Moving up or down the grid keeps the page position. The open slot just past a shorter workspace's last
+            // page gets an empty page, as Ctrl+Right from that page would; further out, the last page is shown.
             at.workspace += delta
-            at.page = min(at.page, state.displays[d].workspaces[at.workspace].pages.count - 1)
+            let pages = state.displays[d].workspaces[at.workspace].pages
+            if at.page == pages.count, pages.last.map({ !$0.windows.isEmpty }) == true {
+                state.displays[d].workspaces[at.workspace].pages.append(PageState(id: nextSerial()))
+            } else {
+                at.page = min(at.page, pages.count - 1)
+            }
         }
         show(at, output: &output)
     }

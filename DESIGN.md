@@ -76,7 +76,7 @@ Untested in minitile: the panel on screen, key routing with physical keys, the q
 
 - Showing a page focuses the window that last had focus on it, or its first window. An empty page focuses nothing.
 - When the focused window closes or is minimized, or its app is hidden, minitile does not focus another window. macOS picks the next one, and minitile follows it.
-- Ctrl+Up/Down (`workspace next|prev`) shows the page at the same position in the workspace above or below, or that workspace's last page when it has fewer pages. `workspace show` by index shows the page last viewed in that workspace.
+- Ctrl+Up/Down (`workspace next|prev`) shows the page at the same position in the workspace above or below. If that workspace ends exactly one page short of the position, an empty page opens there, as Ctrl+Right from its last page would; if it is shorter still, its last page is shown. `workspace show` by index shows the page last viewed in that workspace.
 - Ctrl+Left on the first page and Ctrl+Up on the first workspace do nothing.
 - Ctrl+Right on the last page opens an empty page, and Ctrl+Down on the last workspace opens an empty workspace. Neither opens a second empty one next to an empty one.
 - A window opened while an empty page or workspace is viewed lands in it. An empty page or workspace is removed when the view leaves it.
@@ -166,7 +166,7 @@ Default bindings:
 | Keys | Action | Replaces in macOS |
 |---|---|---|
 | Ctrl+Left/Right | Show the previous or next page. | Move left/right a space |
-| Ctrl+Up/Down | Show the page above or below: same position in the workspace above or below, or its last page when that workspace is shorter. | Mission Control, App Expose |
+| Ctrl+Up/Down | Show the page above or below: same position in the workspace above or below, an empty page when that workspace ends one page short, or its last page when it is shorter still. | Mission Control, App Expose |
 | Cmd+\` / Cmd+Shift+\` | Focus the next or previous window on the shown page: tiles in slot order, then floating windows, wrapping around. | Move focus to next window, which cycles the frontmost app's windows |
 | Ctrl+Shift+Space | Cycle the shown page through its window count's layouts (see Layout). | Nothing by default; Ctrl+Space and Ctrl+Option+Space switch input sources |
 | Ctrl+Option+arrows | Resize the focused window: the divider on that side moves the way the arrow points (see Layout). | Nothing by default; VoiceOver uses Ctrl+Option as its modifier |
