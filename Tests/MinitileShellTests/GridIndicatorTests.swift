@@ -203,5 +203,41 @@ import Testing
     #expect(content.workspace == nil)
     #expect(content.page == nil)
     #expect(content.rows.isEmpty)
+    #expect(content.shown == nil)
     #expect(!content.active)
+}
+
+@Test func floatersKeepEveryFloatingWindowAndMarkInactiveOnes() {
+    let display = DisplayInfo(id: "d", frame: Rect(x: 0, y: 0, width: 1512, height: 982), isPrimary: true)
+    var engine = Engine()
+    _ = engine.handle(.started(saved: nil, windows: [WindowInfo(id: 1, pid: 10, display: "d"), WindowInfo(id: 2, pid: 20, tileable: false, display: "d"),
+                                                     WindowInfo(id: 3, pid: 30, tileable: false, display: "d")], displays: [display], focus: 1))
+    _ = engine.handle(.windowUpdated(WindowInfo(id: 3, pid: 30, tileable: false, minimized: true, display: "d")))
+    let state = engine.savedState()
+    let miniature = GridMiniature(page: state.displays[0].workspaces[0].pages[0], windows: state.windows, focus: nil,
+                                  area: display.visibleFrame, config: .default)
+    #expect(miniature.floaters == [.init(window: 2, pid: 20), .init(window: 3, pid: 30, active: false)])
+    #expect(miniature.floating == 2)
+    #expect(miniature.slots.map(\.window) == [1])
+}
+
+@Test func switcherMetricsDoubleTheCellAndFitTheTrayOnTheTopEdge() {
+    let area = Rect(x: 0, y: 33, width: 1512, height: 945)
+    #expect(GridIndicatorGeometry.cellSize(area: area, metrics: .switcher) == CGSize(width: 128, height: 80))
+    #expect(GridIndicatorGeometry.iconRect(tile: CGRect(x: 0, y: 0, width: 124, height: 76), range: GridMetrics.switcher.icon).width == 32)
+    #expect(GridIndicatorGeometry.iconRect(tile: CGRect(x: 0, y: 0, width: 60, height: 20), range: GridMetrics.switcher.icon).width == 16)
+    let cell = CGRect(x: 0, y: 100, width: 128, height: 80)
+    #expect(GridIndicatorGeometry.trayRects(count: 2, cell: cell, side: 16)
+            == [CGRect(x: 90, y: 92, width: 16, height: 16), CGRect(x: 108, y: 92, width: 16, height: 16)])
+    let crowded = GridIndicatorGeometry.trayRects(count: 10, cell: cell, side: 16)
+    #expect(crowded.allSatisfy { $0.width == 10 && $0.midY == cell.minY })
+    #expect(crowded.first.map { $0.minX >= cell.minX + 4 } == true)
+    #expect(GridIndicatorGeometry.trayRects(count: 0, cell: cell, side: 16).isEmpty)
+    let geometry = GridIndicatorGeometry(area: area, rows: 4, columns: 5, cropped: true, metrics: .switcher)
+    #expect(geometry.size == CGSize(width: 738, height: 470))
+    // The tray and its background reach 10 pt above a cell, clear of the column labels and the row above.
+    let first = geometry.cellRect(row: 0, column: 0), below = geometry.cellRect(row: 1, column: 0)
+    #expect(first.minY - 10 >= GridIndicatorGeometry.gridTop + GridIndicatorGeometry.labelHeight)
+    #expect(below.minY - 10 > first.maxY)
+    #expect(GridIndicatorGeometry.cell(row: 1, column: 2, size: geometry.cell, spacing: 12) == CGRect(x: 280, y: 92, width: 128, height: 80))
 }
