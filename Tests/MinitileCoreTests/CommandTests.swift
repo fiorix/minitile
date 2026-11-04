@@ -33,12 +33,13 @@ import Testing
 
 @Test func indexedAndRelativeAddressesUseOneBasedGridIndices() {
     var e = engine(9)
+    _ = e.handle(.windowGone(4))
     command(&e, "page show 3")
     #expect(e.makeScene().displays["primary"]?.visible == [9])
     command(&e, "page show prev")
     #expect(e.makeScene().displays["primary"]?.visible == [5, 6, 7, 8])
     command(&e, "page variant 1")
-    #expect(e.savedState().displays[0].workspaces[0].pages[0].variant == .alternate)
+    #expect(e.savedState().displays[0].workspaces[0].pages[0].variant == .mirrored)
     #expect(e.makeScene().displays["primary"]?.visible == [5, 6, 7, 8])
     command(&e, "workspace new")
     _ = e.handle(.windowAppeared(window(10)))

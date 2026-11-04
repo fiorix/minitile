@@ -125,59 +125,64 @@ extension Engine {
             output.actions.append(.setFrame(id, frame))
             return
         }
-        guard let at = location(id), let slot = tiled(page(at), activeOnly: true).firstIndex(of: id) else { throw CommandError("Window has no active tile") }
-        let display = state.displays[at.display].info.visibleFrame
-        let count = tiled(page(at), activeOnly: true).count
-        let landscape = display.width >= display.height
-        let alternate = page(at).variant == .alternate
-        let longShare: Double? = second.map { landscape ? first : $0 } ?? (count == 2 && alternate ? nil : first)
-        let shortShare: Double? = second.map { landscape ? $0 : first } ?? (count == 2 && alternate ? first : nil)
-        var a = page(at).r1, b = page(at).r2
-        var changedA = false, changedB = false
-        if count == 2, let share = alternate ? shortShare : longShare {
-            a = slot == 0 ? share : 1 - share; changedA = true
-        } else if count == 3 && alternate, let share = longShare {
-            if slot == 0 { a = share; changedA = true }
-            else if slot == 1 { a = b - share; changedA = true }
-            else { b = 1 - share; changedB = true }
-        } else if count == 3 {
-            if let share = longShare { a = slot == 0 ? share : 1 - share; changedA = true }
-            if let share = shortShare, slot != 0 { b = slot == 1 ? share : 1 - share; changedB = true }
-        } else if count == 4 {
-            if let share = longShare { a = slot % 2 == 0 ? share : 1 - share; changedA = true }
-            if let share = shortShare { b = slot < 2 ? share : 1 - share; changedB = true }
+        guard let (at, tile) = activeTile(id) else { throw CommandError("Window has no active tile") }
+        let p = page(at)
+        let landscape = isLandscape(at)
+        // A single share applies along the axis r1 cuts, the layout's split axis.
+        let splitLong = Layout.tiles(count: tiled(p, activeOnly: true).count, variant: p.variant)
+            .contains { $0.long.start == 0 || $0.long.end == 0 }
+        let shares: [(long: Bool, share: Double)] = second.map { [(true, landscape ? first : $0), (false, landscape ? $0 : first)] }
+            ?? [(splitLong, first)]
+        var cuts = [p.r1, p.r2], changed = [false, false]
+        for (long, share) in shares {
+            let span = tile.span(long: long)
+            switch (span.start, span.end) {
+            case (nil, let end?): cuts[end] = share; changed[end] = true
+            case (let start?, nil): cuts[start] = 1 - share; changed[start] = true
+            // The middle of three slices keeps its end cut and moves its start cut.
+            case (let start?, let end?): cuts[start] = cuts[end] - share; changed[start] = true
+            case (nil, nil): break
+            }
         }
-        setRatios(at, a, b, preserveFirst: !changedA, preserveSecond: !changedB)
+        setRatios(at, cuts[0], cuts[1], preserveFirst: !changed[0], preserveSecond: !changed[1])
         output.rewrite.insert(id)
     }
 
     mutating func resizeCuts(_ id: WindowID, at: Location, frame: Rect) {
-        guard let original = frames(at)[id] else { return }
+        guard let original = frames(at)[id], let (_, tile) = activeTile(id) else { return }
         let p = page(at)
-        let count = tiled(p, activeOnly: true).count
-        let display = state.displays[at.display].info.visibleFrame
-        let area = Layout.area(frame: display, padding: config.padding)
-        let longX = display.width >= display.height
-        var cuts: [(x: Bool, second: Bool, ratio: Double)] = []
-        if count == 2 { cuts = [(p.variant == .alternate ? !longX : longX, false, p.r1)] }
-        if count == 3 { cuts = [(longX, false, p.r1), (p.variant == .alternate ? longX : !longX, true, p.r2)] }
-        if count == 4 { cuts = [(longX, false, p.r1), (!longX, true, p.r2)] }
-        var a = p.r1, b = p.r2
-        var changedA = false, changedB = false
-        for cut in cuts {
-            let origin = cut.x ? area.x : area.y
-            let length = cut.x ? area.width : area.height
+        let area = Layout.area(frame: state.displays[at.display].info.visibleFrame, padding: config.padding)
+        let landscape = isLandscape(at)
+        var cuts = [p.r1, p.r2], changed = [false, false]
+        for x in [true, false] {
+            let origin = x ? area.x : area.y
+            let length = x ? area.width : area.height
             guard length > 0 else { continue }
-            let position = origin + length * cut.ratio
-            let edges: [(Double, Double, Double)] = cut.x
-                ? [(original.x, frame.x, -config.gaps / 2), (original.maxX, frame.maxX, config.gaps / 2)]
-                : [(original.y, frame.y, -config.gaps / 2), (original.maxY, frame.maxY, config.gaps / 2)]
-            for (old, new, correction) in edges where abs(old + correction - position) <= 1.1 && abs(old - new) > 3 {
-                let ratio = (new + correction - origin) / length
-                if cut.second { b = ratio; changedB = true } else { a = ratio; changedA = true }
+            let span = tile.span(long: x == landscape)
+            // Tile edges sit half a gap from their cut.
+            let edges: [(Int?, Double, Double, Double)] = x
+                ? [(span.start, original.x, frame.x, -config.gaps / 2), (span.end, original.maxX, frame.maxX, config.gaps / 2)]
+                : [(span.start, original.y, frame.y, -config.gaps / 2), (span.end, original.maxY, frame.maxY, config.gaps / 2)]
+            for case let (cut?, old, new, correction) in edges where abs(old - new) > 3 {
+                cuts[cut] = (new + correction - origin) / length
+                changed[cut] = true
             }
         }
-        setRatios(at, a, b, preserveFirst: !changedA, preserveSecond: !changedB)
+        setRatios(at, cuts[0], cuts[1], preserveFirst: !changed[0], preserveSecond: !changed[1])
+    }
+
+    /// The window's page and its tile in the layout, for a tiled window that is neither minimized nor app-hidden.
+    func activeTile(_ id: WindowID) -> (Location, Layout.Tile)? {
+        guard state.windows[id]?.floating == false, let at = location(id) else { return nil }
+        let active = tiled(page(at), activeOnly: true)
+        guard let slot = active.firstIndex(of: id) else { return nil }
+        return (at, Layout.tiles(count: active.count, variant: page(at).variant)[slot])
+    }
+
+    /// A square visible frame counts as landscape, as in `Layout.frames`.
+    func isLandscape(_ at: Location) -> Bool {
+        let display = state.displays[at.display].info.visibleFrame
+        return display.width >= display.height
     }
 
     mutating func dragEnded(_ id: WindowID, frame: Rect, cursor: Point, output: inout Output) {
