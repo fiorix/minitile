@@ -3,12 +3,13 @@ import Testing
 @testable import minitile
 
 @Test func focusForwardingRejectsBackgroundAndAllOwnPidEchoes() {
-    let echo = FocusEcho(pid: 10, until: 2)
-    #expect(!FocusForwarding.accepts(pid: 11, frontmost: 10, echo: nil, now: 1))
-    #expect(!FocusForwarding.accepts(pid: 10, frontmost: 10, echo: echo, now: 1.99))
-    #expect(FocusForwarding.accepts(pid: 10, frontmost: 10, echo: echo, now: 2))
-    #expect(FocusForwarding.accepts(pid: 11, frontmost: 11, echo: echo, now: 1))
-    #expect(!FocusForwarding.accepts(pid: 10, frontmost: nil, echo: nil, now: 3))
+    var echo = FocusEchoes()
+    echo.add(10, now: 0.8)
+    #expect(!FocusForwarding.accepts(pid: 11, frontmost: 10, echoes: FocusEchoes(), now: 1))
+    #expect(!FocusForwarding.accepts(pid: 10, frontmost: 10, echoes: echo, now: 1.99))
+    #expect(FocusForwarding.accepts(pid: 10, frontmost: 10, echoes: echo, now: 2))
+    #expect(FocusForwarding.accepts(pid: 11, frontmost: 11, echoes: echo, now: 1))
+    #expect(!FocusForwarding.accepts(pid: 10, frontmost: nil, echoes: FocusEchoes(), now: 3))
 }
 
 @Test func unreadableFocusIsDistinctFromNoFocusedWindow() {
@@ -36,4 +37,22 @@ import Testing
     #expect(!ViewChangeEcho.ignores(10, state: state, now: 1, until: 2))
     #expect(!ViewChangeEcho.ignores(nil, state: state, now: 1, until: 2))
     #expect(!ViewChangeEcho.ignores(99, state: state, now: 1, until: 2))
+}
+
+@Test func lateActivationsFromEarlierOwnFocusesStayEchoes() {
+    var echoes = FocusEchoes()
+    echoes.add(10, now: 0)
+    echoes.add(20, now: 0.1)
+    var results: [Bool] = []
+    for (pid, now) in [(10, 0.3), (20, 0.4), (10, 1.19), (10, 1.2)] as [(Int32, Double)] {
+        results.append(echoes.activation(pid, now: now))
+    }
+    #expect(results == [true, true, true, false])
+    #expect(echoes.isEmpty)
+    echoes.add(10, now: 2)
+    echoes.add(20, now: 2)
+    let foreign = echoes.activation(30, now: 2.1)
+    let afterForeign = echoes.activation(10, now: 2.2)
+    #expect(!foreign)
+    #expect(!afterForeign)
 }

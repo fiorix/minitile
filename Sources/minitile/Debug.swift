@@ -82,6 +82,7 @@ extension AppDelegate {
                 })])
             case "timings":
                 data = .object(["reconcile_ms": .number(reconciler?.lastMilliseconds ?? 0),
+                                "focus_ms": .number(reconciler?.lastFocusMilliseconds ?? 0),
                                 "activation_moves": try .encoding(reconciler?.activationTimings ?? []),
                                 "full_scans": .number(Double(discovery?.fullScans ?? 0)),
                                 "full_scan_ms": .number(discovery?.fullScanMilliseconds ?? 0),

@@ -53,11 +53,27 @@ enum ActivationFocus {
     static func clears(owner: Int32?, activated pid: Int32) -> Bool { owner.map { $0 != pid } ?? false }
 }
 
-struct FocusEcho {
-    var pid: Int32
-    var until: TimeInterval
+/// minitile's own recent focus actions, by pid. The activations and focus notifications they cause arrive late and
+/// out of order when focus moves quickly between apps, so each app's echo is kept for its own interval.
+struct FocusEchoes {
+    static let interval: TimeInterval = 1.2
+    private(set) var until: [Int32: TimeInterval] = [:]
 
-    func suppresses(_ pid: Int32, now: TimeInterval) -> Bool { self.pid == pid && now < until }
+    var isEmpty: Bool { until.isEmpty }
+
+    mutating func add(_ pid: Int32, now: TimeInterval) {
+        until = until.filter { $0.value > now }
+        until[pid] = now + Self.interval
+    }
+
+    func suppresses(_ pid: Int32, now: TimeInterval) -> Bool { until[pid].map { now < $0 } ?? false }
+
+    /// An activation that is not an echo is the user's: minitile's pending echoes no longer apply.
+    mutating func activation(_ pid: Int32, now: TimeInterval) -> Bool {
+        if suppresses(pid, now: now) { return true }
+        until.removeAll()
+        return false
+    }
 }
 
 struct ActivationTiming: Encodable {
@@ -69,8 +85,8 @@ struct ActivationTiming: Encodable {
 }
 
 enum FocusForwarding {
-    static func accepts(pid: Int32, frontmost: Int32?, echo: FocusEcho?, now: TimeInterval) -> Bool {
-        pid == frontmost && echo?.suppresses(pid, now: now) != true
+    static func accepts(pid: Int32, frontmost: Int32?, echoes: FocusEchoes, now: TimeInterval) -> Bool {
+        pid == frontmost && !echoes.suppresses(pid, now: now)
     }
 }
 
@@ -84,8 +100,10 @@ final class Reconciler {
     private var frames: [WindowID: Rect] = [:]
     private var deferred: [WindowID: Rect] = [:]
     private var suppression: [WindowID: TimeInterval] = [:]
-    private var ownFocus: FocusEcho?
+    private var ownFocus = FocusEchoes()
     private var focusRead: DispatchWorkItem?
+    private var pendingFocus: WindowID?
+    private(set) var lastFocusMilliseconds = 0.0
     var warning: ((String) -> Void)?
     private(set) var lastMilliseconds = 0.0
     var activation: (pid: Int32, source: String, received: TimeInterval)?
@@ -96,16 +114,13 @@ final class Reconciler {
     func suppresses(_ id: WindowID) -> Bool { suppression[id, default: 0] > ProcessInfo.processInfo.systemUptime }
     func acceptsFocus(_ pid: Int32) -> Bool {
         FocusForwarding.accepts(pid: pid, frontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier,
-                                echo: ownFocus, now: ProcessInfo.processInfo.systemUptime)
+                                echoes: ownFocus, now: ProcessInfo.processInfo.systemUptime)
     }
     func suppressesActivation(_ pid: Int32) -> Bool {
-        guard let ownFocus else { return false }
-        if pid != ownFocus.pid {
-            self.ownFocus = nil
-            focusRead?.cancel()
-            return false
-        }
-        return ownFocus.suppresses(pid, now: ProcessInfo.processInfo.systemUptime)
+        guard !ownFocus.isEmpty else { return false }
+        if ownFocus.activation(pid, now: ProcessInfo.processInfo.systemUptime) { return true }
+        focusRead?.cancel()
+        return false
     }
 
     func forget(_ id: WindowID) {
@@ -211,15 +226,30 @@ final class Reconciler {
         }
     }
 
+    /// The echo starts now, but the Accessibility calls run once per main-loop turn for the latest target only, so a
+    /// burst of focus commands (Cmd+` pressed quickly) does not queue one slow round of calls per press.
     func focus(_ id: WindowID) {
-        guard let window = discovery.windows[id], let app = NSRunningApplication(processIdentifier: window.info.pid) else { return }
-        ownFocus = FocusEcho(pid: window.info.pid, until: ProcessInfo.processInfo.systemUptime + 1.2)
+        guard let window = discovery.windows[id] else { return }
+        ownFocus.add(window.info.pid, now: ProcessInfo.processInfo.systemUptime)
         focusRead?.cancel()
         let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated { self?.discovery.refreshFocus(pid: window.info.pid) }
         }
         focusRead = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + FocusEchoes.interval, execute: work)
+        let scheduled = pendingFocus != nil
+        pendingFocus = id
+        if !scheduled {
+            DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.applyPendingFocus() } }
+        }
+    }
+
+    private func applyPendingFocus() {
+        guard let id = pendingFocus else { return }
+        pendingFocus = nil
+        guard let window = discovery.windows[id], let app = NSRunningApplication(processIdentifier: window.info.pid) else { return }
+        let start = ProcessInfo.processInfo.systemUptime
+        defer { lastFocusMilliseconds = (ProcessInfo.processInfo.systemUptime - start) * 1000 }
         AX.set(window.element, kAXMainAttribute, kCFBooleanTrue)
         AX.set(window.element, kAXFocusedAttribute, kCFBooleanTrue)
         AXUIElementPerformAction(window.element, kAXRaiseAction as CFString)
