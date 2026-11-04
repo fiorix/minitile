@@ -1,0 +1,21 @@
+[870784838.2] mode=measure slide=500ms bounce=300ms cover=16ms wait=20ms scale=1.00 overlap=1 curve=0.40,0.00,0.20,1.00
+[870784842.5] spaces users=1,1244,1264 visible=1244 stash=1264
+[870784842.6] display frame={{0, 0}, {2056, 1329}} visible={{0, 0}, {2056, 1290}} scale=2.0 max_fps=120 reduce_motion=0
+[870785087.6] shareable content 100.0 ms, display=1 overlay_window=1
+[870785290.0] setup: W1P1 window on (
+    1244
+), W1P2 window on (
+    1264
+)
+[870785471.8] capture latency scale=1.00 size=4112x2580 min=19.1 median=20.6 max=83.2 ms (n=15)
+[870785762.3] capture latency scale=0.50 size=2056x1290 min=17.7 median=18.3 max=24.7 ms (n=15)
+[870786076.4] settle round 1: first matching capture started 0.0 ms after the move; start:diff 0:0.0 61:0.0 124:0.0 186:0.0 251:0.0
+[870786835.7] settle round 2: first matching capture started 0.0 ms after the move; start:diff 0:0.0 81:0.0 147:0.0 211:0.0 277:0.0
+[870787598.3] settle round 3: first matching capture started 0.0 ms after the move; start:diff 0:0.0 85:0.0 151:0.0 217:0.0 281:0.0
+[870788347.3] settle round 4: first matching capture started 0.0 ms after the move; start:diff 0:0.0 86:0.0 149:0.0 209:0.0 269:0.0
+[870789100.0] settle round 5: first matching capture started 0.0 ms after the move; start:diff 0:0.0 84:0.0 147:0.0 208:0.0 271:0.0
+[870789864.6] settle round 6: first matching capture started 0.0 ms after the move; start:diff 0:0.0 90:0.0 156:0.0 218:0.0 281:0.0
+[870790622.3] settle round 7: first matching capture started 0.0 ms after the move; start:diff 0:0.0 86:0.0 151:0.0 212:0.0 275:0.0
+[870791388.9] settle round 8: first matching capture started 0.0 ms after the move; start:diff 0:0.0 88:0.0 153:0.0 217:0.0 281:0.0
+[870791806.9] measure done
+[870791807.1] exit 0

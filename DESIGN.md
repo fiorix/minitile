@@ -2,7 +2,7 @@
 
 minitile is a tiling window manager for macOS. It runs with SIP enabled and aims for a small core that blends with macOS: a handful of keys that reuse the native desktop shortcuts, mouse gestures where macOS users already use the mouse, and every function scriptable from the `mntl` command line tool. HyprMac (github.com/zacharytgray/HyprMac) is a source of macOS behaviour to respect, not a feature list to copy.
 
-Status: the core, IPC, `mntl` and the macOS shell are implemented and verified live on one display. Multiple displays and the items under "Open" are not yet verified.
+Status: the core, IPC, `mntl` and the macOS shell are implemented and verified live on one display. Multiple displays and the items under "Open" are not yet verified. Page transitions are designed and validated in a spike but not yet implemented.
 
 ## Model
 
@@ -51,6 +51,18 @@ It is an orientation aid, not an interactive overview.
 - Ctrl+Right on the last page opens an empty page, and Ctrl+Down on the last workspace opens an empty workspace. Neither opens a second empty one next to an empty one.
 - A window opened while an empty page or workspace is viewed lands in it. An empty page or workspace is removed when the view leaves it.
 - Pages are otherwise created by spill and by nudging a window out of a shared page (see Keys).
+
+### Page transitions
+
+Not yet implemented. The mechanism and its measurements are under "Transition mechanism".
+
+- When a key binding or `mntl` command changes a display's shown page or workspace, the old page slides out and the new one slides in, like the native desktop switch at about half its speed. Pages slide horizontally and workspaces vertically. Nudge and carry slide too when focus follows the window to another page.
+- Where navigation does nothing, the page bounces instead: Ctrl+Left on the first page, Ctrl+Right on an empty last page, Ctrl+Up on the first workspace and Ctrl+Down on an empty last workspace. The page shifts 5% of its width or height the way the slide would start, then springs back, over 0.3 s.
+- A slide takes 0.5 s by default, set by `transition_ms`; 0 turns slides and bounces off. Reduce Motion also turns them off.
+- Other view changes stay instant: activation (Cmd-Tab, the Dock, clicks), new windows, unminimizing, startup and display changes. Activation must not wait, since it races macOS's own desktop switch.
+- A transition never delays a command. A navigation during a slide cuts it short and starts the next slide from the current screen.
+- Each display slides on its own. The position indicator stays above the slide.
+- Transitions need Screen Recording permission. Without it they are off, the menu says why, and everything else works.
 
 ### Minimized and hidden windows
 
@@ -321,6 +333,18 @@ Known risks:
   - Electron apps;
   - startup adoption when a stashed window's AX handle stays unreadable, and quitting during adoption.
 
+### Transition mechanism
+
+Validated with `dev/spikes/slide` on macOS 27, one Retina display (scale 2, 120 Hz), moving the spike's own windows between its visible desktop and stash:
+
+- Capture with `SCScreenshotManager`, using a display filter that excludes minitile's overlay, `sourceRect` set to the usable area, full backing resolution and BGRA. A capture takes about 20-45 ms. The first capture in a process takes about 100 ms, so the shell takes a throwaway capture at start. Half resolution saves only about 2 ms. Fetching `SCShareableContent` takes about 90 ms; do it at start and after display changes.
+- Order: capture the current page; show the image in a borderless, click-through overlay panel over the usable area, above normal windows; start the slide at once with the incoming half dark; reconcile as usual (show before hide, frames, focus last); capture the new page about 20 ms after the moves are submitted and put it in the incoming half; remove the overlay when the slide ends.
+- Results: motion starts 40-60 ms after the keypress, and a bounce 30-55 ms after. The new page's image arrives 60-80 ms into a 0.5 s slide, so the dark edge covers about the first 5% of the travel; the user did not notice it. In 7 of 7 slides the new page's capture matched the screen after the slide. The first capture after the move already shows the new windows.
+- Curves: the slide uses cubic Bezier (0.4, 0, 0.2, 1). The bounce has keyframes at 0, 35% and 100% of its duration, easing out and then in and out.
+- Capture the new page only while the visible desktop is current. If macOS has switched to the stash, bounce back first (see "Rules minitile must follow") and capture afterwards.
+- When the spike moved its own main window to the stash, macOS switched to the stash (3 of 7 slides). Making the spike's overlay the key and main window prevented it (0 of 7). minitile moves only other apps' windows, so its overlay never takes focus.
+- Untested: multiple displays, navigation during a slide, Reduce Motion, other apps' windows, and whether macOS 26 and 27 ask the user to re-approve Screen Recording periodically, as macOS 15 does.
+
 ### Required user setup
 
 - Two desktops per display.
@@ -328,6 +352,7 @@ Known risks:
 - "Automatically rearrange Spaces based on most recent use" turned off.
 - The drag-to-tile options under Desktop & Dock turned off, since they fight drag-to-swap.
 - Accessibility permission for `Minitile.app`.
+- Screen Recording permission for `Minitile.app`, for page transitions only.
 
 ## Architecture
 
@@ -445,6 +470,7 @@ gaps = 8              # points between tiles
 padding = 8           # points between tiles and the layout area's edge
 float_apps = []       # bundle IDs that always float
 only_apps = []        # bundle IDs; when non-empty, minitile manages only these apps
+transition_ms = 500   # page slide duration; 0 turns slides and bounces off (planned)
 
 [bindings]            # merged over the defaults; a chord bound to "" is unbound
 "ctrl+left" = "page prev"
@@ -556,7 +582,8 @@ First version:
 - floating (rules and toggle) and layout variants;
 - the command set, the socket and `mntl`;
 - the config file with reload, the menu bar icon and the state file;
-- activation pre-emption.
+- activation pre-emption;
+- page transitions: slides and edge bounces.
 
 Maybe: trackpad swipes that switch pages the way they switch desktops. This needs a test that the event tap can catch the gesture events.
 
@@ -569,11 +596,11 @@ Not planned:
 - saved layouts;
 - a URL scheme (status bars can use `mntl watch`);
 - a settings GUI;
-- animations.
+- animations other than page transitions.
 
 ## Open
 
 - Multiple displays, to be tested with the user's second monitor:
   - each display's stash works on its own: moves and page flips on one display leave the other alone;
   - activation pre-emption when the app's window sits on the other display's stash;
-  - what macOS does with a disconnected display's desktops and the windows on its stash, and whether they come back on reconnect.
+  - what macOS does with a disconnected display's desktops and the windows on its stash, and whether they come back on reconnect. Seen once: after an unplug, the laptop had user desktops 1, 1244 and 1264, where 1264 had been the external display's stash.
