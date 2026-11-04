@@ -58,15 +58,15 @@ Not yet implemented: the shell currently draws each cell as a window count, crop
 
 ### Page transitions
 
-Not yet implemented. The mechanism and its measurements are under "Transition mechanism".
+The mechanism and its measurements are under "Transition mechanism".
 
-- When a key binding or `mntl` command changes a display's shown page or workspace, the old page slides out and the new one slides in, like the native desktop switch at about half its speed. Pages slide horizontally and workspaces vertically. Nudge and carry slide too when focus follows the window to another page.
-- Where navigation does nothing, the page bounces instead: Ctrl+Left on the first page, Ctrl+Right on an empty last page, Ctrl+Up on the first workspace and Ctrl+Down on an empty last workspace. The page shifts 5% of its width or height the way the slide would start, then springs back, over 0.3 s.
+- When a key binding, menu item or `mntl` command changes a display's shown page or workspace, the old page slides out and the new one slides in, like the native desktop switch at about half its speed. Pages slide horizontally and workspaces vertically. Nudge and carry slide too when focus follows the window to another page.
+- Where navigation does nothing, the page bounces instead: Ctrl+Left on the first page, Ctrl+Right on an empty last page, Ctrl+Up on the first workspace and Ctrl+Down on an empty last workspace. The page shifts 5% of its width or height the way the slide would start, then springs back, over 0.3 s whatever the slide duration.
 - A slide takes 0.5 s by default, set by `transition_ms`; 0 turns slides and bounces off. Reduce Motion also turns them off.
 - Other view changes stay instant: activation (Cmd-Tab, the Dock, clicks), new windows, unminimizing, startup and display changes. Activation must not wait, since it races macOS's own desktop switch.
-- A transition never delays a command. A navigation during a slide cuts it short and starts the next slide from the current screen.
+- A command never waits for a running slide. A navigation during a slide cuts it short and starts the next slide from the current screen.
 - Each display slides on its own. The position indicator stays above the slide.
-- Transitions need Screen Recording permission. Without it they are off, the menu says why, and everything else works.
+- Transitions need Screen Recording permission. Without it they are off, the menu says why, and everything else works. `mntl debug health` says whether transitions run and, if not, why.
 
 ### Minimized and hidden windows
 
@@ -174,7 +174,7 @@ Every minitile function is a command. Key bindings, the menu bar, mouse gestures
 
 The shell provides `debug spaces`, `debug windows`, `debug scene`, `debug timings` and `debug health`. Spaces include the native display identifier, every native Space and its type, current Space, and core display metadata. The desktop list comes from the last catalog refresh; current Space is read for each request. Windows include allowed apps' raw layer-0 windows, AX observation status, current spaces, frames and tileability. Scene frame keys are decimal window-ID strings. Health includes process ID, startup/suspension state and reasons, secure input, tap availability, paths and warnings. The menu can open config, retry startup after a config error, or quit while normal command handling is still unavailable.
 
-`grid_indicator_displays` counts physical displays whose indicator state is tracked, including hidden indicators; `grid_indicator_visible_displays` counts currently visible panels, and `grid_indicator_duration_ms` is 1500. Timing diagnostics include full-scan counts/duration, recheck requests/passes, and the latest 128 activation-triggered first move submissions. Activation latency runs from delivery of the workspace or AX notification callback through return of the bridged move submission; it does not measure time before notification delivery or completion in WindowServer.
+`grid_indicator_displays` counts physical displays whose indicator state is tracked, including hidden indicators; `grid_indicator_visible_displays` counts currently visible panels, and `grid_indicator_duration_ms` is 1500. `transitions_enabled` says whether page transitions run, and `transitions_disabled_reason` says why not (`transition_ms` is 0, Reduce Motion is on, Screen Recording is not granted, or screen capture content is not loaded) or is null. Timing diagnostics include full-scan counts/duration, recheck requests/passes, and the latest 128 activation-triggered first move submissions. Activation latency runs from delivery of the workspace or AX notification callback through return of the bridged move submission; it does not measure time before notification delivery or completion in WindowServer.
 
 Commands are noun then verb. Windows are addressed by window ID and default to the focused window. Pages and workspaces are addressed by index or `next`/`prev`, and default to the display with the focused window.
 
@@ -247,7 +247,7 @@ Every response has `ok`, `text` and `data`. Errors and successful mutations use 
 | `page list`, `page info` | Array of page objects, or one page object. Fields: `id` (persistent identity), `index`, `display`, `workspace`, `shown`, `variant` (`standard` or `alternate`), `r1`, `r2`, `windows` (all assigned IDs in order), `tiled` (including reserved minimized/app-hidden slots), `floating`, `last_focus`. |
 | `workspace list`, `workspace info` | Array of workspace objects, or one workspace object. Fields: `id` (persistent identity), `index`, `display` (current host), `home`, `shown`, `page` (last-viewed page index), `pages` (page objects). |
 | `display list`, `display info` | Array of display objects, or one display object. Fields: `id` (UUID), `frame`, `visible_frame`, `primary`, `unmanaged_reason`, `visible_space`, `stash_space`, `workspace` (current index), `workspaces` (workspace objects), `home_workspaces`, `merged_workspaces` (workspace index arrays). |
-| `config list`, `config info` | Object with `gaps`, `padding`, `float_apps`, `only_apps`, `bindings`. Binding keys are canonical chords and values are command strings. |
+| `config list`, `config info` | Object with `gaps`, `padding`, `float_apps`, `only_apps`, `transition_ms`, `bindings`. Binding keys are canonical chords and values are command strings. |
 | `state` | Object with `version: 1`, `focus`, `active_display`, `displays` (display objects), `windows` (window objects ordered by ID). This inspection shape is separate from the saved-state file. |
 
 Watch events have `{type, data}`. Types `focus`, `window_added`, `window_removed` and `window_moved` carry a window ID; `focus` can carry null. `page_shown` carries `{display, workspace, page}` with indices after empty-page cleanup. `display_changed` carries the supplied array of `DisplayInfo` objects using their Swift Codable field names. `config_reloaded` carries null. A watcher is disconnected if its pending output exceeds 4 MiB; ordinary command replies can be larger. The CLI prints the initial watch reply using its usual text/data choice, followed by JSON event lines.
@@ -343,13 +343,22 @@ Known risks:
 
 Validated with `dev/spikes/slide` on macOS 27, one Retina display (scale 2, 120 Hz), moving the spike's own windows between its visible desktop and stash:
 
-- Capture with `SCScreenshotManager`, using a display filter that excludes minitile's overlay, `sourceRect` set to the usable area, full backing resolution and BGRA. A capture takes about 20-45 ms. The first capture in a process takes about 100 ms, so the shell takes a throwaway capture at start. Half resolution saves only about 2 ms. Fetching `SCShareableContent` takes about 90 ms; do it at start and after display changes.
-- Order: capture the current page; show the image in a borderless, click-through overlay panel over the usable area, above normal windows; start the slide at once with the incoming half dark; reconcile as usual (show before hide, frames, focus last); capture the new page about 20 ms after the moves are submitted and put it in the incoming half; remove the overlay when the slide ends.
+- A capture with `SCScreenshotManager` takes about 20-45 ms. The first capture in a process takes about 100 ms. Half resolution saves only about 2 ms. Fetching `SCShareableContent` takes about 90 ms.
+- Order: capture the current page; show the image in an overlay over the usable area; start the slide at once with the incoming half dark; move the windows about one frame later; capture the new page about 20 ms after the moves are submitted and put it in the incoming half; remove the overlay when the slide ends.
 - Results: motion starts 40-60 ms after the keypress, and a bounce 30-55 ms after. The new page's image arrives 60-80 ms into a 0.5 s slide, so the dark edge covers about the first 5% of the travel; the user did not notice it. In 7 of 7 slides the new page's capture matched the screen after the slide. The first capture after the move already shows the new windows.
-- Curves: the slide uses cubic Bezier (0.4, 0, 0.2, 1). The bounce has keyframes at 0, 35% and 100% of its duration, easing out and then in and out.
-- Capture the new page only while the visible desktop is current. If macOS has switched to the stash, bounce back first (see "Rules minitile must follow") and capture afterwards.
 - When the spike moved its own main window to the stash, macOS switched to the stash (3 of 7 slides). Making the spike's overlay the key and main window prevented it (0 of 7). minitile moves only other apps' windows, so its overlay never takes focus.
-- Untested: multiple displays, navigation during a slide, Reduce Motion, other apps' windows, and whether macOS 26 and 27 ask the user to re-approve Screen Recording periodically, as macOS 15 does.
+
+minitile's transitions:
+
+- Which changes animate: only outputs of `.command` inputs (key bindings, the menu, `mntl`). For each display, the shell compares the shown workspace and page identities before and after the command. A changed page within a workspace slides horizontally, by the pages' order; a changed workspace slides vertically, by the workspaces' order. The order comes from the state that holds both identities, before the command first, since cleanup removes the page or workspace being left and navigation creates the one entered; failing both, the old index before is compared with the new index after. `page next|prev` and `workspace next|prev` that leave the command's display unchanged bounce on that display. The command's display is the core's: the focused window's display, else the last active one, else the primary.
+- Capture: `SCScreenshotManager` with a per-display content filter that excludes minitile's own application, so the overlays and the position indicator never appear in a capture; `sourceRect` is the usable area in display-local top-left coordinates, at full backing resolution, BGRA, without the cursor. Shareable content is fetched when transitions turn on, after display changes, and on a config reload or Reduce Motion change while it is not loaded, followed by a throwaway capture. Until it arrives, view changes are instant.
+- Overlay: one per display, a borderless, non-activating, click-through panel over the usable area that cannot become key or main, joins all Spaces and is ordered front without activating minitile. Its level is one below `.floating`, the position indicator's level, so the indicator stays above it and both stay above normal windows. Slides use cubic Bezier (0.4, 0, 0.2, 1) over `transition_ms`; bounces have keyframes at 0, 35% and 100% of 0.3 s, easing out and then in and out. The overlay is removed when its animation ends.
+- Held reconcile: a command that slides captures each sliding display first and holds its reconcile. Every output that arrives meanwhile, from any input, is merged into the held one: the latest scene, the union of rewrites, frame and close actions in order, and the last focus action, which is applied only if the model still focuses that window. Config reload, config open and quit run when their input is handled. When the captures arrive, each captured display's overlay starts sliding, and about one frame (16 ms) later the merged output is applied in the usual order, focus last. Slide directions are taken from the state before the first held command to the state at that moment, so a second navigation within the capture slides from the captured page to the final one. `mntl` replies once a held reconcile is applied, except `watch`, which replies at once.
+- Fallbacks: if a capture of the page being left has not arrived 150 ms after the command, the held reconcile is applied, and displays without an image change without a slide. Activation applies a held reconcile at once, before the activation input is handled, since it races macOS's own desktop switch; so do suspension, a display change and transitions turning off. A slide request is skipped on a display whose visible desktop is not current.
+- New page: about 20 ms after the reconcile, the shell captures each sliding display while its visible desktop is current, retrying every 20 ms otherwise, since the shell's stash bounce runs first. If that capture fails or has not arrived 150 ms after the reconcile, the overlay is removed at once, ending the slide early: a dark page sliding all the way in, then switching to the real one, is the more jarring of the two.
+- Cutting short: a navigation during a slide captures the real screen, which the filter shows without the overlay, then restarts that display's overlay from that image; the running slide and its pending capture are discarded. A bounce cuts a running slide short the same way. A bounce requested while a reconcile is held is dropped, as is one whose display has a newer slide request.
+- Enabling: transitions run when `transition_ms` is above 0, Reduce Motion is off (observed through `NSWorkspace`'s accessibility display options notification), Screen Recording is granted (`CGPreflightScreenCaptureAccess`, checked at start, on config reload and when Reduce Motion changes) and shareable content is loaded. When only the permission is missing, minitile calls `CGRequestScreenCaptureAccess()` once per run and the menu shows "Grant Screen Recording to Minitile.app for page transitions".
+- Untested in minitile: the implementation as a whole, multiple displays, navigation during a slide, Reduce Motion, other apps' windows, and whether macOS 26 and 27 ask the user to re-approve Screen Recording periodically, as macOS 15 does.
 
 ### Required user setup
 
@@ -358,7 +367,7 @@ Validated with `dev/spikes/slide` on macOS 27, one Retina display (scale 2, 120 
 - "Automatically rearrange Spaces based on most recent use" turned off.
 - The drag-to-tile options under Desktop & Dock turned off, since they fight drag-to-swap.
 - Accessibility permission for `Minitile.app`.
-- Screen Recording permission for `Minitile.app`, for page transitions only.
+- Screen Recording permission for `Minitile.app`, for page transitions only. minitile asks for it once, when transitions are first on without it, and rechecks it when the config reloads; until it is granted, the menu shows a warning.
 
 ## Architecture
 
@@ -476,7 +485,7 @@ gaps = 8              # points between tiles
 padding = 8           # points between tiles and the layout area's edge
 float_apps = []       # bundle IDs that always float
 only_apps = []        # bundle IDs; when non-empty, minitile manages only these apps
-transition_ms = 500   # page slide duration; 0 turns slides and bounces off (planned)
+transition_ms = 500   # page slide duration, 0 to 2000; 0 turns slides and bounces off
 
 [bindings]            # merged over the defaults; a chord bound to "" is unbound
 "ctrl+left" = "page prev"
