@@ -18,9 +18,9 @@ final class DropPickerPanels {
     /// `preview` is the hovered tile's frame on the page, in CG global points.
     func show(_ content: DropPickerContent, preview target: Rect?) {
         let height = NSScreen.screens.first?.frame.height ?? 0
-        let panel = picker ?? makePanel(level: Self.pickerLevel, shadow: true, view: DropPickerView(content: content))
+        let panel = picker ?? makePanel(level: Self.pickerLevel, shadow: true, view: DropPickerView(content: content), styled: true)
         picker = panel
-        if let view = panel.contentView as? DropPickerView {
+        if let view = panel.styledContent as? DropPickerView {
             icons.prune(keeping: [content.picker.pid])
             view.icons = icons.icon(content.picker.pid) { NSRunningApplication(processIdentifier: $0)?.icon }
                 .map { [content.picker.pid: $0] } ?? [:]
@@ -29,7 +29,7 @@ final class DropPickerPanels {
         let box = content.picker.frame
         place(panel, Geometry.cocoaFrame(Rect(x: box.minX, y: box.minY, width: box.width, height: box.height), primaryHeight: height))
         guard let target else { self.preview?.orderOut(nil); return }
-        let preview = self.preview ?? makePanel(level: Self.previewLevel, shadow: false, view: DropPreviewView())
+        let preview = self.preview ?? makePanel(level: Self.previewLevel, shadow: false, view: DropPreviewView(), styled: false)
         self.preview = preview
         place(preview, Geometry.cocoaFrame(target, primaryHeight: height))
     }
@@ -51,7 +51,8 @@ final class DropPickerPanels {
         if !panel.isVisible { panel.orderFrontRegardless() }
     }
 
-    private func makePanel(level: NSWindow.Level, shadow: Bool, view: NSView) -> NSPanel {
+    /// `styled` puts the view over the panels' dark backdrop; the preview draws only its outline.
+    private func makePanel(level: NSWindow.Level, shadow: Bool, view: NSView, styled: Bool) -> NSPanel {
         let panel = GridPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.isReleasedWhenClosed = false
         panel.isFloatingPanel = true
@@ -63,7 +64,7 @@ final class DropPickerPanels {
         panel.animationBehavior = .none
         panel.level = level
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
-        panel.contentView = view
+        if styled { panel.setStyledContent(view) } else { panel.contentView = view }
         return panel
     }
 }
@@ -90,22 +91,22 @@ final class DropPickerView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         GridPainter.background(bounds)
-        let painter = GridPainter(area: content.picker.area, metrics: .picker, icons: icons)
+        let painter = GridPainter(area: content.picker.area, metrics: content.picker.metrics, icons: icons)
         for option in content.picker.options {
             painter.draw(content.miniature(option), in: option.cell, current: option.current, selected: content.selected(option))
         }
     }
 }
 
-/// A translucent outline of the frame the dragged window would get.
+/// An ice-blue outline of the frame the dragged window would get, over a faint fill, with a dark keyline outside it.
 @MainActor
 final class DropPreviewView: NSView {
+    static let radius: CGFloat = 10
+
     override func draw(_ dirtyRect: NSRect) {
-        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 10, yRadius: 10)
-        NSColor.controlAccentColor.withAlphaComponent(0.2).setFill()
-        path.fill()
-        NSColor.controlAccentColor.withAlphaComponent(0.8).setStroke()
-        path.lineWidth = 2
-        path.stroke()
+        let keyline = PanelStyle.keyline
+        GridPainter.plate(bounds.insetBy(dx: keyline.width, dy: keyline.width), radius: Self.radius, fill: PanelStyle.previewFill,
+                          stroke: PanelStyle.preview)
+        keyline.draw(inside: bounds, radius: Self.radius + keyline.width)
     }
 }

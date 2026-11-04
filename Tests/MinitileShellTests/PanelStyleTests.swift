@@ -40,3 +40,59 @@ import Testing
     #expect(!PanelStyle.font(size: 20).fontDescriptor.symbolicTraits.contains(.monoSpace))
     #expect(PanelStyle.font(size: 20, weight: .semibold).pointSize == 20)
 }
+
+@Test func indicatorAndSwitcherAreTwiceThePickersScale() {
+    let indicator = GridMetrics(cellArea: 64 * 40, spacing: 6, labelGap: 2, minWidth: 220, icon: 10...14, reservedIcon: 10, trayIcon: nil)
+    let switcher = GridMetrics(cellArea: 128 * 80, spacing: 12, labelGap: 12, minWidth: 300, icon: 16...32, reservedIcon: 14, trayIcon: 16)
+    #expect(indicator.scaled(2) == .indicator)
+    #expect(switcher.scaled(2) == .switcher)
+    #expect(GridMetrics.picker.scale == 1 && GridMetrics.picker.cellArea == 128 * 80)
+    #expect(GridMetrics.switcher.cellArea == 4 * GridMetrics.indicator.cellArea)
+    let area = Rect(x: 0, y: 33, width: 1512, height: 945)
+    #expect(GridIndicatorGeometry.cellSize(area: area, metrics: .indicator) == CGSize(width: 128, height: 80))
+    #expect(GridIndicatorGeometry.cellSize(area: area, metrics: .switcher) == CGSize(width: 256, height: 160))
+    #expect(GridIndicatorGeometry.cellSize(area: area, metrics: .picker) == CGSize(width: 128, height: 80))
+    // Scaling down keeps icons on whole points and the cell area in proportion.
+    let half = GridMetrics.switcher.scaled(0.47)
+    #expect(half.scale == 2 * 0.47 && half.spacing == 24 * 0.47 && half.cellArea == 256 * 160 * 0.47 * 0.47)
+    #expect(half.icon == 15...30 && half.reservedIcon == 13 && half.trayIcon == 15)
+}
+
+@Test func panelsScaleDownUniformlyToFitTheUsableArea() {
+    let laptop = Rect(x: 0, y: 33, width: 1512, height: 945)
+    let room = CGSize(width: laptop.width - 2 * PanelStyle.inset, height: laptop.height - 2 * PanelStyle.inset)
+    // The indicator's 4 by 5 grid fits a laptop at full size.
+    #expect(GridIndicatorGeometry(area: laptop, rows: 4, columns: 5, cropped: true, metrics: .indicator).metrics == .indicator)
+    // The switcher's does not, so it shrinks just enough, keeping its cells in the display's proportions.
+    let switcher = GridIndicatorGeometry(area: laptop, rows: 4, columns: 5, cropped: true, metrics: .switcher)
+    #expect(switcher.metrics.scale < 2 && switcher.metrics.scale > 1.9)
+    #expect(switcher.size.width <= room.width && switcher.size.height <= room.height)
+    #expect(switcher.size.height > room.height - 4)
+    #expect(abs(switcher.cell.width / switcher.cell.height - 1.6) < 0.02)
+    // A smaller grid on the same display keeps its full size.
+    #expect(GridIndicatorGeometry(area: laptop, rows: 2, columns: 3, cropped: false, metrics: .switcher).metrics == .switcher)
+    for area in [Rect(x: 0, y: 0, width: 800, height: 500), Rect(x: 0, y: 0, width: 500, height: 900),
+                 Rect(x: 0, y: 0, width: 3440, height: 400)] {
+        let room = CGSize(width: area.width - 2 * PanelStyle.inset, height: area.height - 2 * PanelStyle.inset)
+        for metrics in [GridMetrics.indicator, .switcher] {
+            let geometry = GridIndicatorGeometry(area: area, rows: 4, columns: 5, cropped: true, metrics: metrics)
+            #expect(geometry.metrics.scale < metrics.scale)
+            #expect(geometry.size.width <= room.width && geometry.size.height <= room.height, "\(area) \(geometry.size)")
+        }
+    }
+    // Without a usable area to measure, nothing is scaled.
+    #expect(GridIndicatorGeometry(area: Rect(x: 0, y: 0, width: 0, height: 0), rows: 4, columns: 5, cropped: true,
+                                  metrics: .switcher).metrics == .switcher)
+    #expect(GridMetrics.switcher.fitted(to: CGSize(width: 10_000, height: 10_000)) { _ in CGSize(width: 100, height: 100) } == .switcher)
+}
+
+@Test func indicatorContentFitsItsDisplay() {
+    let pages = Array(repeating: Array(repeating: GridMiniature(), count: 6), count: 5)
+    var content = GridIndicatorContent(displayName: "Laptop", active: true, workspace: 3, page: 3,
+                                       area: Rect(x: 0, y: 33, width: 1512, height: 945), pages: pages, warning: nil)
+    #expect(GridIndicatorGeometry(content: content).metrics == .indicator)
+    content.area = Rect(x: 0, y: 0, width: 640, height: 400)
+    let small = GridIndicatorGeometry(content: content)
+    #expect(small.metrics.scale < 1.4)
+    #expect(small.size.width <= 640 - 2 * PanelStyle.inset && small.size.height <= 400 - 2 * PanelStyle.inset)
+}

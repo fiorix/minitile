@@ -130,7 +130,7 @@ final class SwitcherPanel: SwitcherPresenting {
         guard let screen = NSScreen.screens.first(where: { DisplayCatalog.id(for: $0) == display }) else { hide(); return }
         let panel = self.panel ?? makePanel(content)
         self.panel = panel
-        if let view = panel.contentView as? SwitcherView {
+        if let view = panel.styledContent as? SwitcherView {
             icons.prune(keeping: Set(content.pages.flatMap { $0.flatMap { $0.slots.map(\.pid) + $0.floaters.map(\.pid) } }))
             var images: [Int32: NSImage] = [:]
             for pid in content.pids {
@@ -166,7 +166,7 @@ final class SwitcherPanel: SwitcherPresenting {
         panel.animationBehavior = .none
         panel.level = Self.level
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
-        panel.contentView = SwitcherView(content: content)
+        panel.setStyledContent(SwitcherView(content: content))
         return panel
     }
 }
@@ -191,18 +191,21 @@ final class SwitcherView: NSView {
     override var isFlipped: Bool { true }
 
     override func draw(_ dirtyRect: NSRect) {
-        let margin = GridIndicatorGeometry.margin, width = bounds.width - 2 * margin
-        GridPainter.background(bounds)
-        GridPainter.text(content.app, rect: NSRect(x: margin, y: 10, width: width - 136, height: 17), size: 12, weight: .semibold)
-        GridPainter.text(content.position, rect: NSRect(x: bounds.width - margin - 130, y: 11, width: 130, height: 16), size: 10,
-                         color: .secondaryLabelColor, alignment: .right)
-        GridPainter.text(content.title, rect: NSRect(x: margin, y: 28, width: width, height: 16), size: 11, color: .secondaryLabelColor)
         let geometry = content.geometry
-        GridPainter(area: content.area, metrics: .switcher, icons: icons)
+        let s = geometry.metrics.scale, margin = geometry.margin, width = bounds.width - 2 * margin
+        GridPainter.background(bounds)
+        GridPainter.text(content.app, rect: NSRect(x: margin, y: 10 * s, width: width - 156 * s, height: 17 * s), size: 12 * s,
+                         weight: .semibold)
+        GridPainter.text(content.position, rect: NSRect(x: bounds.width - margin - 150 * s, y: 11 * s, width: 150 * s, height: 16 * s),
+                         size: 10 * s, color: PanelStyle.secondary, alignment: .right, monospaced: true)
+        GridPainter.text(content.title, rect: NSRect(x: margin, y: 28 * s, width: width, height: 16 * s), size: 11 * s,
+                         color: PanelStyle.secondary)
+        GridPainter(area: content.area, metrics: geometry.metrics, icons: icons)
             .grid(content.pages, rows: content.rows, columns: content.columns, geometry: geometry, labeled: content.cell,
                   current: content.shown, selected: content.selected)
         if content.cropped {
-            GridPainter.text("Grid cropped around the selection", rect: geometry.footerRect, size: 9, color: .secondaryLabelColor)
+            GridPainter.text("Grid cropped around the selection", rect: geometry.footerRect, size: 9 * s, color: PanelStyle.secondary,
+                             monospaced: true)
         }
     }
 }

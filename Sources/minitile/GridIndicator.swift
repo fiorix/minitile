@@ -212,10 +212,10 @@ final class GridIndicator {
                 panel.hasShadow = true
                 panel.level = .floating
                 panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
-                panel.contentView = GridIndicatorView(content: content)
+                panel.setStyledContent(GridIndicatorView(content: content))
                 panels[id] = panel
             }
-            if let view = panel.contentView as? GridIndicatorView {
+            if let view = panel.styledContent as? GridIndicatorView {
                 var images: [Int32: NSImage] = [:]
                 for pid in content.pids {
                     images[pid] = icons.icon(pid) { NSRunningApplication(processIdentifier: $0)?.icon }

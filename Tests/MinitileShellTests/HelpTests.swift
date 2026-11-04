@@ -77,6 +77,10 @@ private func entry(_ keys: String, _ text: String) -> HelpContent.Entry { HelpCo
     #expect(on.prefix(2).map(\.keys) == ["Swipe left or right", "Swipe up or down"])
     #expect(Array(on.dropFirst(2)) == off)
     #expect(off.map(\.keys) == ["Drag an edge or corner", "Drag onto a tile", "Drop on the picker", "Drag, then " + ctrl + " arrows"])
+    // Gestures are phrases, drawn in the proportional font; bindings are chords, drawn monospaced.
+    #expect(on.allSatisfy { !$0.chord })
+    let bindings = HelpContent(config: .default).sections.filter { $0.title != HelpContent.gesturesTitle }.flatMap(\.entries)
+    #expect(!bindings.isEmpty && bindings.allSatisfy(\.chord))
 }
 
 @Test func helpFitsOneColumnWhenTheUsableAreaIsTallEnough() {

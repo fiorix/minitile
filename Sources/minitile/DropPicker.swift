@@ -43,6 +43,8 @@ struct DropPicker: Equatable {
     var display: DisplayID
     var area: Rect
     var frame: CGRect
+    /// `GridMetrics.picker`, scaled down when the row would not fit the usable area less `PanelStyle.inset`.
+    var metrics: GridMetrics
     var options: [Option]
 
     /// Nil unless the window holds an active tile on a page of two to four active tiles on a managed display.
@@ -56,26 +58,34 @@ struct DropPicker: Equatable {
         }.count
         guard (2...4).contains(count) else { return nil }
         let area = display.info.visibleFrame
-        let metrics = GridMetrics.picker
-        let cell = GridIndicatorGeometry.cellSize(area: area, metrics: metrics)
         let variants = Layout.variants(count: count)
+        let room = CGSize(width: area.width - 2 * PanelStyle.inset, height: area.height - 2 * PanelStyle.inset)
+        let metrics = GridMetrics.picker.fitted(to: room) { Self.size(count: variants.count, area: area, metrics: $0) }
+        let cell = GridIndicatorGeometry.cellSize(area: area, metrics: metrics), margin = Self.margin * metrics.scale
         let current = Layout.effective(page.variant, count: count)
         options = variants.enumerated().map { index, variant in
             let kept = variant == current
             let frames = Layout.frames(frame: area, count: count, variant: variant, r1: kept ? page.r1 : nil, r2: kept ? page.r2 : nil,
                                        gaps: config.gaps, padding: config.padding)
             let rect = GridIndicatorGeometry.cell(row: 0, column: index, size: cell, spacing: metrics.spacing)
-                .offsetBy(dx: Self.margin, dy: Self.margin)
+                .offsetBy(dx: margin, dy: margin)
             return Option(variant: variant, current: kept, frames: frames, cell: rect,
                           tiles: frames.map { GridIndicatorGeometry.tileRect($0, area: area, cell: rect) })
         }
-        let width = 2 * Self.margin + CGFloat(variants.count) * (cell.width + metrics.spacing) - metrics.spacing
-        let height = 2 * Self.margin + cell.height
-        frame = CGRect(x: (area.center.x - width / 2).rounded(), y: (area.maxY - Self.inset - height).rounded(), width: width, height: height)
+        let size = Self.size(count: variants.count, area: area, metrics: metrics)
+        frame = CGRect(x: (area.center.x - size.width / 2).rounded(), y: (area.maxY - Self.inset - size.height).rounded(),
+                       width: size.width, height: size.height)
+        self.metrics = metrics
         self.window = id
         pid = window.info.pid
         self.display = display.info.id
         self.area = area
+    }
+
+    /// One row of cells with the margin around it.
+    static func size(count: Int, area: Rect, metrics: GridMetrics) -> CGSize {
+        let cell = GridIndicatorGeometry.cellSize(area: area, metrics: metrics), margin = Self.margin * metrics.scale
+        return CGSize(width: 2 * margin + CGFloat(count) * (cell.width + metrics.spacing) - metrics.spacing, height: 2 * margin + cell.height)
     }
 
     /// The tile under a point in CG global coordinates. Anywhere in a cell counts, the nearest tile taking the gaps
