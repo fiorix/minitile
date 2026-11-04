@@ -54,6 +54,27 @@ func pickerOffersTheCountsLayoutsInARowAtTheBottomCentre(_ count: Int, _ variant
     #expect(bottom == display.visibleFrame.maxY - DropPicker.inset)
 }
 
+@Test func pickerScalesDownToFitASmallDisplay() throws {
+    #expect(picker(engine(3))?.metrics == .picker)
+    let small = DisplayInfo(id: "d", frame: Rect(x: 0, y: 0, width: 480, height: 330), visibleFrame: Rect(x: 0, y: 30, width: 480, height: 300),
+                            isPrimary: true)
+    var e = Engine(config: config)
+    _ = e.handle(.started(saved: nil, windows: (1...3).map { WindowInfo(id: WindowID($0), pid: Int32(100 + $0), display: "d") },
+                          displays: [small], focus: nil))
+    let picker = try #require(picker(e))
+    #expect(picker.metrics.scale < 1)
+    #expect(picker.options.count == 4)
+    #expect(picker.frame.minX >= small.visibleFrame.x + PanelStyle.inset)
+    #expect(picker.frame.maxX <= small.visibleFrame.maxX - PanelStyle.inset)
+    let last = try #require(picker.options.last)
+    #expect(picker.frame.width == last.cell.maxX + DropPicker.margin * picker.metrics.scale)
+    for option in picker.options {
+        for (slot, tile) in option.tiles.enumerated() {
+            #expect(picker.target(at: global(picker, center(tile))) == DropTarget(variant: option.variant, slot: slot))
+        }
+    }
+}
+
 @Test func pickerIsOnlyForActiveTilesOnPagesOfTwoToFour() {
     #expect(picker(engine(1)) == nil)
     var five = engine(5)

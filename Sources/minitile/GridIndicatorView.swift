@@ -1,8 +1,11 @@
 import AppKit
 import MinitileCore
 
-/// The sizes that differ between the position indicator and the window switcher, which draw the same miniatures.
+/// The sizes that differ between the position indicator, the window switcher and the drop picker, which draw the same
+/// miniatures. Lengths are in points; strokes are not part of them, so lines stay hairlines at any scale.
 struct GridMetrics: Equatable {
+    /// Text, margins, labels and corner radii, relative to the drop picker's size.
+    var scale: CGFloat = 1
     var cellArea: CGFloat
     var spacing: CGFloat
     /// Room between the column labels and the first row, which the switcher's floating tray reaches into.
@@ -13,23 +16,40 @@ struct GridMetrics: Equatable {
     /// Floating windows as a tray of selectable icons on the cell's top edge; nil draws a count badge.
     var trayIcon: CGFloat?
 
-    static let indicator = GridMetrics(cellArea: 64 * 40, spacing: 6, labelGap: 2, minWidth: 220, icon: 10...14,
-                                       reservedIcon: 10, trayIcon: nil)
-    static let switcher = GridMetrics(cellArea: 128 * 80, spacing: 12, labelGap: 12, minWidth: 300, icon: 16...32,
-                                      reservedIcon: 14, trayIcon: 16)
-    /// The switcher's cells, in a single row without labels; their tiles are the drop targets.
+    static let indicator = GridMetrics(scale: 2, cellArea: 128 * 80, spacing: 12, labelGap: 4, minWidth: 440, icon: 20...28,
+                                       reservedIcon: 20, trayIcon: nil)
+    static let switcher = GridMetrics(scale: 2, cellArea: 256 * 160, spacing: 24, labelGap: 24, minWidth: 600, icon: 32...64,
+                                      reservedIcon: 28, trayIcon: 32)
+    /// Half the switcher's size, in a single row without labels; its tiles are the drop targets.
     static let picker = GridMetrics(cellArea: 128 * 80, spacing: 12, labelGap: 0, minWidth: 0, icon: 16...32,
                                     reservedIcon: 14, trayIcon: nil)
+
+    /// Every length times `factor`, so the cell area times its square. Icons stay on whole points.
+    func scaled(_ factor: CGFloat) -> GridMetrics {
+        func whole(_ value: CGFloat) -> CGFloat { (value * factor).rounded(.down) }
+        return GridMetrics(scale: scale * factor, cellArea: cellArea * factor * factor, spacing: spacing * factor,
+                           labelGap: labelGap * factor, minWidth: minWidth * factor, icon: whole(icon.lowerBound)...whole(icon.upperBound),
+                           reservedIcon: whole(reservedIcon), trayIcon: trayIcon.map(whole))
+    }
+
+    /// Scaled down uniformly, never up, to about the largest `size` that fits `room`; with no room at all the metrics
+    /// stay as they are.
+    func fitted(to room: CGSize, size: (GridMetrics) -> CGSize) -> GridMetrics {
+        func fits(_ size: CGSize) -> Bool { size.width <= room.width && size.height <= room.height }
+        guard room.width > 0, room.height > 0, !fits(size(self)) else { return self }
+        // Cells round to whole points, so the size is not quite proportional to the factor: search for it.
+        var low: CGFloat = 0, high: CGFloat = 1
+        for _ in 0..<16 {
+            let middle = (low + high) / 2
+            if fits(size(scaled(middle))) { low = middle } else { high = middle }
+        }
+        return scaled(low)
+    }
 }
 
-/// Panel layout in flipped view coordinates, sized from the number of drawn cells.
+/// Panel layout in flipped view coordinates, sized from the number of drawn cells and scaled down to fit the usable
+/// area less `PanelStyle.inset` on each side.
 struct GridIndicatorGeometry: Equatable {
-    static let margin: CGFloat = 12
-    static let labelWidth: CGFloat = 22
-    static let gridTop: CGFloat = 50
-    static let labelHeight: CGFloat = 14
-    static let footerHeight: CGFloat = 14
-
     var metrics: GridMetrics
     var cell: CGSize
     var rows: Int
@@ -43,8 +63,17 @@ struct GridIndicatorGeometry: Equatable {
     }
 
     init(area: Rect, rows: Int, columns: Int, cropped: Bool, warning: Bool = false, metrics: GridMetrics) {
+        func layout(_ metrics: GridMetrics) -> GridIndicatorGeometry {
+            GridIndicatorGeometry(metrics: metrics, cell: Self.cellSize(area: area, metrics: metrics), rows: rows, columns: columns,
+                                  cropped: cropped, warning: warning)
+        }
+        let room = CGSize(width: area.width - 2 * PanelStyle.inset, height: area.height - 2 * PanelStyle.inset)
+        self = layout(metrics.fitted(to: room) { layout($0).size })
+    }
+
+    private init(metrics: GridMetrics, cell: CGSize, rows: Int, columns: Int, cropped: Bool, warning: Bool) {
         self.metrics = metrics
-        cell = Self.cellSize(area: area, metrics: metrics)
+        self.cell = cell
         self.rows = rows
         self.columns = columns
         self.cropped = cropped
@@ -62,12 +91,18 @@ struct GridIndicatorGeometry: Equatable {
         CGRect(x: CGFloat(column) * (size.width + spacing), y: CGFloat(row) * (size.height + spacing), width: size.width, height: size.height)
     }
 
-    var origin: CGPoint { CGPoint(x: Self.margin + Self.labelWidth + 4, y: Self.gridTop + Self.labelHeight + metrics.labelGap) }
+    var margin: CGFloat { 12 * metrics.scale }
+    var labelWidth: CGFloat { 22 * metrics.scale }
+    var gridTop: CGFloat { 50 * metrics.scale }
+    var labelHeight: CGFloat { 14 * metrics.scale }
+    var footerHeight: CGFloat { 14 * metrics.scale }
+
+    var origin: CGPoint { CGPoint(x: margin + labelWidth + 4 * metrics.scale, y: gridTop + labelHeight + metrics.labelGap) }
 
     var size: CGSize {
-        if warning { return CGSize(width: metrics.minWidth + 28, height: 116) }
-        let width = origin.x + span(columns, cell.width) + Self.margin
-        let height = origin.y + span(rows, cell.height) + (cropped ? metrics.spacing + Self.footerHeight : 0) + Self.margin
+        if warning { return CGSize(width: metrics.minWidth + 28 * metrics.scale, height: 116 * metrics.scale) }
+        let width = origin.x + span(columns, cell.width) + margin
+        let height = origin.y + span(rows, cell.height) + (cropped ? metrics.spacing + footerHeight : 0) + margin
         return CGSize(width: max(metrics.minWidth, width), height: height)
     }
 
@@ -80,16 +115,17 @@ struct GridIndicatorGeometry: Equatable {
     }
 
     func rowLabelRect(row: Int) -> CGRect {
-        CGRect(x: Self.margin - 2, y: cellRect(row: row, column: 0).midY - 7, width: Self.labelWidth + 4, height: 14)
+        let s = metrics.scale
+        return CGRect(x: margin - 2 * s, y: cellRect(row: row, column: 0).midY - 7 * s, width: labelWidth + 4 * s, height: 14 * s)
     }
 
     func columnLabelRect(column: Int) -> CGRect {
         let cell = cellRect(row: 0, column: column)
-        return CGRect(x: cell.minX, y: Self.gridTop, width: cell.width, height: Self.labelHeight)
+        return CGRect(x: cell.minX, y: gridTop, width: cell.width, height: labelHeight)
     }
 
     var footerRect: CGRect {
-        CGRect(x: Self.margin, y: size.height - Self.margin - Self.footerHeight, width: size.width - 2 * Self.margin, height: Self.footerHeight)
+        CGRect(x: margin, y: size.height - margin - footerHeight, width: size.width - 2 * margin, height: footerHeight)
     }
 
     /// The page's usable area inside a cell, inset so tiles clear the cell outline.
@@ -107,7 +143,7 @@ struct GridIndicatorGeometry: Equatable {
         return rect.insetBy(dx: min(0.5, rect.width / 2), dy: min(0.5, rect.height / 2))
     }
 
-    /// Within `range` (10-14 pt in the indicator), never larger than the tile.
+    /// Within `range` (20-28 pt in the indicator), never larger than the tile.
     static func iconRect(tile: CGRect, range: ClosedRange<CGFloat> = GridMetrics.indicator.icon) -> CGRect {
         let short = min(tile.width, tile.height)
         let side = max(0, min(range.upperBound, max(range.lowerBound, (short * 0.75).rounded(.down)), short.rounded(.down)))
@@ -115,29 +151,30 @@ struct GridIndicatorGeometry: Equatable {
     }
 
     /// Reserved slots have no tile, so their icons sit in a row along the cell's bottom-left corner.
-    static func reservedRects(count: Int, cell: CGRect, side: CGFloat = GridMetrics.indicator.reservedIcon) -> [CGRect] {
-        let screen = screenRect(cell: cell)
-        return (0..<count).map { CGRect(x: screen.minX + 1 + CGFloat($0) * (side + 1), y: screen.maxY - 1 - side, width: side, height: side) }
+    static func reservedRects(count: Int, cell: CGRect, metrics: GridMetrics) -> [CGRect] {
+        let screen = screenRect(cell: cell), side = metrics.reservedIcon, s = metrics.scale
+        return (0..<count).map { CGRect(x: screen.minX + s + CGFloat($0) * (side + s), y: screen.maxY - s - side, width: side, height: side) }
     }
 
     /// Straddles the cell's top-right corner, so it covers as little of the tiles as possible.
-    static func badgeRect(count: Int, cell: CGRect) -> CGRect {
-        let width = max(12, 6 + 6 * CGFloat(String(count).count))
-        return CGRect(x: cell.maxX - width + 3, y: cell.minY - 3, width: width, height: 12)
+    static func badgeRect(count: Int, cell: CGRect, metrics: GridMetrics) -> CGRect {
+        let s = metrics.scale, width = max(12, 6 + 6 * CGFloat(String(count).count)) * s
+        return CGRect(x: cell.maxX - width + 3 * s, y: cell.minY - 3 * s, width: width, height: 12 * s)
     }
 
     /// Centered on the cell's top edge and right-aligned, where the indicator's badge sits, so it covers little of the
     /// tiles. Icons shrink when the row would not fit the cell.
-    static func trayRects(count: Int, cell: CGRect, side: CGFloat) -> [CGRect] {
-        guard count > 0 else { return [] }
-        let gap: CGFloat = 2, room = cell.width - 8
-        let size = max(4, min(side, ((room - CGFloat(count - 1) * gap) / CGFloat(count)).rounded(.down)))
-        let first = cell.maxX - 4 - CGFloat(count) * size - CGFloat(count - 1) * gap
+    static func trayRects(count: Int, cell: CGRect, metrics: GridMetrics) -> [CGRect] {
+        guard count > 0, let side = metrics.trayIcon else { return [] }
+        let s = metrics.scale, gap = 2 * s, room = cell.width - 8 * s
+        let size = max(4 * s, min(side, ((room - CGFloat(count - 1) * gap) / CGFloat(count)).rounded(.down)))
+        let first = cell.maxX - 4 * s - CGFloat(count) * size - CGFloat(count - 1) * gap
         return (0..<count).map { CGRect(x: first + CGFloat($0) * (size + gap), y: cell.minY - size / 2, width: size, height: size) }
     }
 }
 
-/// Draws labels and page miniatures, for the position indicator and the window switcher alike.
+/// Draws labels and page miniatures in the wireframe style, for the position indicator, the window switcher and the
+/// drop picker alike.
 @MainActor
 struct GridPainter {
     var area: Rect
@@ -147,11 +184,12 @@ struct GridPainter {
     /// `labeled` picks the row and column labels to emphasize, `current` the cell outlined as the shown page.
     func grid(_ pages: [[GridMiniature]], rows: Range<Int>, columns: Range<Int>, geometry: GridIndicatorGeometry,
               labeled: GridCell?, current: GridCell?, selected: WindowID? = nil) {
+        let size = 10 * metrics.scale
         for (column, page) in columns.enumerated() {
-            Self.label("P\(page + 1)", rect: geometry.columnLabelRect(column: column), current: labeled?.page == page)
+            Self.label("P\(page + 1)", rect: geometry.columnLabelRect(column: column), size: size, current: labeled?.page == page)
         }
         for (row, workspace) in rows.enumerated() {
-            Self.label("W\(workspace + 1)", rect: geometry.rowLabelRect(row: row), current: labeled?.workspace == workspace)
+            Self.label("W\(workspace + 1)", rect: geometry.rowLabelRect(row: row), size: size, current: labeled?.workspace == workspace)
             for (column, page) in columns.enumerated() {
                 guard pages.indices.contains(workspace), pages[workspace].indices.contains(page) else { continue }
                 draw(pages[workspace][page], in: geometry.cellRect(row: row, column: column),
@@ -160,77 +198,52 @@ struct GridPainter {
         }
     }
 
+    /// The focused tile and the selected one are highlighted; their icons alone are drawn at full opacity.
     func draw(_ miniature: GridMiniature, in cell: NSRect, current: Bool, selected: WindowID? = nil) {
-        let accent = NSColor.controlAccentColor
-        let outline = NSBezierPath(roundedRect: cell.insetBy(dx: current ? 1 : 0.5, dy: current ? 1 : 0.5), xRadius: 4, yRadius: 4)
-        if !miniature.empty {
-            NSColor.quinaryLabelColor.setFill()
-            outline.fill()
-        }
+        let s = metrics.scale
         for tile in miniature.tiles {
             guard let frame = tile.frame else { continue }
             let rect = GridIndicatorGeometry.tileRect(frame, area: area, cell: cell)
-            let path = NSBezierPath(roundedRect: rect, xRadius: 2, yRadius: 2)
-            let chosen = tile.window == selected
-            (chosen ? accent.withAlphaComponent(0.6) : tile.focused ? accent.withAlphaComponent(0.55)
-                : current ? accent.withAlphaComponent(0.2) : NSColor.labelColor.withAlphaComponent(0.13)).setFill()
-            path.fill()
-            if chosen {
-                // Stroked inside the tile, so the mark stays clear of its neighbours.
-                let mark = NSBezierPath(roundedRect: rect.insetBy(dx: 1, dy: 1), xRadius: 2, yRadius: 2)
-                accent.setStroke()
-                mark.lineWidth = 2
-                mark.stroke()
-            } else if tile.focused {
-                accent.setStroke()
-                path.lineWidth = 1
-                path.stroke()
+            let highlighted = tile.focused || tile.window == selected
+            Self.plate(rect, radius: PanelStyle.tileRadius * s, fill: highlighted ? PanelStyle.highlightFill : PanelStyle.tileFill,
+                       stroke: highlighted ? PanelStyle.highlight : PanelStyle.tile)
+            if !tile.placeholder {
+                icon(tile.pid, in: GridIndicatorGeometry.iconRect(tile: rect, range: metrics.icon),
+                     fraction: highlighted ? 1 : PanelStyle.iconOpacity)
             }
-            if !tile.placeholder { icon(tile.pid, in: GridIndicatorGeometry.iconRect(tile: rect, range: metrics.icon), fraction: 1) }
         }
-        let reserved = GridIndicatorGeometry.reservedRects(count: miniature.reserved.count, cell: cell, side: metrics.reservedIcon)
+        let reserved = GridIndicatorGeometry.reservedRects(count: miniature.reserved.count, cell: cell, metrics: metrics)
         if let first = reserved.first, let last = reserved.last {
-            NSColor.windowBackgroundColor.withAlphaComponent(0.85).setFill()
-            NSBezierPath(roundedRect: first.union(last).insetBy(dx: -1, dy: -1), xRadius: 2, yRadius: 2).fill()
-            for (slot, rect) in zip(miniature.reserved, reserved) { icon(slot.pid, in: rect, fraction: 0.4) }
+            Self.plate(first.union(last).insetBy(dx: -s, dy: -s), radius: 2 * s, fill: PanelStyle.plateFill, stroke: PanelStyle.plate)
+            for (slot, rect) in zip(miniature.reserved, reserved) { icon(slot.pid, in: rect, fraction: PanelStyle.reservedOpacity) }
         }
-        (current ? accent : NSColor.tertiaryLabelColor).setStroke()
-        outline.lineWidth = current ? 2 : 1
-        outline.stroke()
-        if let side = metrics.trayIcon { tray(miniature.floaters.filter(\.active), cell: cell, side: side, selected: selected) }
+        let outline = current ? PanelStyle.shownPage : miniature.empty ? PanelStyle.emptyPage : PanelStyle.page
+        outline.draw(inside: cell, radius: PanelStyle.pageRadius * s)
+        if metrics.trayIcon != nil { tray(miniature.floaters.filter(\.active), cell: cell, selected: selected) }
         else if miniature.floating > 0 { badge(miniature.floating, cell: cell) }
     }
 
     private func badge(_ count: Int, cell: NSRect) {
-        let badge = GridIndicatorGeometry.badgeRect(count: count, cell: cell)
-        let path = NSBezierPath(roundedRect: badge, xRadius: badge.height / 2, yRadius: badge.height / 2)
-        NSColor.windowBackgroundColor.setStroke()
-        path.lineWidth = 1.5
-        path.stroke()
-        NSColor.systemGray.setFill()
-        path.fill()
-        Self.text(String(count), rect: badge.offsetBy(dx: 0, dy: -0.5), size: 9, weight: .bold, color: .white, alignment: .center)
+        let badge = GridIndicatorGeometry.badgeRect(count: count, cell: cell, metrics: metrics)
+        Self.plate(badge, radius: badge.height / 2, fill: PanelStyle.plateFill, stroke: PanelStyle.plate)
+        // Digits are as tall as capitals, so the baseline sits half a cap height below the badge's middle.
+        let size = 9 * metrics.scale, font = PanelStyle.font(size: size, weight: .medium, monospaced: true)
+        let line = NSRect(x: badge.minX, y: badge.midY + font.capHeight / 2 - font.ascender, width: badge.width,
+                          height: font.ascender - font.descender)
+        Self.text(String(count), rect: line, size: size, weight: .medium, color: PanelStyle.secondary, alignment: .center, monospaced: true)
     }
 
-    private func tray(_ floaters: [GridMiniature.Floater], cell: NSRect, side: CGFloat, selected: WindowID?) {
-        let rects = GridIndicatorGeometry.trayRects(count: floaters.count, cell: cell, side: side)
+    private func tray(_ floaters: [GridMiniature.Floater], cell: NSRect, selected: WindowID?) {
+        let s = metrics.scale
+        let rects = GridIndicatorGeometry.trayRects(count: floaters.count, cell: cell, metrics: metrics)
         guard let first = rects.first, let last = rects.last else { return }
-        let background = NSBezierPath(roundedRect: first.union(last).insetBy(dx: -2, dy: -2), xRadius: 4, yRadius: 4)
-        NSColor.windowBackgroundColor.setFill()
-        background.fill()
-        NSColor.tertiaryLabelColor.setStroke()
-        background.lineWidth = 1
-        background.stroke()
+        Self.plate(first.union(last).insetBy(dx: -2 * s, dy: -2 * s), radius: 4 * s, fill: PanelStyle.plateFill, stroke: PanelStyle.plate)
         for (floater, rect) in zip(floaters, rects) {
-            if floater.window == selected {
-                let mark = NSBezierPath(roundedRect: rect.insetBy(dx: -1.5, dy: -1.5), xRadius: 3, yRadius: 3)
-                NSColor.controlAccentColor.withAlphaComponent(0.6).setFill()
-                mark.fill()
-                NSColor.controlAccentColor.setStroke()
-                mark.lineWidth = 2
-                mark.stroke()
+            let chosen = floater.window == selected
+            if chosen {
+                Self.plate(rect.insetBy(dx: -1.5 * s, dy: -1.5 * s), radius: 3 * s, fill: PanelStyle.highlightFill, stroke: PanelStyle.highlight)
             }
-            icon(floater.pid, in: rect, fraction: 1)
+            icon(floater.pid, in: rect, fraction: chosen ? 1 : PanelStyle.iconOpacity)
         }
     }
 
@@ -240,28 +253,42 @@ struct GridPainter {
             image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: fraction, respectFlipped: true,
                        hints: [.interpolation: NSNumber(value: NSImageInterpolation.high.rawValue)])
         } else {
-            NSColor.secondaryLabelColor.withAlphaComponent(0.5 * fraction).setFill()
+            PanelStyle.steel.opacity(0.5 * fraction).color.setFill()
             NSBezierPath(roundedRect: rect.insetBy(dx: 1, dy: 1), xRadius: 2, yRadius: 2).fill()
         }
     }
 
+    static func plate(_ rect: NSRect, radius: CGFloat, fill: Paint, stroke: Stroke) {
+        fill.color.setFill()
+        NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+        stroke.draw(inside: rect, radius: radius)
+    }
+
+    /// The tint and border over a panel's blurred backdrop.
     static func background(_ bounds: NSRect) {
-        NSColor.windowBackgroundColor.withAlphaComponent(0.96).setFill()
-        NSBezierPath(roundedRect: bounds, xRadius: 10, yRadius: 10).fill()
+        plate(bounds, radius: PanelStyle.radius, fill: PanelStyle.tint, stroke: PanelStyle.border)
     }
 
-    static func label(_ string: String, rect: NSRect, current: Bool) {
-        text(string, rect: rect, size: 10, weight: current ? .semibold : .regular,
-             color: current ? .labelColor : .secondaryLabelColor, alignment: .center)
+    static func label(_ string: String, rect: NSRect, size: CGFloat, current: Bool) {
+        text(string, rect: rect, size: size, weight: current ? .semibold : .regular, color: current ? PanelStyle.text : PanelStyle.secondary,
+             alignment: .center, monospaced: true)
     }
 
-    static func text(_ string: String, rect: NSRect, size: CGFloat, weight: NSFont.Weight = .regular,
-                     color: NSColor = .labelColor, alignment: NSTextAlignment = .left, wrap: Bool = false) {
+    /// `symbolTracking` adds room after each non-ASCII character, such as a chord's modifier symbols and arrows.
+    static func text(_ string: String, rect: NSRect, size: CGFloat, weight: NSFont.Weight = .regular, color: Paint = PanelStyle.text,
+                     alignment: NSTextAlignment = .left, wrap: Bool = false, monospaced: Bool = false, symbolTracking: CGFloat = 0) {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = alignment
         paragraph.lineBreakMode = wrap ? .byWordWrapping : .byTruncatingTail
-        (string as NSString).draw(in: rect, withAttributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: size, weight: weight),
-                                                          .foregroundColor: color, .paragraphStyle: paragraph])
+        let text = NSMutableAttributedString(string: string, attributes: [
+            .font: PanelStyle.font(size: size, weight: weight, monospaced: monospaced), .foregroundColor: color.color, .paragraphStyle: paragraph,
+        ])
+        if symbolTracking != 0 {
+            for index in string.indices where !string[index].isASCII {
+                text.addAttribute(.kern, value: symbolTracking, range: NSRange(index...index, in: string))
+            }
+        }
+        text.draw(in: rect)
     }
 }
 
@@ -286,25 +313,27 @@ final class GridIndicatorView: NSView {
     override var isFlipped: Bool { true }
 
     override func draw(_ dirtyRect: NSRect) {
-        let margin = GridIndicatorGeometry.margin
+        let geometry = GridIndicatorGeometry(content: content)
+        let s = geometry.metrics.scale, margin = geometry.margin, width = bounds.width - 2 * margin
         GridPainter.background(bounds)
-        GridPainter.text(content.displayName, rect: NSRect(x: margin, y: 10, width: bounds.width - 2 * margin, height: 17), size: 12,
+        GridPainter.text(content.displayName, rect: NSRect(x: margin, y: 10 * s, width: width, height: 17 * s), size: 12 * s,
                          weight: .semibold)
-        GridPainter.text(content.position, rect: NSRect(x: margin, y: 28, width: bounds.width - 2 * margin - 46, height: 16), size: 11)
+        GridPainter.text(content.position, rect: NSRect(x: margin, y: 28 * s, width: width - 46 * s, height: 16 * s), size: 11 * s,
+                         color: PanelStyle.secondary, monospaced: true)
         if content.active {
-            GridPainter.text("Active", rect: NSRect(x: bounds.width - margin - 42, y: 28, width: 42, height: 16), size: 10,
-                             color: .controlAccentColor, alignment: .right)
+            GridPainter.text("Active", rect: NSRect(x: bounds.width - margin - 42 * s, y: 28 * s, width: 42 * s, height: 16 * s),
+                             size: 10 * s, color: PanelStyle.ice, alignment: .right, monospaced: true)
         }
         if let warning = content.warning {
-            GridPainter.text(warning, rect: NSRect(x: margin, y: 52, width: bounds.width - 2 * margin, height: 52), size: 11,
-                             color: .secondaryLabelColor, wrap: true)
+            GridPainter.text(warning, rect: NSRect(x: margin, y: 52 * s, width: width, height: 52 * s), size: 11 * s,
+                             color: PanelStyle.secondary, wrap: true)
             return
         }
-        let geometry = GridIndicatorGeometry(content: content)
-        GridPainter(area: content.area, metrics: .indicator, icons: icons)
+        GridPainter(area: content.area, metrics: geometry.metrics, icons: icons)
             .grid(content.pages, rows: content.rows, columns: content.columns, geometry: geometry, labeled: content.shown, current: content.shown)
         if content.cropped {
-            GridPainter.text("Grid cropped around current position", rect: geometry.footerRect, size: 9, color: .secondaryLabelColor)
+            GridPainter.text("Grid cropped around current position", rect: geometry.footerRect, size: 9 * s, color: PanelStyle.secondary,
+                             monospaced: true)
         }
     }
 }

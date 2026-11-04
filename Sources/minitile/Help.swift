@@ -43,6 +43,8 @@ struct HelpContent: Equatable {
     struct Entry: Equatable {
         var keys: String
         var text: String
+        /// False for a gesture, whose keys are a phrase rather than a chord.
+        var chord = true
     }
 
     struct Section: Equatable {
@@ -113,13 +115,13 @@ struct HelpContent: Equatable {
 
     /// The mouse and trackpad gestures, without swipes when `trackpad_swipes` leaves them to macOS.
     static func gestures(swipes: Bool) -> [Entry] {
-        let swipe = [Entry(keys: "Swipe left or right", text: "Next or previous page"),
-                     Entry(keys: "Swipe up or down", text: "Workspace below or above")]
+        let swipe = [Entry(keys: "Swipe left or right", text: "Next or previous page", chord: false),
+                     Entry(keys: "Swipe up or down", text: "Workspace below or above", chord: false)]
         return (swipes ? swipe : []) + [
-            Entry(keys: "Drag an edge or corner", text: "Resize tiles"),
-            Entry(keys: "Drag onto a tile", text: "Swap the two windows"),
-            Entry(keys: "Drop on the picker", text: "Set the layout and tile"),
-            Entry(keys: "Drag, then \u{2303} arrows", text: "Nudge or carry the window"),
+            Entry(keys: "Drag an edge or corner", text: "Resize tiles", chord: false),
+            Entry(keys: "Drag onto a tile", text: "Swap the two windows", chord: false),
+            Entry(keys: "Drop on the picker", text: "Set the layout and tile", chord: false),
+            Entry(keys: "Drag, then \u{2303} arrows", text: "Nudge or carry the window", chord: false),
         ]
     }
 }

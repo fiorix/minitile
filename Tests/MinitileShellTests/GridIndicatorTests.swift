@@ -132,29 +132,30 @@ func miniaturesMirrorTheCoreLayoutOnShownAndStashedPages(portrait: Bool) {
 }
 
 @Test func cellsTakeTheUsableAreaProportions() {
-    #expect(GridIndicatorGeometry.cellSize(area: Rect(x: 0, y: 33, width: 1512, height: 945)) == CGSize(width: 64, height: 40))
-    #expect(GridIndicatorGeometry.cellSize(area: Rect(x: 0, y: 0, width: 945, height: 1512)) == CGSize(width: 40, height: 64))
-    #expect(GridIndicatorGeometry.cellSize(area: Rect(x: 0, y: 0, width: 2560, height: 1440)) == CGSize(width: 67, height: 38))
-    #expect(GridIndicatorGeometry.cellSize(area: Rect(x: 0, y: 0, width: 5120, height: 1440)) == CGSize(width: 88, height: 29))
-    #expect(GridIndicatorGeometry.cellSize(area: Rect(x: 0, y: 0, width: 0, height: 0)) == CGSize(width: 64, height: 40))
+    #expect(GridIndicatorGeometry.cellSize(area: Rect(x: 0, y: 33, width: 1512, height: 945)) == CGSize(width: 128, height: 80))
+    #expect(GridIndicatorGeometry.cellSize(area: Rect(x: 0, y: 0, width: 945, height: 1512)) == CGSize(width: 80, height: 128))
+    #expect(GridIndicatorGeometry.cellSize(area: Rect(x: 0, y: 0, width: 2560, height: 1440)) == CGSize(width: 135, height: 76))
+    #expect(GridIndicatorGeometry.cellSize(area: Rect(x: 0, y: 0, width: 5120, height: 1440)) == CGSize(width: 175, height: 58))
+    #expect(GridIndicatorGeometry.cellSize(area: Rect(x: 0, y: 0, width: 0, height: 0)) == CGSize(width: 128, height: 80))
 }
 
 @Test func panelSizeFollowsTheDrawnCellCount() {
     let area = Rect(x: 0, y: 33, width: 1512, height: 945)
     let single = GridIndicatorContent(displayName: "Laptop", active: true, workspace: 1, page: 1, area: area,
                                       pages: [[GridMiniature()]], warning: nil)
-    #expect(GridIndicatorGeometry(content: single).size == CGSize(width: 220, height: 118))
+    #expect(GridIndicatorGeometry(content: single).size == CGSize(width: 440, height: 236))
     let full = GridIndicatorContent(displayName: "Laptop", active: true, workspace: 3, page: 4, area: area,
                                     pages: Array(repeating: Array(repeating: GridMiniature(), count: 9), count: 7), warning: nil)
     let geometry = GridIndicatorGeometry(content: full)
-    #expect(geometry.size == CGSize(width: 394, height: 276))
-    #expect(geometry.cellRect(row: 1, column: 2) == CGRect(x: 178, y: 112, width: 64, height: 40))
+    #expect(geometry.metrics == .indicator)
+    #expect(geometry.size == CGSize(width: 788, height: 552))
+    #expect(geometry.cellRect(row: 1, column: 2) == CGRect(x: 356, y: 224, width: 128, height: 80))
     #expect(geometry.columnLabelRect(column: 2).midX == geometry.cellRect(row: 0, column: 2).midX)
     #expect(geometry.rowLabelRect(row: 3).midY == geometry.cellRect(row: 3, column: 0).midY)
     #expect(geometry.footerRect.minY >= geometry.cellRect(row: 3, column: 0).maxY)
     let unmanaged = GridIndicatorContent(displayName: "External", active: false, workspace: nil, page: nil, area: area,
                                          pages: [], warning: "Create two desktops")
-    #expect(GridIndicatorGeometry(content: unmanaged).size == CGSize(width: 248, height: 116))
+    #expect(GridIndicatorGeometry(content: unmanaged).size == CGSize(width: 496, height: 232))
 }
 
 @Test func tilesKeepTheirProportionsAndStaySeparated() {
@@ -174,14 +175,14 @@ func miniaturesMirrorTheCoreLayoutOnShownAndStashedPages(portrait: Bool) {
 }
 
 @Test func iconsBadgesAndReservedSlotsFitTheirCell() {
-    #expect(GridIndicatorGeometry.iconRect(tile: CGRect(x: 3, y: 3, width: 58, height: 34)) == CGRect(x: 25, y: 13, width: 14, height: 14))
-    #expect(GridIndicatorGeometry.iconRect(tile: CGRect(x: 0, y: 0, width: 13, height: 34)).width == 10)
-    #expect(GridIndicatorGeometry.iconRect(tile: CGRect(x: 0, y: 0, width: 64, height: 7)).width == 7)
-    let cell = CGRect(x: 0, y: 0, width: 64, height: 40)
-    #expect(GridIndicatorGeometry.reservedRects(count: 2, cell: cell)
-            == [CGRect(x: 3, y: 27, width: 10, height: 10), CGRect(x: 14, y: 27, width: 10, height: 10)])
-    #expect(GridIndicatorGeometry.badgeRect(count: 3, cell: cell) == CGRect(x: 55, y: -3, width: 12, height: 12))
-    #expect(GridIndicatorGeometry.badgeRect(count: 12, cell: cell) == CGRect(x: 49, y: -3, width: 18, height: 12))
+    #expect(GridIndicatorGeometry.iconRect(tile: CGRect(x: 6, y: 6, width: 116, height: 68)) == CGRect(x: 50, y: 26, width: 28, height: 28))
+    #expect(GridIndicatorGeometry.iconRect(tile: CGRect(x: 0, y: 0, width: 26, height: 68)).width == 20)
+    #expect(GridIndicatorGeometry.iconRect(tile: CGRect(x: 0, y: 0, width: 128, height: 14)).width == 14)
+    let cell = CGRect(x: 0, y: 0, width: 128, height: 80)
+    #expect(GridIndicatorGeometry.reservedRects(count: 2, cell: cell, metrics: .indicator)
+            == [CGRect(x: 4, y: 56, width: 20, height: 20), CGRect(x: 26, y: 56, width: 20, height: 20)])
+    #expect(GridIndicatorGeometry.badgeRect(count: 3, cell: cell, metrics: .indicator) == CGRect(x: 110, y: -6, width: 24, height: 24))
+    #expect(GridIndicatorGeometry.badgeRect(count: 12, cell: cell, metrics: .indicator) == CGRect(x: 98, y: -6, width: 36, height: 24))
 }
 
 @Test func appIconsLoadOncePerPidAndArePrunedWithTheirApps() {
@@ -228,21 +229,25 @@ func miniaturesMirrorTheCoreLayoutOnShownAndStashedPages(portrait: Bool) {
 
 @Test func switcherMetricsDoubleTheCellAndFitTheTrayOnTheTopEdge() {
     let area = Rect(x: 0, y: 33, width: 1512, height: 945)
-    #expect(GridIndicatorGeometry.cellSize(area: area, metrics: .switcher) == CGSize(width: 128, height: 80))
-    #expect(GridIndicatorGeometry.iconRect(tile: CGRect(x: 0, y: 0, width: 124, height: 76), range: GridMetrics.switcher.icon).width == 32)
-    #expect(GridIndicatorGeometry.iconRect(tile: CGRect(x: 0, y: 0, width: 60, height: 20), range: GridMetrics.switcher.icon).width == 16)
-    let cell = CGRect(x: 0, y: 100, width: 128, height: 80)
-    #expect(GridIndicatorGeometry.trayRects(count: 2, cell: cell, side: 16)
-            == [CGRect(x: 90, y: 92, width: 16, height: 16), CGRect(x: 108, y: 92, width: 16, height: 16)])
-    let crowded = GridIndicatorGeometry.trayRects(count: 10, cell: cell, side: 16)
-    #expect(crowded.allSatisfy { $0.width == 10 && $0.midY == cell.minY })
-    #expect(crowded.first.map { $0.minX >= cell.minX + 4 } == true)
-    #expect(GridIndicatorGeometry.trayRects(count: 0, cell: cell, side: 16).isEmpty)
-    let geometry = GridIndicatorGeometry(area: area, rows: 4, columns: 5, cropped: true, metrics: .switcher)
-    #expect(geometry.size == CGSize(width: 738, height: 470))
-    // The tray and its background reach 10 pt above a cell, clear of the column labels and the row above.
+    #expect(GridIndicatorGeometry.cellSize(area: area, metrics: .switcher) == CGSize(width: 256, height: 160))
+    #expect(GridIndicatorGeometry.iconRect(tile: CGRect(x: 0, y: 0, width: 248, height: 152), range: GridMetrics.switcher.icon).width == 64)
+    #expect(GridIndicatorGeometry.iconRect(tile: CGRect(x: 0, y: 0, width: 120, height: 40), range: GridMetrics.switcher.icon).width == 32)
+    let cell = CGRect(x: 0, y: 200, width: 256, height: 160)
+    #expect(GridIndicatorGeometry.trayRects(count: 2, cell: cell, metrics: .switcher)
+            == [CGRect(x: 180, y: 184, width: 32, height: 32), CGRect(x: 216, y: 184, width: 32, height: 32)])
+    let crowded = GridIndicatorGeometry.trayRects(count: 10, cell: cell, metrics: .switcher)
+    #expect(crowded.allSatisfy { $0.width == 20 && $0.midY == cell.minY })
+    #expect(crowded.first.map { $0.minX >= cell.minX + 8 } == true)
+    #expect(GridIndicatorGeometry.trayRects(count: 0, cell: cell, metrics: .switcher).isEmpty)
+    #expect(GridIndicatorGeometry.trayRects(count: 2, cell: cell, metrics: .indicator).isEmpty)
+    // A display with room for the whole 4 by 5 grid draws it at full size.
+    let geometry = GridIndicatorGeometry(area: Rect(x: 0, y: 0, width: 1600, height: 1000), rows: 4, columns: 5, cropped: true,
+                                         metrics: .switcher)
+    #expect(geometry.metrics == .switcher)
+    #expect(geometry.size == CGSize(width: 1476, height: 940))
+    // The tray and its background reach 20 pt above a cell, clear of the column labels and the row above.
     let first = geometry.cellRect(row: 0, column: 0), below = geometry.cellRect(row: 1, column: 0)
-    #expect(first.minY - 10 >= GridIndicatorGeometry.gridTop + GridIndicatorGeometry.labelHeight)
-    #expect(below.minY - 10 > first.maxY)
-    #expect(GridIndicatorGeometry.cell(row: 1, column: 2, size: geometry.cell, spacing: 12) == CGRect(x: 280, y: 92, width: 128, height: 80))
+    #expect(first.minY - 20 >= geometry.gridTop + geometry.labelHeight)
+    #expect(below.minY - 20 > first.maxY)
+    #expect(GridIndicatorGeometry.cell(row: 1, column: 2, size: geometry.cell, spacing: 24) == CGRect(x: 560, y: 184, width: 256, height: 160))
 }

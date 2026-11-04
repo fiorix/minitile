@@ -21,8 +21,6 @@ final class GrabPanel: GrabPresenting {
         self.panel = panel
         let target = Geometry.cocoaFrame(frame, primaryHeight: height).insetBy(dx: -Self.width, dy: -Self.width)
         if panel.frame != target { panel.setFrame(target, display: true) }
-        // Redrawn on every show, so the outline picks up an accent colour changed since the last one.
-        panel.contentView?.needsDisplay = true
         if !panel.isVisible { panel.orderFrontRegardless() }
     }
 
@@ -56,13 +54,8 @@ final class GrabOutlineView: NSView {
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: inset, dy: inset), xRadius: GrabPanel.radius + inset,
                                 yRadius: GrabPanel.radius + inset)
         path.lineWidth = GrabPanel.width
-        NSColor.controlAccentColor.setStroke()
+        PanelStyle.grab.color.setStroke()
         path.stroke()
-    }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        needsDisplay = true
     }
 }
 

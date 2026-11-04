@@ -47,7 +47,7 @@ struct SwitcherGrid: Equatable {
                     entries.append(entry(window, GridIndicatorGeometry.tileRect(frame, area: area, cell: cell)))
                 }
                 let floaters = miniature.floaters.filter(\.active)
-                let tray = GridIndicatorGeometry.trayRects(count: floaters.count, cell: cell, side: metrics.trayIcon ?? 16)
+                let tray = GridIndicatorGeometry.trayRects(count: floaters.count, cell: cell, metrics: metrics)
                 for (floater, rect) in zip(floaters, tray) { entries.append(entry(floater.window, rect)) }
             }
         }
