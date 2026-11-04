@@ -8,6 +8,8 @@ swift build "${flags[@]}"
 bin=$(swift build "${flags[@]}" --show-bin-path)
 app="$PWD/build/Minitile.app"
 mkdir -p "$app/Contents/MacOS"
+# Copying over a signed binary in place makes macOS kill it at launch, so replace the files instead.
+rm -f "$app/Contents/MacOS/minitile" build/mntl
 cp "$bin/minitile" "$app/Contents/MacOS/minitile"
 cp "$bin/mntl" build/mntl
 cat > "$app/Contents/Info.plist" <<'PLIST'
