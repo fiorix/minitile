@@ -107,7 +107,9 @@ cleanup() {
     if "$mntl" --json state > "$report/cleanup-state.json" 2>/dev/null; then
         ids=$(jq -r --arg prefix "$prefix" '.windows[] | select(.bundle_id == "com.apple.TextEdit" and (.title | contains($prefix))) | .id' "$report/cleanup-state.json")
         for id in $ids; do
+            if ! wait_active; then break; fi
             "$mntl" window show "$id" >/dev/null
+            if ! wait_active; then break; fi
             "$mntl" window close "$id" >/dev/null
         done
         for ((attempt=0; attempt<40; attempt++)); do
@@ -170,6 +172,17 @@ only_apps = ["com.apple.TextEdit"]
 padding = 8
 gaps = 8
 CONFIG
+}
+
+wait_active() {
+    local deadline=$((SECONDS + 15))
+    while ((SECONDS < deadline)); do
+        if ! "$mntl" --json debug health > "$report/latest-health.json"; then return 1; fi
+        if jq -e '.started and (.suspended | not)' "$report/latest-health.json" >/dev/null; then return; fi
+        sleep 0.1
+    done
+    echo "Session remained suspended; see $report/latest-health.json." >&2
+    return 1
 }
 
 launch() {
@@ -283,6 +296,7 @@ if [ "$activation_test" = 1 ]; then
         exit 1
     fi
     for ((round=1; round<=10; round++)); do
+        wait_active
         for id in "$a" "$b" "$c"; do "$mntl" window focus "$id"; done
         "$mntl" workspace next
         build/smoke-support restore "$front_pid"
