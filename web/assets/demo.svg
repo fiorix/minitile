@@ -1,414 +1,277 @@
-<svg xmlns="http://www.w3.org/2000/svg" class="desk-illustration" viewBox="0 0 1120 704" role="img" aria-labelledby="desk-title desk-desc">
+<svg xmlns="http://www.w3.org/2000/svg" class="desk-illustration" viewBox="0 14 1120 632" role="img" aria-labelledby="desk-title desk-desc">
     <style>.desk-illustration {
   overflow: visible;
 }
 .desk-illustration text {
-  fill: #aabbd0;
-  font: 9px ui-monospace, monospace;
+  fill: #9fb3d1;
+  font: 9px ui-monospace, "SF Mono", Menlo, monospace;
   stroke: none;
 }
-.desk-illustration .hardware-label {
-  font-size: 8px;
-  letter-spacing: 1.1px;
-  fill: #98abc3;
-}
-.desk-illustration .hardware-note {
-  font-size: 6.5px;
-  letter-spacing: 0.8px;
-  fill: #8395ac;
-}
-.construction-lines {
-  fill: none;
-  stroke: #8295af;
-  stroke-opacity: 0.15;
-  stroke-width: 0.7;
-}
 .monitor-shell {
-  fill: #10151c;
-  stroke: #75879e;
-  stroke-width: 1;
+  fill: #7d9cc9;
+  fill-opacity: 0.035;
+  stroke: #7d9cc9;
+  stroke-opacity: 0.6;
+  stroke-width: 0.75;
 }
-.monitor-inner {
+.monitor-inner,
+.monitor-chin {
   fill: none;
-  stroke: #35465b;
-  stroke-width: 0.7;
+  stroke: #7d9cc9;
+  stroke-opacity: 0.25;
+  stroke-width: 0.5;
 }
 .camera-dot {
-  fill: #7d91ac;
+  fill: #7d9cc9;
 }
 .screen-bg {
-  fill: #0d131a;
+  fill: #04070d;
 }
 .screen-grid {
   fill: url(#desk-grid);
 }
-.monitor-chin {
-  fill: none;
-  stroke: #35465b;
-  stroke-width: 0.7;
-}
-.desk-illustration .monitor-wordmark {
-  font-size: 8px;
-  letter-spacing: 3px;
-  fill: #8c9eb5;
-}
 .monitor-stand {
-  fill: #10151b;
-  stroke: #52647d;
-  stroke-width: 0.8;
+  fill: #7d9cc9;
+  fill-opacity: 0.03;
+  stroke: #7d9cc9;
+  stroke-opacity: 0.45;
+  stroke-width: 0.6;
 }
 .screen-menubar > rect {
-  fill: #19222d;
+  fill: #7d9cc9;
+  fill-opacity: 0.08;
+}
+.desk-illustration .menu-mark {
+  fill: #53e9ff;
 }
 .desk-illustration .menu-app {
   font-weight: 600;
+  fill: #e8f0fc;
 }
 .desk-illustration .menu-items,
 .desk-illustration .menu-location {
   font-size: 8px;
 }
 .window-surface {
-  fill: #101923;
-  stroke: #4a5e78;
-  stroke-width: 1;
+  fill: #7d9cc9;
+  fill-opacity: 0.06;
+  stroke: #7d9cc9;
+  stroke-opacity: 0.55;
+  stroke-width: 0.75;
 }
 .wire-window.focused .window-surface {
-  stroke: #c8ddf8;
-  stroke-width: 1.5;
-  fill: #15212e;
-}
-.wire-window.dragged .window-surface {
-  fill: #203248;
-  fill-opacity: 0.95;
-  stroke: #c8ddf8;
-  stroke-dasharray: 5 3;
-}
-.wire-window.drop-target .window-surface {
-  stroke: #9dd0ba;
-  fill: #1c322f;
+  fill: #53e9ff;
+  fill-opacity: 0.06;
+  stroke: #dcfbff;
+  stroke-opacity: 1;
+  stroke-width: 1.1;
+  filter: url(#neon-glow);
 }
 .window-rule {
-  stroke: #3f526a;
-  stroke-width: 0.7;
+  stroke: #7d9cc9;
+  stroke-opacity: 0.3;
+  stroke-width: 0.5;
 }
 .window-dots {
-  stroke: #8a9db5;
-  stroke-width: 0.8;
+  stroke: #7d9cc9;
+  stroke-opacity: 0.7;
+  stroke-width: 0.6;
   fill: none;
 }
 .desk-illustration .window-app {
   font-size: 8px;
-  fill: #c4d0df;
+  fill: #b9c9e2;
 }
 .desk-illustration .content-muted {
-  fill: #8fa1b9;
+  fill: #7f94b5;
   font-size: 8px;
 }
 .code-stroke {
-  stroke: #8eaacb;
-  stroke-width: 3;
+  stroke: #7d9cc9;
+  stroke-width: 2;
   stroke-linecap: round;
-  opacity: 0.65;
+  opacity: 0.55;
 }
 .code-stroke-1 {
-  stroke: #526981;
+  opacity: 0.3;
 }
 .code-stroke-2 {
-  stroke: #b3c5db;
+  stroke: #b9cff0;
+  opacity: 0.6;
 }
-.note-title {
-  fill: #bdcce0;
+.desk-illustration .note-title {
+  fill: #b9c9e2;
 }
 .note-checkbox {
   fill: none;
-  stroke: #8197b3;
-  stroke-width: 0.8;
+  stroke: #7d9cc9;
+  stroke-width: 0.6;
 }
 .note-line {
-  stroke: #657e9c;
-  stroke-width: 2;
+  stroke: #7d9cc9;
+  stroke-opacity: 0.6;
+  stroke-width: 1.5;
   stroke-linecap: round;
 }
 .terminal-cursor {
-  fill: #a8bed8;
+  fill: #53e9ff;
 }
-.browser-tab,
-.research-tab {
-  fill: #1b2b3c;
-  stroke: #42566d;
+.browser-tab {
+  fill: #7d9cc9;
+  fill-opacity: 0.1;
+  stroke: #7d9cc9;
+  stroke-opacity: 0.5;
   stroke-width: 0.5;
 }
 .browser-tabs text {
   font-size: 7px;
 }
 .browser-address {
-  fill: #0f1822;
-  stroke: #364961;
-  stroke-width: 0.6;
+  fill: none;
+  stroke: #7d9cc9;
+  stroke-opacity: 0.4;
+  stroke-width: 0.5;
 }
 .browser-drawing {
-  stroke: #7f9cbd;
-  stroke-width: 1;
+  stroke: #7d9cc9;
+  stroke-width: 0.6;
   fill: none;
-  opacity: 0.7;
+  opacity: 0.8;
 }
 .map-page {
-  fill: #101923;
-  stroke: #4b607a;
-  stroke-width: 0.8;
+  fill: #7d9cc9;
+  fill-opacity: 0.04;
+  stroke: #7d9cc9;
+  stroke-opacity: 0.5;
+  stroke-width: 0.5;
 }
 .map-current {
   fill: none;
-  stroke: #c8ddf8;
+  stroke: #dcfbff;
   stroke-width: 0.8;
+  filter: url(#neon-glow);
 }
 .map-tile {
-  fill: #364d68;
+  fill: #7d9cc9;
+  fill-opacity: 0.45;
   stroke: none;
 }
 .map-tile.focused {
-  fill: #acc3df;
-}
-.device-outline {
-  stroke: #71859e;
-  stroke-width: 0.9;
-  fill: #0e141b;
-}
-.device-inset {
-  stroke: #34485f;
-  stroke-width: 0.7;
-  fill: none;
-}
-.keyboard-key rect {
-  fill: #111b26;
-  stroke: #536780;
-  stroke-width: 0.7;
-}
-.keyboard-key text {
-  fill: #96a9c1;
-  font-size: 7px;
-}
-.keyboard-key.pressed rect {
-  fill: #c8ddf8;
-  stroke: #e5efff;
-  stroke-width: 1.5;
-}
-.keyboard-key.pressed text {
-  fill: #0d1723;
-}
-.mouse-button {
-  fill: transparent;
-  stroke: none;
-}
-.mouse.pressed .mouse-button {
-  fill: #c8ddf8;
-  fill-opacity: 0.6;
-}
-.wire-hand {
-  pointer-events: none;
-  stroke: #a2bad8;
-  stroke-width: 0.8;
-  stroke-linejoin: round;
-}
-.hand-palm,
-.finger-outline {
-  fill: #8daac3;
-  fill-opacity: 0.055;
-}
-.hand-mesh,
-.finger-mesh {
-  fill: none;
-  stroke: #8ca6c7;
-  stroke-opacity: 0.42;
-  stroke-width: 0.65;
-}
-.finger-joint {
-  fill: #142131;
-  stroke: #a2bad8;
-  stroke-width: 0.6;
-}
-.finger-tip {
-  fill: #9cb7d8;
-  fill-opacity: 0.1;
-  stroke-opacity: 0.5;
-}
-.touching .finger-tip {
-  fill: #e1edff;
-  stroke: #e1edff;
+  fill: #53e9ff;
   fill-opacity: 1;
 }
-.gesture-trails {
-  stroke: #c8ddf8;
-  stroke-width: 1.2;
-  fill: none;
+.desk-illustration .map-note {
+  font: 8px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  fill: #6f7e97;
 }
-.screen-pointer {
-  fill: #e3efff;
-  stroke: #0b121b;
-  stroke-width: 1.2;
-}
-.tab-ghost rect {
-  fill: #233a53;
-  stroke: #c8ddf8;
-}
-.switcher-panel {
-  fill: #101c29;
-  fill-opacity: 0.98;
-  stroke: #91accb;
-  stroke-width: 1;
-}
-.switcher-page {
-  fill: #142333;
-  stroke: #415a77;
-  stroke-width: 0.8;
-}
-.desk-illustration .switcher-label {
-  font-size: 8px;
-  fill: #9db2cd;
-}
-.switcher-entry rect {
-  fill: #24394f;
-  stroke: #6a83a1;
-}
-.switcher-entry.selected rect {
-  fill: #bed4ef;
-  stroke: #e9f3ff;
-}
-.switcher-entry.selected text {
-  fill: #122235;
-}
-.key-zoom-trails {
-  stroke: #a6c2e4;
-  stroke-opacity: 0.2;
-  stroke-width: 0.7;
-  stroke-dasharray: 2 5;
-  fill: none;
-}
-.desk-illustration .key-callout-label {
-  fill: #a6bdd8;
-  font-size: 7px;
-  letter-spacing: 1px;
-}
-.mac-key-base {
-  fill: #06090d;
-  stroke: #4c5c70;
-  stroke-width: 1;
-}
-.mac-key-face {
-  fill: #161b22;
-  stroke: #8192a8;
-  stroke-width: 0.8;
-}
-.mac-key-shine {
-  stroke: #c7d5e6;
-  stroke-opacity: 0.35;
+.device-outline {
+  fill: #7d9cc9;
+  fill-opacity: 0.025;
+  stroke: #7d9cc9;
+  stroke-opacity: 0.45;
   stroke-width: 0.6;
 }
-.desk-illustration .mac-key-symbol {
-  font:
-    27px -apple-system,
-    BlinkMacSystemFont,
-    sans-serif;
-  fill: #eef3fa;
+/* Keys stay faint so the lit ones read at a glance. */
+.keyboard-key rect {
+  fill: none;
+  stroke: #7d9cc9;
+  stroke-opacity: 0.28;
+  stroke-width: 0.5;
 }
-.desk-illustration .mac-key-name {
-  font:
-    10px -apple-system,
-    BlinkMacSystemFont,
-    sans-serif;
-  fill: #dce5f0;
+.desk-illustration .keyboard-key text {
+  fill: #7d9cc9;
+  fill-opacity: 0.55;
+  font: 6.5px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
 }
-.desk-illustration .mac-key-plus {
-  font-size: 10px;
-  fill: #8097b3;
+.keyboard-key.pressed rect {
+  fill: #53e9ff;
+  fill-opacity: 0.16;
+  stroke: #dcfbff;
+  stroke-opacity: 1;
+  stroke-width: 1;
+  filter: url(#neon-glow);
 }
-.desk-illustration .input-hint-symbol {
-  font-size: 38px;
-  fill: #c8ddf8;
+.desk-illustration .keyboard-key.pressed text {
+  fill: #dcfbff;
+  fill-opacity: 1;
 }
-.desk-illustration .input-hint {
-  font-size: 9px;
-  fill: #8fa6c3;
-}</style><title id="desk-title">A wireframe Mac, keyboard, trackpad, mouse, and two hands</title>
-    <desc id="desk-desc">Move across pages and workspaces. Pages across. Workspaces down. Your windows are already in place.</desc>
+.gesture-trail {
+  fill: none;
+  stroke: #53e9ff;
+  stroke-opacity: 0.45;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+.gesture-dot {
+  fill: #dcfbff;
+  stroke: #53e9ff;
+  stroke-width: 1;
+  filter: url(#neon-glow);
+}</style>
+    <title id="desk-title">A wireframe Mac with three tiled windows, a keyboard and a trackpad</title>
+    <desc id="desk-desc">Navigate.  Pages run across and workspaces run down. Each page holds up to four windows.</desc>
     <defs>
       <clipPath id="screen-clip"><rect x="168" y="49" width="784" height="363" rx="3" class=""></rect></clipPath>
-      <pattern id="desk-grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="#c8ddf8" stroke-opacity=".035"></path></pattern>
-      <radialGradient id="desk-glow"><stop stop-color="#29425f" stop-opacity=".18"></stop><stop offset="1" stop-color="#0b0d10" stop-opacity="0"></stop></radialGradient>
+      <pattern id="desk-grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="#7d9cc9" stroke-opacity=".06" stroke-width=".5"></path></pattern>
+      <radialGradient id="desk-glow"><stop stop-color="#2d5cff" stop-opacity=".13"></stop><stop offset="1" stop-color="#05070c" stop-opacity="0"></stop></radialGradient>
+      <filter id="neon-glow" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceAlpha" stdDeviation="2.4" result="halo"></feGaussianBlur><feFlood flood-color="#53e9ff" flood-opacity=".85"></feFlood><feComposite in2="halo" operator="in" result="glow"></feComposite><feMerge><feMergeNode in="glow"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge></filter>
     </defs>
-    <ellipse cx="560" cy="340" rx="550" ry="330" fill="url(#desk-glow)"></ellipse>
-    <g class="construction-lines"><path d="M135 26H985M145 16V449M975 16V449M135 439H985M158 467H974"></path><path d="M120 38h14m-7-7v14M993 38h14m-7-7v14M120 428h14m-7-7v14M993 428h14m-7-7v14"></path></g>
-    <g class="key-zoom-trails" data-zoom-trails=""></g>
-    <text x="31" y="53" class="hardware-label">01 / DISPLAY</text>
-    <text x="31" y="70" class="hardware-note">YOUR SPACE, ARRANGED</text>
+    <ellipse cx="560" cy="300" rx="560" ry="300" fill="url(#desk-glow)"></ellipse>
     <rect x="157" y="27" width="806" height="414" rx="12" class="monitor-shell"></rect>
     <rect x="163" y="33" width="794" height="402" rx="8" class="monitor-inner"></rect>
     <circle cx="560" cy="41" r="2" class="camera-dot"></circle>
     <g clip-path="url(#screen-clip)">
       <rect x="168" y="49" width="784" height="363" rx="0" class="screen-bg"></rect>
       <rect x="168" y="49" width="784" height="363" rx="0" class="screen-grid"></rect>
-      <g data-windows=""><g data-window="calendar" class="wire-window" transform="translate(564 453.91999999999996)" opacity="1" data-content="375:320:false">
-    <rect class="window-surface" rx="5" width="375" height="320"></rect><svg class="window-interior" overflow="hidden" width="375" height="320">
-      <path class="window-rule" d="M0 26H375"></path><g class="window-dots"><circle cx="13" cy="13" r="3"></circle><circle cx="24" cy="13" r="3"></circle><circle cx="35" cy="13" r="3"></circle></g>
-      <text x="48" y="16" class="window-app">Calendar</text>
-      <g class="window-content"><text x="18" y="53" class="note-title">Today</text><rect x="19" y="72" width="7" height="7" rx="1" class="note-checkbox"></rect><path class="note-line" d="M35 76h212.66"></path><rect x="19" y="95" width="7" height="7" rx="1" class="note-checkbox"></rect><path class="note-line" d="M35 99h264.11"></path><rect x="19" y="118" width="7" height="7" rx="1" class="note-checkbox"></rect><path class="note-line" d="M35 122h164.64"></path></g>
-    </svg></g><g data-window="mail" class="wire-window" transform="translate(181 453.91999999999996)" opacity="1" data-content="375:320:false">
-    <rect class="window-surface" rx="5" width="375" height="320"></rect><svg class="window-interior" overflow="hidden" width="375" height="320">
-      <path class="window-rule" d="M0 26H375"></path><g class="window-dots"><circle cx="13" cy="13" r="3"></circle><circle cx="24" cy="13" r="3"></circle><circle cx="35" cy="13" r="3"></circle></g>
-      <text x="48" y="16" class="window-app">Mail</text>
-      <g class="window-content"><text x="18" y="53" class="note-title">Inbox</text><rect x="19" y="72" width="7" height="7" rx="1" class="note-checkbox"></rect><path class="note-line" d="M35 76h212.66"></path><rect x="19" y="95" width="7" height="7" rx="1" class="note-checkbox"></rect><path class="note-line" d="M35 99h264.11"></path><rect x="19" y="118" width="7" height="7" rx="1" class="note-checkbox"></rect><path class="note-line" d="M35 122h164.64"></path></g>
-    </svg></g><g data-window="terminal" class="wire-window" transform="translate(564 244)" opacity="1" data-content="375:156:false">
-    <rect class="window-surface" rx="5" width="375" height="156"></rect><svg class="window-interior" overflow="hidden" width="375" height="156">
-      <path class="window-rule" d="M0 26H375"></path><g class="window-dots"><circle cx="13" cy="13" r="3"></circle><circle cx="24" cy="13" r="3"></circle><circle cx="35" cy="13" r="3"></circle></g>
-      <text x="48" y="16" class="window-app">Terminal</text>
-      <g class="window-content"><text x="17" y="49" class="content-muted">~ / projects</text><text x="17" y="72" class="terminal-line">$ mntl page list</text><text x="17" y="94" class="content-muted">1   editor · notes · terminal</text><rect x="17" y="110" width="6" height="11" rx="0" class="terminal-cursor"></rect></g>
-    </svg></g><g data-window="notes" class="wire-window" transform="translate(564 80)" opacity="1" data-content="375:156:false">
+      <g data-windows=""><g data-window="notes" class="wire-window" transform="translate(564 80)" opacity="1" data-content="375:156">
     <rect class="window-surface" rx="5" width="375" height="156"></rect><svg class="window-interior" overflow="hidden" width="375" height="156">
       <path class="window-rule" d="M0 26H375"></path><g class="window-dots"><circle cx="13" cy="13" r="3"></circle><circle cx="24" cy="13" r="3"></circle><circle cx="35" cy="13" r="3"></circle></g>
       <text x="48" y="16" class="window-app">Notes</text>
       <g class="window-content"><text x="18" y="53" class="note-title">A little room to think</text><rect x="19" y="72" width="7" height="7" rx="1" class="note-checkbox"></rect><path class="note-line" d="M35 76h212.66"></path><rect x="19" y="95" width="7" height="7" rx="1" class="note-checkbox"></rect><path class="note-line" d="M35 99h264.11"></path><rect x="19" y="118" width="7" height="7" rx="1" class="note-checkbox"></rect><path class="note-line" d="M35 122h164.64"></path></g>
-    </svg></g><g data-window="files" class="wire-window" transform="translate(1008.2800000000001 453.91999999999996)" opacity="1" data-content="758:320:false">
-    <rect class="window-surface" rx="5" width="758" height="320"></rect><svg class="window-interior" overflow="hidden" width="758" height="320">
-      <path class="window-rule" d="M0 26H758"></path><g class="window-dots"><circle cx="13" cy="13" r="3"></circle><circle cx="24" cy="13" r="3"></circle><circle cx="35" cy="13" r="3"></circle></g>
-      <text x="48" y="16" class="window-app">Finder</text>
-      <g class="window-content"><text x="18" y="53" class="note-title">Projects</text><rect x="19" y="72" width="7" height="7" rx="1" class="note-checkbox"></rect><path class="note-line" d="M35 76h450.12"></path><rect x="19" y="95" width="7" height="7" rx="1" class="note-checkbox"></rect><path class="note-line" d="M35 99h559.02"></path><rect x="19" y="118" width="7" height="7" rx="1" class="note-checkbox"></rect><path class="note-line" d="M35 122h348.47999999999996"></path></g>
-    </svg></g><g data-window="browser" class="wire-window" transform="translate(1008.2800000000001 80)" opacity="1" data-content="758:320:false">
+    </svg></g><g data-window="terminal" class="wire-window" transform="translate(564 244)" opacity="1" data-content="375:156">
+    <rect class="window-surface" rx="5" width="375" height="156"></rect><svg class="window-interior" overflow="hidden" width="375" height="156">
+      <path class="window-rule" d="M0 26H375"></path><g class="window-dots"><circle cx="13" cy="13" r="3"></circle><circle cx="24" cy="13" r="3"></circle><circle cx="35" cy="13" r="3"></circle></g>
+      <text x="48" y="16" class="window-app">Terminal</text>
+      <g class="window-content"><text x="17" y="49" class="content-muted">~ / projects</text><text x="17" y="72" class="terminal-line">$ mntl page list</text><text x="17" y="94" class="content-muted">1   editor · notes · terminal</text><rect x="17" y="110" width="6" height="11" rx="0" class="terminal-cursor"></rect></g>
+    </svg></g><g data-window="browser" class="wire-window" transform="translate(1008.2800000000001 80)" opacity="1" data-content="758:320">
     <rect class="window-surface" rx="5" width="758" height="320"></rect><svg class="window-interior" overflow="hidden" width="758" height="320">
       <path class="window-rule" d="M0 26H758"></path><g class="window-dots"><circle cx="13" cy="13" r="3"></circle><circle cx="24" cy="13" r="3"></circle><circle cx="35" cy="13" r="3"></circle></g>
       <text x="48" y="16" class="window-app">Browser</text>
       <g class="window-content"><g class="browser-tabs"><rect x="9" y="30" width="726" height="18" rx="3" class="browser-tab"></rect><text x="16" y="43" class="">Start here</text></g>
       <rect x="12" y="55" width="734" height="20" rx="3" class="browser-address"></rect><text x="22" y="68" class="content-muted">a little room to explore</text>
       <g class="browser-drawing" transform="translate(379 184)"><circle r="26"></circle><ellipse rx="10" ry="26"></ellipse><path d="M-26 0h52M-22-13h44M-22 13h44"></path></g></g>
-    </svg></g><g data-window="editor" class="wire-window focused" transform="translate(181 80)" opacity="1" data-content="375:320:false">
+    </svg></g><g data-window="mail" class="wire-window" transform="translate(181 453.91999999999996)" opacity="1" data-content="375:320">
+    <rect class="window-surface" rx="5" width="375" height="320"></rect><svg class="window-interior" overflow="hidden" width="375" height="320">
+      <path class="window-rule" d="M0 26H375"></path><g class="window-dots"><circle cx="13" cy="13" r="3"></circle><circle cx="24" cy="13" r="3"></circle><circle cx="35" cy="13" r="3"></circle></g>
+      <text x="48" y="16" class="window-app">Mail</text>
+      <g class="window-content"><text x="18" y="53" class="note-title">Inbox</text><rect x="19" y="72" width="7" height="7" rx="1" class="note-checkbox"></rect><path class="note-line" d="M35 76h212.66"></path><rect x="19" y="95" width="7" height="7" rx="1" class="note-checkbox"></rect><path class="note-line" d="M35 99h264.11"></path><rect x="19" y="118" width="7" height="7" rx="1" class="note-checkbox"></rect><path class="note-line" d="M35 122h164.64"></path></g>
+    </svg></g><g data-window="calendar" class="wire-window" transform="translate(564 453.91999999999996)" opacity="1" data-content="375:320">
+    <rect class="window-surface" rx="5" width="375" height="320"></rect><svg class="window-interior" overflow="hidden" width="375" height="320">
+      <path class="window-rule" d="M0 26H375"></path><g class="window-dots"><circle cx="13" cy="13" r="3"></circle><circle cx="24" cy="13" r="3"></circle><circle cx="35" cy="13" r="3"></circle></g>
+      <text x="48" y="16" class="window-app">Calendar</text>
+      <g class="window-content"><text x="18" y="53" class="note-title">Today</text><rect x="19" y="72" width="7" height="7" rx="1" class="note-checkbox"></rect><path class="note-line" d="M35 76h212.66"></path><rect x="19" y="95" width="7" height="7" rx="1" class="note-checkbox"></rect><path class="note-line" d="M35 99h264.11"></path><rect x="19" y="118" width="7" height="7" rx="1" class="note-checkbox"></rect><path class="note-line" d="M35 122h164.64"></path></g>
+    </svg></g><g data-window="files" class="wire-window" transform="translate(1008.2800000000001 453.91999999999996)" opacity="1" data-content="758:320">
+    <rect class="window-surface" rx="5" width="758" height="320"></rect><svg class="window-interior" overflow="hidden" width="758" height="320">
+      <path class="window-rule" d="M0 26H758"></path><g class="window-dots"><circle cx="13" cy="13" r="3"></circle><circle cx="24" cy="13" r="3"></circle><circle cx="35" cy="13" r="3"></circle></g>
+      <text x="48" y="16" class="window-app">Finder</text>
+      <g class="window-content"><text x="18" y="53" class="note-title">Projects</text><rect x="19" y="72" width="7" height="7" rx="1" class="note-checkbox"></rect><path class="note-line" d="M35 76h450.12"></path><rect x="19" y="95" width="7" height="7" rx="1" class="note-checkbox"></rect><path class="note-line" d="M35 99h559.02"></path><rect x="19" y="118" width="7" height="7" rx="1" class="note-checkbox"></rect><path class="note-line" d="M35 122h348.47999999999996"></path></g>
+    </svg></g><g data-window="editor" class="wire-window focused" transform="translate(181 80)" opacity="1" data-content="375:320">
     <rect class="window-surface" rx="5" width="375" height="320"></rect><svg class="window-interior" overflow="hidden" width="375" height="320">
       <path class="window-rule" d="M0 26H375"></path><g class="window-dots"><circle cx="13" cy="13" r="3"></circle><circle cx="24" cy="13" r="3"></circle><circle cx="35" cy="13" r="3"></circle></g>
       <text x="48" y="16" class="window-app">Editor</text>
       <g class="window-content"><text x="15" y="46" class="content-muted">a-little-space.swift</text><path class="code-stroke code-stroke-0" d="M24 70h172.87199999999999"></path><path class="code-stroke code-stroke-1" d="M42 88h103.72319999999999"></path><path class="code-stroke code-stroke-2" d="M42 106h155.5848"></path><path class="code-stroke code-stroke-0" d="M24 124h123.47999999999999"></path><path class="code-stroke code-stroke-1" d="M42 142h190.1592"></path><path class="code-stroke code-stroke-2" d="M42 160h93.84479999999999"></path><path class="code-stroke code-stroke-0" d="M24 178h140.76719999999997"></path><path class="code-stroke code-stroke-1" d="M42 196h170.40239999999997"></path><path class="code-stroke code-stroke-2" d="M42 214h79.02720000000001"></path><text x="16" y="306" class="content-muted">main   /   Swift</text></g>
     </svg></g></g>
-      <g class="window-switcher" data-switcher=""></g>
-      <g class="screen-pointer" data-pointer="" transform="translate(560 240)" style="display: none;"><path d="M0 0v21l5-5 5 9 4-2-5-9 8-1Z"></path></g>
-      <g class="tab-ghost" data-tab-ghost="" transform="translate(569 252)" style="display: none;"><rect x="0" y="0" width="118" height="26" rx="4" class=""></rect><text x="12" y="17" class="">Research ↗</text></g>
     </g>
     <g class="screen-menubar"><rect x="168" y="49" width="784" height="21" rx="0" class=""></rect><text x="179" y="63" class="menu-mark">◆</text><text x="199" y="63" class="menu-app" data-menu-app="">Editor</text><text x="258" y="63" class="menu-items">File   Edit   View   Window</text><text x="938" y="63" class="menu-location" text-anchor="end" data-location="">W1 / P1     9:41</text></g>
-    <g class="monitor-chin"><path d="M157 417H963"></path><text x="560" y="431" class="monitor-wordmark" text-anchor="middle">minitile</text></g>
+    <path class="monitor-chin" d="M157 417H963"></path>
     <path class="monitor-stand" d="M526 441 519 467H601L594 441M519 467 496 476H624L601 467"></path>
     <g data-minimap="" transform="translate(988 104)"><rect x="0" y="0" width="38" height="18.558746736292427" rx="2" class="map-page"></rect><rect x="42" y="0" width="38" height="18.558746736292427" rx="2" class="map-page"></rect><rect x="0" y="22.558746736292427" width="38" height="18.558746736292427" rx="2" class="map-page"></rect><rect x="42" y="22.558746736292427" width="38" height="18.558746736292427" rx="2" class="map-page"></rect><rect data-mini-window="editor" x="2.177545691906005" y="2.177545691906005" width="16.64490861618799" height="14.203655352480418" opacity="1" rx=".4" class="map-tile focused"></rect><rect data-mini-window="notes" x="19.177545691906005" y="2.177545691906005" width="16.64490861618799" height="6.924281984334204" opacity="1" rx=".4" class="map-tile "></rect><rect data-mini-window="terminal" x="19.177545691906005" y="9.45691906005222" width="16.64490861618799" height="6.924281984334204" opacity="1" rx=".4" class="map-tile "></rect><rect data-mini-window="browser" x="44.177545691906005" y="2.177545691906005" width="33.64490861618799" height="14.203655352480418" opacity="1" rx=".4" class="map-tile "></rect><rect data-mini-window="mail" x="2.177545691906005" y="24.736292428198432" width="16.64490861618799" height="14.203655352480418" opacity="1" rx=".4" class="map-tile "></rect><rect data-mini-window="calendar" x="19.177545691906005" y="24.736292428198432" width="16.64490861618799" height="14.203655352480418" opacity="1" rx=".4" class="map-tile "></rect><rect data-mini-window="files" x="44.177545691906005" y="24.736292428198432" width="33.64490861618799" height="14.203655352480418" opacity="1" rx=".4" class="map-tile "></rect><rect x="0" y="0" width="38" height="18.558746736292427" rx="2" class="map-current"></rect></g>
-    <text x="988" y="92" class="hardware-note">THE GRID</text>
-    <text x="988" y="201" class="hardware-note">PAGES →</text>
-    <text x="988" y="219" class="hardware-note">WORKSPACES ↓</text>
-    <g class="input-hardware">
-    <g class="construction-lines"><path d="M168 479V641M952 479V641"></path></g>
-    <g class="keyboard"><rect x="181" y="488" width="570" height="149" rx="9" class="device-outline"></rect><rect x="185" y="492" width="562" height="141" rx="6" class="device-inset"></rect>
-      <g data-key="backtick" class="keyboard-key"><rect x="195" y="502" width="30" height="21" rx="3" class=""></rect><text x="210" y="516" class="" text-anchor="middle">`</text></g><g data-key="1" class="keyboard-key"><rect x="229" y="502" width="30" height="21" rx="3" class=""></rect><text x="244" y="516" class="" text-anchor="middle">1</text></g><g data-key="2" class="keyboard-key"><rect x="263" y="502" width="30" height="21" rx="3" class=""></rect><text x="278" y="516" class="" text-anchor="middle">2</text></g><g data-key="3" class="keyboard-key"><rect x="297" y="502" width="30" height="21" rx="3" class=""></rect><text x="312" y="516" class="" text-anchor="middle">3</text></g><g data-key="4" class="keyboard-key"><rect x="331" y="502" width="30" height="21" rx="3" class=""></rect><text x="346" y="516" class="" text-anchor="middle">4</text></g><g data-key="5" class="keyboard-key"><rect x="365" y="502" width="30" height="21" rx="3" class=""></rect><text x="380" y="516" class="" text-anchor="middle">5</text></g><g data-key="6" class="keyboard-key"><rect x="399" y="502" width="30" height="21" rx="3" class=""></rect><text x="414" y="516" class="" text-anchor="middle">6</text></g><g data-key="7" class="keyboard-key"><rect x="433" y="502" width="30" height="21" rx="3" class=""></rect><text x="448" y="516" class="" text-anchor="middle">7</text></g><g data-key="8" class="keyboard-key"><rect x="467" y="502" width="30" height="21" rx="3" class=""></rect><text x="482" y="516" class="" text-anchor="middle">8</text></g><g data-key="9" class="keyboard-key"><rect x="501" y="502" width="30" height="21" rx="3" class=""></rect><text x="516" y="516" class="" text-anchor="middle">9</text></g><g data-key="0" class="keyboard-key"><rect x="535" y="502" width="30" height="21" rx="3" class=""></rect><text x="550" y="516" class="" text-anchor="middle">0</text></g><g data-key="-" class="keyboard-key"><rect x="569" y="502" width="30" height="21" rx="3" class=""></rect><text x="584" y="516" class="" text-anchor="middle">-</text></g><g data-key="=" class="keyboard-key"><rect x="603" y="502" width="30" height="21" rx="3" class=""></rect><text x="618" y="516" class="" text-anchor="middle">=</text></g><g data-key="delete" class="keyboard-key"><rect x="637" y="502" width="30" height="21" rx="3" class=""></rect><text x="652" y="516" class="" text-anchor="middle">delete</text></g><g data-key="tab" class="keyboard-key"><rect x="195" y="527" width="48" height="21" rx="3" class=""></rect><text x="219" y="541" class="" text-anchor="middle">tab</text></g><g data-key="q" class="keyboard-key"><rect x="247" y="527" width="30" height="21" rx="3" class=""></rect><text x="262" y="541" class="" text-anchor="middle">q</text></g><g data-key="w" class="keyboard-key"><rect x="281" y="527" width="30" height="21" rx="3" class=""></rect><text x="296" y="541" class="" text-anchor="middle">w</text></g><g data-key="e" class="keyboard-key"><rect x="315" y="527" width="30" height="21" rx="3" class=""></rect><text x="330" y="541" class="" text-anchor="middle">e</text></g><g data-key="r" class="keyboard-key"><rect x="349" y="527" width="30" height="21" rx="3" class=""></rect><text x="364" y="541" class="" text-anchor="middle">r</text></g><g data-key="t" class="keyboard-key"><rect x="383" y="527" width="30" height="21" rx="3" class=""></rect><text x="398" y="541" class="" text-anchor="middle">t</text></g><g data-key="y" class="keyboard-key"><rect x="417" y="527" width="30" height="21" rx="3" class=""></rect><text x="432" y="541" class="" text-anchor="middle">y</text></g><g data-key="u" class="keyboard-key"><rect x="451" y="527" width="30" height="21" rx="3" class=""></rect><text x="466" y="541" class="" text-anchor="middle">u</text></g><g data-key="i" class="keyboard-key"><rect x="485" y="527" width="30" height="21" rx="3" class=""></rect><text x="500" y="541" class="" text-anchor="middle">i</text></g><g data-key="o" class="keyboard-key"><rect x="519" y="527" width="30" height="21" rx="3" class=""></rect><text x="534" y="541" class="" text-anchor="middle">o</text></g><g data-key="p" class="keyboard-key"><rect x="553" y="527" width="30" height="21" rx="3" class=""></rect><text x="568" y="541" class="" text-anchor="middle">p</text></g><g data-key="[" class="keyboard-key"><rect x="587" y="527" width="30" height="21" rx="3" class=""></rect><text x="602" y="541" class="" text-anchor="middle">[</text></g><g data-key="]" class="keyboard-key"><rect x="621" y="527" width="30" height="21" rx="3" class=""></rect><text x="636" y="541" class="" text-anchor="middle">]</text></g><g data-key="\" class="keyboard-key"><rect x="655" y="527" width="30" height="21" rx="3" class=""></rect><text x="670" y="541" class="" text-anchor="middle">\</text></g><g data-key="caps" class="keyboard-key"><rect x="195" y="552" width="48" height="21" rx="3" class=""></rect><text x="219" y="566" class="" text-anchor="middle">caps</text></g><g data-key="a" class="keyboard-key"><rect x="247" y="552" width="30" height="21" rx="3" class=""></rect><text x="262" y="566" class="" text-anchor="middle">a</text></g><g data-key="s" class="keyboard-key"><rect x="281" y="552" width="30" height="21" rx="3" class=""></rect><text x="296" y="566" class="" text-anchor="middle">s</text></g><g data-key="d" class="keyboard-key"><rect x="315" y="552" width="30" height="21" rx="3" class=""></rect><text x="330" y="566" class="" text-anchor="middle">d</text></g><g data-key="f" class="keyboard-key"><rect x="349" y="552" width="30" height="21" rx="3" class=""></rect><text x="364" y="566" class="" text-anchor="middle">f</text></g><g data-key="g" class="keyboard-key"><rect x="383" y="552" width="30" height="21" rx="3" class=""></rect><text x="398" y="566" class="" text-anchor="middle">g</text></g><g data-key="h" class="keyboard-key"><rect x="417" y="552" width="30" height="21" rx="3" class=""></rect><text x="432" y="566" class="" text-anchor="middle">h</text></g><g data-key="j" class="keyboard-key"><rect x="451" y="552" width="30" height="21" rx="3" class=""></rect><text x="466" y="566" class="" text-anchor="middle">j</text></g><g data-key="k" class="keyboard-key"><rect x="485" y="552" width="30" height="21" rx="3" class=""></rect><text x="500" y="566" class="" text-anchor="middle">k</text></g><g data-key="l" class="keyboard-key"><rect x="519" y="552" width="30" height="21" rx="3" class=""></rect><text x="534" y="566" class="" text-anchor="middle">l</text></g><g data-key=";" class="keyboard-key"><rect x="553" y="552" width="30" height="21" rx="3" class=""></rect><text x="568" y="566" class="" text-anchor="middle">;</text></g><g data-key="'" class="keyboard-key"><rect x="587" y="552" width="30" height="21" rx="3" class=""></rect><text x="602" y="566" class="" text-anchor="middle">'</text></g><g data-key="return" class="keyboard-key"><rect x="621" y="552" width="48" height="21" rx="3" class=""></rect><text x="645" y="566" class="" text-anchor="middle">return</text></g><g data-key="shift" class="keyboard-key"><rect x="195" y="577" width="48" height="21" rx="3" class=""></rect><text x="219" y="591" class="" text-anchor="middle">shift</text></g><g data-key="z" class="keyboard-key"><rect x="247" y="577" width="30" height="21" rx="3" class=""></rect><text x="262" y="591" class="" text-anchor="middle">z</text></g><g data-key="x" class="keyboard-key"><rect x="281" y="577" width="30" height="21" rx="3" class=""></rect><text x="296" y="591" class="" text-anchor="middle">x</text></g><g data-key="c" class="keyboard-key"><rect x="315" y="577" width="30" height="21" rx="3" class=""></rect><text x="330" y="591" class="" text-anchor="middle">c</text></g><g data-key="v" class="keyboard-key"><rect x="349" y="577" width="30" height="21" rx="3" class=""></rect><text x="364" y="591" class="" text-anchor="middle">v</text></g><g data-key="b" class="keyboard-key"><rect x="383" y="577" width="30" height="21" rx="3" class=""></rect><text x="398" y="591" class="" text-anchor="middle">b</text></g><g data-key="n" class="keyboard-key"><rect x="417" y="577" width="30" height="21" rx="3" class=""></rect><text x="432" y="591" class="" text-anchor="middle">n</text></g><g data-key="m" class="keyboard-key"><rect x="451" y="577" width="30" height="21" rx="3" class=""></rect><text x="466" y="591" class="" text-anchor="middle">m</text></g><g data-key="," class="keyboard-key"><rect x="485" y="577" width="30" height="21" rx="3" class=""></rect><text x="500" y="591" class="" text-anchor="middle">,</text></g><g data-key="." class="keyboard-key"><rect x="519" y="577" width="30" height="21" rx="3" class=""></rect><text x="534" y="591" class="" text-anchor="middle">.</text></g><g data-key="/" class="keyboard-key"><rect x="553" y="577" width="30" height="21" rx="3" class=""></rect><text x="568" y="591" class="" text-anchor="middle">/</text></g><g data-key="shift-r" class="keyboard-key"><rect x="587" y="577" width="48" height="21" rx="3" class=""></rect><text x="611" y="591" class="" text-anchor="middle">shift</text></g><g data-key="fn" class="keyboard-key"><rect x="195" y="602" width="30" height="21" rx="3" class=""></rect><text x="210" y="616" class="" text-anchor="middle">fn</text></g><g data-key="control" class="keyboard-key"><rect x="229" y="602" width="38" height="21" rx="3" class=""></rect><text x="248" y="616" class="" text-anchor="middle">ctrl</text></g><g data-key="option" class="keyboard-key"><rect x="271" y="602" width="38" height="21" rx="3" class=""></rect><text x="290" y="616" class="" text-anchor="middle">opt</text></g><g data-key="cmd" class="keyboard-key"><rect x="313" y="602" width="38" height="21" rx="3" class=""></rect><text x="332" y="616" class="" text-anchor="middle">cmd</text></g><g data-key="space" class="keyboard-key"><rect x="355" y="602" width="162" height="21" rx="3" class=""></rect><text x="436" y="616" class="" text-anchor="middle"></text></g><g data-key="cmd-r" class="keyboard-key"><rect x="521" y="602" width="38" height="21" rx="3" class=""></rect><text x="540" y="616" class="" text-anchor="middle">cmd</text></g><g data-key="option-r" class="keyboard-key"><rect x="563" y="602" width="38" height="21" rx="3" class=""></rect><text x="582" y="616" class="" text-anchor="middle">opt</text></g><g data-key="left" class="keyboard-key"><rect x="639" y="602" width="30" height="21" rx="3" class=""></rect><text x="654" y="616" class="" text-anchor="middle">←</text></g><g data-key="down" class="keyboard-key"><rect x="673" y="602" width="30" height="21" rx="3" class=""></rect><text x="688" y="616" class="" text-anchor="middle">↓</text></g><g data-key="right" class="keyboard-key"><rect x="707" y="602" width="30" height="21" rx="3" class=""></rect><text x="722" y="616" class="" text-anchor="middle">→</text></g><g data-key="up" class="keyboard-key"><rect x="673" y="577" width="30" height="21" rx="3" class=""></rect><text x="688" y="591" class="" text-anchor="middle">↑</text></g>
+    <text x="988" y="168" class="map-note">Pages →</text>
+    <text x="988" y="182" class="map-note">Workspaces ↓</text>
+    <g class="input-hardware" transform="translate(24 0)">
+    <g class="keyboard"><rect x="181" y="488" width="570" height="149" rx="9" class="device-outline"></rect>
+      <g data-key="backtick" class="keyboard-key"><rect x="195" y="502" width="30" height="21" rx="3" class=""></rect><text x="210" y="516" class="" text-anchor="middle">`</text></g><g data-key="1" class="keyboard-key"><rect x="229" y="502" width="30" height="21" rx="3" class=""></rect><text x="244" y="516" class="" text-anchor="middle">1</text></g><g data-key="2" class="keyboard-key"><rect x="263" y="502" width="30" height="21" rx="3" class=""></rect><text x="278" y="516" class="" text-anchor="middle">2</text></g><g data-key="3" class="keyboard-key"><rect x="297" y="502" width="30" height="21" rx="3" class=""></rect><text x="312" y="516" class="" text-anchor="middle">3</text></g><g data-key="4" class="keyboard-key"><rect x="331" y="502" width="30" height="21" rx="3" class=""></rect><text x="346" y="516" class="" text-anchor="middle">4</text></g><g data-key="5" class="keyboard-key"><rect x="365" y="502" width="30" height="21" rx="3" class=""></rect><text x="380" y="516" class="" text-anchor="middle">5</text></g><g data-key="6" class="keyboard-key"><rect x="399" y="502" width="30" height="21" rx="3" class=""></rect><text x="414" y="516" class="" text-anchor="middle">6</text></g><g data-key="7" class="keyboard-key"><rect x="433" y="502" width="30" height="21" rx="3" class=""></rect><text x="448" y="516" class="" text-anchor="middle">7</text></g><g data-key="8" class="keyboard-key"><rect x="467" y="502" width="30" height="21" rx="3" class=""></rect><text x="482" y="516" class="" text-anchor="middle">8</text></g><g data-key="9" class="keyboard-key"><rect x="501" y="502" width="30" height="21" rx="3" class=""></rect><text x="516" y="516" class="" text-anchor="middle">9</text></g><g data-key="0" class="keyboard-key"><rect x="535" y="502" width="30" height="21" rx="3" class=""></rect><text x="550" y="516" class="" text-anchor="middle">0</text></g><g data-key="-" class="keyboard-key"><rect x="569" y="502" width="30" height="21" rx="3" class=""></rect><text x="584" y="516" class="" text-anchor="middle">-</text></g><g data-key="=" class="keyboard-key"><rect x="603" y="502" width="30" height="21" rx="3" class=""></rect><text x="618" y="516" class="" text-anchor="middle">=</text></g><g data-key="delete" class="keyboard-key"><rect x="637" y="502" width="30" height="21" rx="3" class=""></rect><text x="652" y="516" class="" text-anchor="middle">delete</text></g><g data-key="tab" class="keyboard-key"><rect x="195" y="527" width="48" height="21" rx="3" class=""></rect><text x="219" y="541" class="" text-anchor="middle">tab</text></g><g data-key="q" class="keyboard-key"><rect x="247" y="527" width="30" height="21" rx="3" class=""></rect><text x="262" y="541" class="" text-anchor="middle">q</text></g><g data-key="w" class="keyboard-key"><rect x="281" y="527" width="30" height="21" rx="3" class=""></rect><text x="296" y="541" class="" text-anchor="middle">w</text></g><g data-key="e" class="keyboard-key"><rect x="315" y="527" width="30" height="21" rx="3" class=""></rect><text x="330" y="541" class="" text-anchor="middle">e</text></g><g data-key="r" class="keyboard-key"><rect x="349" y="527" width="30" height="21" rx="3" class=""></rect><text x="364" y="541" class="" text-anchor="middle">r</text></g><g data-key="t" class="keyboard-key"><rect x="383" y="527" width="30" height="21" rx="3" class=""></rect><text x="398" y="541" class="" text-anchor="middle">t</text></g><g data-key="y" class="keyboard-key"><rect x="417" y="527" width="30" height="21" rx="3" class=""></rect><text x="432" y="541" class="" text-anchor="middle">y</text></g><g data-key="u" class="keyboard-key"><rect x="451" y="527" width="30" height="21" rx="3" class=""></rect><text x="466" y="541" class="" text-anchor="middle">u</text></g><g data-key="i" class="keyboard-key"><rect x="485" y="527" width="30" height="21" rx="3" class=""></rect><text x="500" y="541" class="" text-anchor="middle">i</text></g><g data-key="o" class="keyboard-key"><rect x="519" y="527" width="30" height="21" rx="3" class=""></rect><text x="534" y="541" class="" text-anchor="middle">o</text></g><g data-key="p" class="keyboard-key"><rect x="553" y="527" width="30" height="21" rx="3" class=""></rect><text x="568" y="541" class="" text-anchor="middle">p</text></g><g data-key="[" class="keyboard-key"><rect x="587" y="527" width="30" height="21" rx="3" class=""></rect><text x="602" y="541" class="" text-anchor="middle">[</text></g><g data-key="]" class="keyboard-key"><rect x="621" y="527" width="30" height="21" rx="3" class=""></rect><text x="636" y="541" class="" text-anchor="middle">]</text></g><g data-key="\" class="keyboard-key"><rect x="655" y="527" width="30" height="21" rx="3" class=""></rect><text x="670" y="541" class="" text-anchor="middle">\</text></g><g data-key="caps" class="keyboard-key"><rect x="195" y="552" width="48" height="21" rx="3" class=""></rect><text x="219" y="566" class="" text-anchor="middle">caps</text></g><g data-key="a" class="keyboard-key"><rect x="247" y="552" width="30" height="21" rx="3" class=""></rect><text x="262" y="566" class="" text-anchor="middle">a</text></g><g data-key="s" class="keyboard-key"><rect x="281" y="552" width="30" height="21" rx="3" class=""></rect><text x="296" y="566" class="" text-anchor="middle">s</text></g><g data-key="d" class="keyboard-key"><rect x="315" y="552" width="30" height="21" rx="3" class=""></rect><text x="330" y="566" class="" text-anchor="middle">d</text></g><g data-key="f" class="keyboard-key"><rect x="349" y="552" width="30" height="21" rx="3" class=""></rect><text x="364" y="566" class="" text-anchor="middle">f</text></g><g data-key="g" class="keyboard-key"><rect x="383" y="552" width="30" height="21" rx="3" class=""></rect><text x="398" y="566" class="" text-anchor="middle">g</text></g><g data-key="h" class="keyboard-key"><rect x="417" y="552" width="30" height="21" rx="3" class=""></rect><text x="432" y="566" class="" text-anchor="middle">h</text></g><g data-key="j" class="keyboard-key"><rect x="451" y="552" width="30" height="21" rx="3" class=""></rect><text x="466" y="566" class="" text-anchor="middle">j</text></g><g data-key="k" class="keyboard-key"><rect x="485" y="552" width="30" height="21" rx="3" class=""></rect><text x="500" y="566" class="" text-anchor="middle">k</text></g><g data-key="l" class="keyboard-key"><rect x="519" y="552" width="30" height="21" rx="3" class=""></rect><text x="534" y="566" class="" text-anchor="middle">l</text></g><g data-key=";" class="keyboard-key"><rect x="553" y="552" width="30" height="21" rx="3" class=""></rect><text x="568" y="566" class="" text-anchor="middle">;</text></g><g data-key="'" class="keyboard-key"><rect x="587" y="552" width="30" height="21" rx="3" class=""></rect><text x="602" y="566" class="" text-anchor="middle">'</text></g><g data-key="return" class="keyboard-key"><rect x="621" y="552" width="48" height="21" rx="3" class=""></rect><text x="645" y="566" class="" text-anchor="middle">return</text></g><g data-key="shift" class="keyboard-key"><rect x="195" y="577" width="48" height="21" rx="3" class=""></rect><text x="219" y="591" class="" text-anchor="middle">shift</text></g><g data-key="z" class="keyboard-key"><rect x="247" y="577" width="30" height="21" rx="3" class=""></rect><text x="262" y="591" class="" text-anchor="middle">z</text></g><g data-key="x" class="keyboard-key"><rect x="281" y="577" width="30" height="21" rx="3" class=""></rect><text x="296" y="591" class="" text-anchor="middle">x</text></g><g data-key="c" class="keyboard-key"><rect x="315" y="577" width="30" height="21" rx="3" class=""></rect><text x="330" y="591" class="" text-anchor="middle">c</text></g><g data-key="v" class="keyboard-key"><rect x="349" y="577" width="30" height="21" rx="3" class=""></rect><text x="364" y="591" class="" text-anchor="middle">v</text></g><g data-key="b" class="keyboard-key"><rect x="383" y="577" width="30" height="21" rx="3" class=""></rect><text x="398" y="591" class="" text-anchor="middle">b</text></g><g data-key="n" class="keyboard-key"><rect x="417" y="577" width="30" height="21" rx="3" class=""></rect><text x="432" y="591" class="" text-anchor="middle">n</text></g><g data-key="m" class="keyboard-key"><rect x="451" y="577" width="30" height="21" rx="3" class=""></rect><text x="466" y="591" class="" text-anchor="middle">m</text></g><g data-key="," class="keyboard-key"><rect x="485" y="577" width="30" height="21" rx="3" class=""></rect><text x="500" y="591" class="" text-anchor="middle">,</text></g><g data-key="." class="keyboard-key"><rect x="519" y="577" width="30" height="21" rx="3" class=""></rect><text x="534" y="591" class="" text-anchor="middle">.</text></g><g data-key="/" class="keyboard-key"><rect x="553" y="577" width="30" height="21" rx="3" class=""></rect><text x="568" y="591" class="" text-anchor="middle">/</text></g><g data-key="shift-r" class="keyboard-key"><rect x="587" y="577" width="48" height="21" rx="3" class=""></rect><text x="611" y="591" class="" text-anchor="middle">shift</text></g><g data-key="fn" class="keyboard-key"><rect x="195" y="602" width="30" height="21" rx="3" class=""></rect><text x="210" y="616" class="" text-anchor="middle">fn</text></g><g data-key="control" class="keyboard-key"><rect x="229" y="602" width="38" height="21" rx="3" class=""></rect><text x="248" y="616" class="" text-anchor="middle">control</text></g><g data-key="option" class="keyboard-key"><rect x="271" y="602" width="38" height="21" rx="3" class=""></rect><text x="290" y="616" class="" text-anchor="middle">option</text></g><g data-key="cmd" class="keyboard-key"><rect x="313" y="602" width="38" height="21" rx="3" class=""></rect><text x="332" y="616" class="" text-anchor="middle">command</text></g><g data-key="space" class="keyboard-key"><rect x="355" y="602" width="162" height="21" rx="3" class=""></rect><text x="436" y="616" class="" text-anchor="middle"></text></g><g data-key="cmd-r" class="keyboard-key"><rect x="521" y="602" width="38" height="21" rx="3" class=""></rect><text x="540" y="616" class="" text-anchor="middle">command</text></g><g data-key="option-r" class="keyboard-key"><rect x="563" y="602" width="38" height="21" rx="3" class=""></rect><text x="582" y="616" class="" text-anchor="middle">option</text></g><g data-key="left" class="keyboard-key"><rect x="639" y="602" width="30" height="21" rx="3" class=""></rect><text x="654" y="616" class="" text-anchor="middle">←</text></g><g data-key="down" class="keyboard-key"><rect x="673" y="602" width="30" height="21" rx="3" class=""></rect><text x="688" y="616" class="" text-anchor="middle">↓</text></g><g data-key="right" class="keyboard-key"><rect x="707" y="602" width="30" height="21" rx="3" class=""></rect><text x="722" y="616" class="" text-anchor="middle">→</text></g><g data-key="up" class="keyboard-key"><rect x="673" y="577" width="30" height="21" rx="3" class=""></rect><text x="688" y="591" class="" text-anchor="middle">↑</text></g>
     </g>
-    <g class="trackpad"><rect x="775" y="492" width="115" height="141" rx="9" class="device-outline"></rect><rect x="780" y="497" width="105" height="131" rx="6" class="device-inset"></rect><g data-gesture=""></g></g>
-    <g class="mouse" data-mouse=""><path class="device-outline" d="M947 506c-20 0-31 14-31 38v38c0 25 12 40 31 40s31-15 31-40v-38c0-24-11-38-31-38Z"></path><path class="mouse-button" d="M947 506c-20 0-31 14-31 38v10h31Z"></path><path class="device-inset" d="M947 507v47m-30 0h60"></path><rect x="944" y="523" width="6" height="19" rx="3" class="device-inset"></rect></g>
-    <text x="181" y="660" class="hardware-label">02 / KEYBOARD</text><text x="775" y="660" class="hardware-label">03 / TRACKPAD</text><text x="916" y="660" class="hardware-label">04 / MOUSE</text>
-    </g>
-    <g class="input-hands"><g class="wire-hand" data-hand="left"><path class="hand-palm" d="M298,695L285,644L302,636L321,636L340,636L359,644L343,695Z"></path><path class="hand-mesh" d="M285,644L298,695M285,644L321,665M302,636L298,695M302,636L321,665M321,636L343,695M321,636L321,665M340,636L343,695M340,636L321,665M359,644L343,695M359,644L321,665"></path><g class="hand-finger"><path class="finger-outline" d="M279 644L276.7 620.9L275 604Q279 595 283 604L286.7 620.9L291 644Z"></path><path class="finger-mesh" d="M279 644L286.7 620.9L275 604M291 644L276.7 620.9L283 604M276.7 620.9H286.7"></path><circle class="finger-joint" r="2.3" cx="281.7" cy="620.9"></circle><circle class="finger-tip" r="3.2" cx="279" cy="602"></circle></g><g class="hand-finger"><path class="finger-outline" d="M296 636L295.35 600.25L295 573Q299 564 303 573L305.35 600.25L308 636Z"></path><path class="finger-mesh" d="M296 636L305.35 600.25L295 573M308 636L295.35 600.25L303 573M295.35 600.25H305.35"></path><circle class="finger-joint" r="2.3" cx="300.35" cy="600.25"></circle><circle class="finger-tip" r="3.2" cx="299" cy="571"></circle></g><g class="hand-finger"><path class="finger-outline" d="M315 636L316 594.2L317 562Q321 553 325 562L326 594.2L327 636Z"></path><path class="finger-mesh" d="M315 636L326 594.2L317 562M327 636L316 594.2L325 562M316 594.2H326"></path><circle class="finger-joint" r="2.3" cx="321" cy="594.2"></circle><circle class="finger-tip" r="3.2" cx="321" cy="560"></circle></g><g class="hand-finger"><path class="finger-outline" d="M334 636L336.65 600.25L339 573Q343 564 347 573L346.65 600.25L346 636Z"></path><path class="finger-mesh" d="M334 636L346.65 600.25L339 573M346 636L336.65 600.25L347 573M336.65 600.25H346.65"></path><circle class="finger-joint" r="2.3" cx="341.65" cy="600.25"></circle><circle class="finger-tip" r="3.2" cx="343" cy="571"></circle></g><g class="hand-finger"><path class="finger-outline" d="M353 644L357.3 628.6L361 618Q365 609 369 618L367.3 628.6L365 644Z"></path><path class="finger-mesh" d="M353 644L367.3 628.6L361 618M365 644L357.3 628.6L369 618M357.3 628.6H367.3"></path><circle class="finger-joint" r="2.3" cx="362.3" cy="628.6"></circle><circle class="finger-tip" r="3.2" cx="365" cy="616"></circle></g></g><g class="wire-hand" data-hand="right"><path class="hand-palm" d="M628,695L615,644L632,636L651,636L670,636L689,644L673,695Z"></path><path class="hand-mesh" d="M615,644L628,695M615,644L651,665M632,636L628,695M632,636L651,665M651,636L673,695M651,636L651,665M670,636L673,695M670,636L651,665M689,644L673,695M689,644L651,665"></path><g class="hand-finger"><path class="finger-outline" d="M609 644L606.7 628.6L605 618Q609 609 613 618L616.7 628.6L621 644Z"></path><path class="finger-mesh" d="M609 644L616.7 628.6L605 618M621 644L606.7 628.6L613 618M606.7 628.6H616.7"></path><circle class="finger-joint" r="2.3" cx="611.7" cy="628.6"></circle><circle class="finger-tip" r="3.2" cx="609" cy="616"></circle></g><g class="hand-finger"><path class="finger-outline" d="M626 636L625.35 600.25L625 573Q629 564 633 573L635.35 600.25L638 636Z"></path><path class="finger-mesh" d="M626 636L635.35 600.25L625 573M638 636L625.35 600.25L633 573M625.35 600.25H635.35"></path><circle class="finger-joint" r="2.3" cx="630.35" cy="600.25"></circle><circle class="finger-tip" r="3.2" cx="629" cy="571"></circle></g><g class="hand-finger"><path class="finger-outline" d="M645 636L646 594.2L647 562Q651 553 655 562L656 594.2L657 636Z"></path><path class="finger-mesh" d="M645 636L656 594.2L647 562M657 636L646 594.2L655 562M646 594.2H656"></path><circle class="finger-joint" r="2.3" cx="651" cy="594.2"></circle><circle class="finger-tip" r="3.2" cx="651" cy="560"></circle></g><g class="hand-finger"><path class="finger-outline" d="M664 636L666.65 600.25L669 573Q673 564 677 573L676.65 600.25L676 636Z"></path><path class="finger-mesh" d="M664 636L676.65 600.25L669 573M676 636L666.65 600.25L677 573M666.65 600.25H676.65"></path><circle class="finger-joint" r="2.3" cx="671.65" cy="600.25"></circle><circle class="finger-tip" r="3.2" cx="673" cy="571"></circle></g><g class="hand-finger"><path class="finger-outline" d="M683 644L687.3 620.9L691 604Q695 595 699 604L697.3 620.9L695 644Z"></path><path class="finger-mesh" d="M683 644L697.3 620.9L691 604M695 644L687.3 620.9L699 604M687.3 620.9H697.3"></path><circle class="finger-joint" r="2.3" cx="692.3" cy="620.9"></circle><circle class="finger-tip" r="3.2" cx="695" cy="602"></circle></g></g></g>
-    <g class="key-callout" aria-hidden="true">
-      <text x="87" y="154" class="key-callout-label" text-anchor="middle" data-key-label="">WATCH THE HANDS</text>
-      <g data-key-zoom=""></g>
-      <g data-input-hint=""><text x="87" y="218" class="input-hint-symbol" text-anchor="middle"></text><text x="87" y="248" class="input-hint" text-anchor="middle">Your workspace</text></g>
+    <g class="trackpad"><rect x="775" y="492" width="115" height="141" rx="9" class="device-outline"></rect><g data-gesture="" opacity="0"></g></g>
     </g>
   </svg>

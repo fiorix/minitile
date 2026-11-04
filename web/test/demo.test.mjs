@@ -11,12 +11,11 @@ import {
 } from "../demo-scenes.mjs";
 import {
   keys,
-  handPose,
   minimapFrame,
   mapMetrics,
-  keyZoomFrame,
+  gestureFrame,
+  trackpad,
 } from "../demo-art.mjs";
-import { dissolveFrame } from "../demo-scroll.mjs";
 
 const chapter = (id) => scenes.find((scene) => scene.id === id);
 const shown = (state) => state.grid[state.workspace][state.page];
@@ -77,57 +76,6 @@ test("the three-window grid uses one tall tile and two stacked tiles, and tracks
   const changed = minimapFrame(sampleScene(resize, stepStart(resize, 1), true));
   assert.ok(changed.find((tile) => tile.id === "editor").width > editor.width);
   assert.ok(changed.find((tile) => tile.id === "notes").width < notes.width);
-});
-
-test("Mac keycaps zoom from the matching physical keys into the margin beside the screen", () => {
-  for (const scene of scenes)
-    for (let index = 0; index < scene.steps.length; index++) {
-      const at = stepStart(scene, index);
-      const start = keyZoomFrame(sampleScene(scene, at));
-      const end = keyZoomFrame(sampleScene(scene, at + 1));
-      assert.deepEqual(
-        start.map((item) => item.id),
-        scene.steps[index].keys,
-      );
-      for (let i = 0; i < start.length; i++) {
-        const key = keys.find((key) => key.id === start[i].id);
-        assert.equal(start[i].x, key.x + key.width / 2);
-        assert.equal(start[i].y, key.y + key.height / 2);
-        assert.equal(end[i].scale, 1);
-        assert.equal(end[i].opacity, 1);
-        assert.ok(end[i].x + 36 < 157);
-      }
-      assert.deepEqual(keyZoomFrame(sampleScene(scene, at, true)), end);
-    }
-});
-
-test("scroll dissolve is reversible, bounded, and leaves everything visible with reduced motion", () => {
-  for (const height of [568, 844, 1000]) {
-    const before = dissolveFrame(height, height);
-    const after = dissolveFrame(0, height);
-    assert.deepEqual([before.hardware, before.hands, before.table], [1, 1, 0]);
-    assert.deepEqual([after.hardware, after.hands, after.table], [0, 0, 1]);
-    let previous = before;
-    for (let y = height; y >= 0; y -= 10) {
-      const frame = dissolveFrame(y, height);
-      assert.ok(
-        frame.hardware <= previous.hardware &&
-          frame.hands <= previous.hands &&
-          frame.table >= previous.table,
-      );
-      assert.ok(Object.values(frame).every(Number.isFinite));
-      previous = frame;
-    }
-    assert.deepEqual(dissolveFrame(height, height), before);
-    assert.deepEqual(dissolveFrame(0, height, true), {
-      progress: 0,
-      hardware: 1,
-      hands: 1,
-      table: 1,
-      blur: 0,
-      shift: 0,
-    });
-  }
 });
 
 test("each authored state has unique windows, a visible focus, and valid tiled pages", () => {
@@ -306,37 +254,43 @@ test("animation frames are finite and continuous across actions, and reduced mot
   }
 });
 
-test("every demonstrated key has a keycap and the hand's fingertip reaches its centre", () => {
+test("every key a step lights is on the keyboard", () => {
   for (const scene of scenes)
-    for (const step of scene.steps) {
-      for (const side of ["left", "right"]) {
-        const targets = step.keys.filter(
-          (key) =>
-            ["control", "shift", "option", "cmd", "backtick", "tab"].includes(
-              key,
-            ) ===
-            (side === "left"),
-        );
-        const pose = handPose(
-          side,
-          targets,
-          side === "left" ? "keyboard" : step.device,
-          step.gesture,
-          1,
-        );
+    for (const step of scene.steps)
+      for (const id of step.keys)
         assert.ok(
-          [...pose.knuckles, ...pose.tips, ...pose.wrist]
-            .flat()
-            .every(Number.isFinite),
+          keys.some((key) => key.id === id),
+          `${scene.id}: ${id}`,
         );
-        targets.forEach((id, i) => {
-          const key = keys.find((key) => key.id === id);
-          assert.ok(key, id);
-          assert.deepEqual(pose.tips[pose.available[i]], [
-            key.x + key.width / 2,
-            key.y + key.height / 2,
-          ]);
-        });
+});
+
+test("trackpad swipes move four fingertips in the swipe's direction and stay on the trackpad", () => {
+  const directions = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] };
+  for (const scene of scenes)
+    for (let index = 0; index < scene.steps.length; index++) {
+      const step = scene.steps[index];
+      const at = stepStart(scene, index);
+      const early = gestureFrame(sampleScene(scene, at + 0.3));
+      if (step.device !== "trackpad") {
+        assert.equal(early, null);
+        continue;
       }
+      const late = gestureFrame(sampleScene(scene, at + 1.4));
+      const [dx, dy] = directions[step.gesture];
+      assert.equal(late.dots.length, 4);
+      for (let i = 0; i < 4; i++) {
+        const [ax, ay] = early.dots[i].at,
+          [bx, by] = late.dots[i].at;
+        assert.ok((bx - ax) * dx + (by - ay) * dy > 20, step.gesture);
+        assert.ok(Math.abs((bx - ax) * dy) + Math.abs((by - ay) * dx) < 1e-9);
+        for (const [x, y] of [early.dots[i].from, late.dots[i].at]) {
+          assert.ok(x > trackpad.x && x < trackpad.x + trackpad.width);
+          assert.ok(y > trackpad.y && y < trackpad.y + trackpad.height);
+        }
+      }
+      assert.deepEqual(
+        gestureFrame(sampleScene(scene, at, true)).dots.map((dot) => dot.at),
+        late.dots.map((dot) => dot.at),
+      );
     }
 });
