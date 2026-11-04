@@ -2,7 +2,7 @@
 
 minitile is a tiling window manager for macOS. It runs with SIP enabled and aims for a small core that blends with macOS: a handful of keys that reuse the native desktop shortcuts, mouse gestures where macOS users already use the mouse, and every function scriptable from the `mntl` command line tool. HyprMac (github.com/zacharytgray/HyprMac) is a source of macOS behaviour to respect, not a feature list to copy.
 
-Status: the core, IPC, `mntl` and the macOS shell are implemented and verified live on one display. Multiple displays and the items under "Open" are not yet verified. Page transitions, Cmd+\` window cycling and page miniatures in the position indicator are implemented and unit tested but not yet tried on screen; the transition mechanism was validated in a spike. Trackpad swipes are implemented and unit tested; the swipe mechanism was validated in a spike. The Cmd+Tab window switcher is implemented and unit tested but not yet tried on screen. Keyboard resizing and the mirrored and stacked three-window layouts are implemented and unit tested. The drop picker is implemented and unit tested. The grab highlight is implemented and unit tested but not yet tried on screen.
+Status: the core, IPC, `mntl` and the macOS shell are implemented and verified live on one display. Multiple displays and the items under "Open" are not yet verified. Page transitions, Cmd+\` window cycling and page miniatures in the position indicator are implemented and unit tested but not yet tried on screen; the transition mechanism was validated in a spike. Trackpad swipes are implemented and unit tested; the swipe mechanism was validated in a spike. The Cmd+Tab window switcher is implemented and unit tested but not yet tried on screen. Keyboard resizing and the mirrored and stacked three-window layouts are implemented and unit tested. The drop picker is implemented and unit tested. The grab highlight is implemented and unit tested but not yet tried on screen. The help screen and Cmd+H takeover are designed but not yet implemented.
 
 ## Model
 
@@ -83,6 +83,18 @@ Placement: the outline goes on the window's tile in the scene the reconciler las
 `mntl debug health` reports `grab_window`, `grab_held` and `grab_visible` (see "Command line: mntl").
 
 Untested in minitile: the outline on screen, its placement and look during and after slides and bounces, light and dark appearance, accent colour changes, and detecting modifier releases with physical keys.
+
+### Help screen
+
+Not yet implemented.
+
+Cmd+H shows a help screen in place of hiding the frontmost app. Hiding an app keeps its windows' slots reserved, so its pages stay but look empty; taking over the shortcut avoids that in the common case. Hiding through the app menu or the Dock still works and still reserves the slots. Cmd+Option+H (Hide Others) is swallowed and does nothing.
+
+- The screen lists the current key bindings, read from the merged config so it matches any rebinding, grouped by what they do (pages and workspaces, windows, layout, switcher, help), with a plain description for each known command and the command text for others. A short section lists the mouse and trackpad gestures: swipes, edge and corner drags, swaps, the drop picker and Ctrl+arrow while dragging.
+- Chords appear as macOS menus show them, with modifier symbols; source files spell those symbols with Unicode escapes so they stay ASCII.
+- It opens in the middle of the active display's usable area, in the same style as the window switcher, never takes focus, passes the mouse through, shows on whichever desktop is current and follows light and dark appearance.
+- Through a key binding it stays while the binding's modifiers other than Shift are held and closes when one is released, so it can never be left on screen. While it is open, every other key is swallowed, and Esc closes it. From `mntl help show`, with no modifier held, it stays for about 5 s or until Esc.
+- Cmd+H is swallowed in every app while minitile runs, managed or not, so it always means help. When minitile is not started or is suspended, Cmd+H passes to macOS. Binding `"cmd+h"` to `""` restores hiding.
 
 ### Placement
 
@@ -195,6 +207,8 @@ Default bindings:
 | Ctrl+Up/Down | Show the page above or below: same position in the workspace above or below, an empty page when that workspace ends one page short, or its last page when it is shorter still. | Mission Control, App Expose |
 | Cmd+\` / Cmd+Shift+\` | Focus the next or previous window on the shown page: tiles in slot order, then floating windows, wrapping around. | Move focus to next window, which cycles the frontmost app's windows |
 | Cmd+Option+\` / Cmd+Option+Shift+\` | Swap the focused window with the window in the next or previous slot on its page, wrapping around; focus stays with it. With two windows this swaps them. | Nothing by default |
+| Cmd+H | Show the help screen while Cmd is held (see "Help screen"). Not yet implemented. | Hide the frontmost app |
+| Cmd+Option+H | Nothing: swallowed so other apps are not hidden. Not yet implemented. | Hide other apps |
 | Ctrl+Shift+Space | Cycle the shown page through its window count's layouts (see Layout). | Nothing by default; Ctrl+Space and Ctrl+Option+Space switch input sources |
 | Ctrl+Option+arrows | Resize the focused window: the divider on that side moves the way the arrow points (see Layout). | Nothing by default; VoiceOver uses Ctrl+Option as its modifier |
 | Cmd+Tab / Cmd+Shift+Tab | Open the window switcher and step through windows (see "Window switcher"). | App switcher |
@@ -257,6 +271,8 @@ Every minitile function is a command. Key bindings, the menu bar, mouse gestures
 - `mntl watch` gets one `ok` response, then one JSON event per line until the client disconnects.
 - `mntl` is a thin client. It sends its arguments, prints `text` (or `data` with `--json`) and exits 0 on success, 1 on a command error and 2 when minitile cannot be reached. New commands need no change to `mntl`.
 - Config bindings and menu items use the same command strings, for example `"ctrl+left" = "page prev"`.
+- `mntl help show` (planned) is answered by the app shell and opens the help screen; `mntl help` alone prints the grammar.
+- `mntl ignore` (planned) does nothing. Binding a chord to it swallows that chord, which is how Cmd+Option+H is blocked.
 - `mntl switcher next|prev|commit|cancel` commands are answered by the app shell, since the switcher is shell UI; committing runs `window focus ID` through the core.
 - `mntl debug <verb>` commands are answered by the app shell and expose internals: raw desktops per display, the last applied scene, timings. Debug verbs can be added freely. Every other command is answered by the core.
 
@@ -293,7 +309,8 @@ Every noun has `list` and `info`. `info` takes an address and defaults to the cu
 The exact grammar is published by `mntl help`:
 
 ```text
-help
+help [show]
+ignore
 state
 watch
 window list
@@ -623,6 +640,8 @@ trackpad_swipes = true  # swipes navigate pages and workspaces; false leaves the
 "ctrl+alt+down" = "window resize down"
 "cmd+alt+`" = "window swap next"
 "cmd+alt+shift+`" = "window swap prev"
+"cmd+h" = "help show"                # planned
+"cmd+alt+h" = "ignore"                  # planned
 ```
 
 The command strings above use the final grammar. A chord is modifiers (`ctrl`, `shift`, `alt`, `cmd`) and one key (a letter, a digit, `left`, `right`, `up`, `down`, `return`, `space`, `tab`, `escape`, `f1` to `f20`, and `` ` `` for the key of macOS's Move focus to next window shortcut), joined with `+`.
@@ -732,7 +751,8 @@ First version:
 - the Cmd+Tab window switcher;
 - keyboard resizing and the mirrored and stacked three-window layouts;
 - the drop picker for dragged windows;
-- the grab highlight for keyboard moves and resizes.
+- the grab highlight for keyboard moves and resizes;
+- the Cmd+H help screen.
 
 Not planned:
 
