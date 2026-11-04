@@ -18,7 +18,10 @@ import Testing
     #expect(Config.default.bindings[Chord(modifiers: [.cmd, .shift], key: "`")] == ["window", "focus", "prev"])
     #expect(Config.default.bindings[Chord(modifiers: .cmd, key: "tab")] == ["switcher", "next"])
     #expect(Config.default.bindings[Chord(modifiers: [.cmd, .shift], key: "tab")] == ["switcher", "prev"])
-    #expect(Config.default.bindings.count == 13)
+    for direction in ["left", "right", "up", "down"] {
+        #expect(Config.default.bindings[Chord(modifiers: [.ctrl, .alt], key: direction)] == ["window", "resize", direction])
+    }
+    #expect(Config.default.bindings.count == 17)
 }
 
 @Test func displayMetadataDefaultsToFullFrame() {

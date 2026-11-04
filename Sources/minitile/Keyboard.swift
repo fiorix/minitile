@@ -81,6 +81,8 @@ struct KeyRouter {
     private(set) var switcher: OpenSwitcher?
     private var sessions = 0
     private var swallowed: Set<UInt16> = []
+    /// Held keys whose press ran a repeating binding.
+    private var repeating: Set<UInt16> = []
 
     static func modifiers(_ flags: CGEventFlags) -> Modifiers {
         var result: Modifiers = []
@@ -91,18 +93,24 @@ struct KeyRouter {
         return result
     }
 
-    mutating func resetHeld() { swallowed.removeAll() }
+    /// Directional resize is the keyboard version of dragging an edge, so it repeats while its keys are held.
+    static func repeats(_ argv: [String]) -> Bool {
+        (3...4).contains(argv.count) && argv[0] == "window" && argv[1] == "resize"
+            && ["left", "right", "up", "down"].contains(argv[argv.count - 1])
+    }
+
+    mutating func resetHeld() { swallowed.removeAll(); repeating.removeAll() }
 
     mutating func key(_ code: UInt16, modifiers: Modifiers, down: Bool, autorepeat: Bool = false) -> KeyDecision {
-        if !down { return swallowed.remove(code) != nil ? .swallow : .pass }
+        if !down { repeating.remove(code); return swallowed.remove(code) != nil ? .swallow : .pass }
         // The open switcher takes its keys whatever the modifiers, repeats included.
         if let open = switcher, let key = Self.switcherKey(names[code], shift: modifiers.contains(.shift)) {
             swallowed.insert(code)
             if key == .commit || key == .cancel { switcher = nil }
             return .switcher(key, session: open.session)
         }
-        if autorepeat, swallowed.contains(code) { return .swallow }
-        if !autorepeat { swallowed.remove(code) }
+        if autorepeat, swallowed.contains(code), !repeating.contains(code) { return .swallow }
+        if !autorepeat { swallowed.remove(code); repeating.remove(code) }
         // In apps minitile does not manage, the window-cycling key keeps its native meaning.
         let name = names[code].flatMap { $0 == CycleKey.name && !frontmostManaged ? nil : $0 }
         let chord = name.map { Chord(modifiers: modifiers, key: $0) }
@@ -129,8 +137,14 @@ struct KeyRouter {
         }
         if let command, !command.isEmpty {
             swallowed.insert(code)
-            return autorepeat ? .swallow : .command(command)
+            if !autorepeat {
+                if Self.repeats(command) { repeating.insert(code) }
+                return .command(command)
+            }
+            // A held repeating binding runs again while its chord still names one; every other binding fires once.
+            return repeating.contains(code) && Self.repeats(command) ? .command(command) : .swallow
         }
+        if autorepeat, swallowed.contains(code) { return .swallow }
         if blocked.contains(NativeChord(keycode: code, modifiers: modifiers)) {
             swallowed.insert(code); return .swallow
         }
