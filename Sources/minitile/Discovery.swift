@@ -50,6 +50,7 @@ final class Discovery {
     var config: Config
     let displays: DisplayCatalog
     let smokeScope = SmokeScope()
+    private let traceFocus = ProcessInfo.processInfo.environment["MINITILE_TRACE_FOCUS"] == "1"
     var frozen = false
     var input: ((Input) -> Void)?
     var activated: ((Int32, TimeInterval) -> Void)?
@@ -171,7 +172,12 @@ final class Discovery {
         windows[id] = Window(info: info, element: element)
         readInfo(id, app: app)
         registerWindow(id)
-        if let info = windows[id]?.info { input?(.windowAppeared(info)) }
+        if let info = windows[id]?.info {
+            if traceFocus {
+                startupLog("Window appeared id=\(id) pid=\(info.pid) app_active=\(info.fromFrontmostApp) frontmost=\(NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0)")
+            }
+            input?(.windowAppeared(info))
+        }
     }
 
     private func registerWindow(_ id: WindowID) {
@@ -325,8 +331,13 @@ final class Discovery {
     }
 
     func refreshFocus(pid: Int32? = nil) {
-        guard !frozen, let frontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier,
-              pid == nil || pid == frontmost, acceptsFocus?(frontmost) != false else { return }
-        if case .known(let id) = currentFocus() { focused?(id) }
+        guard !frozen, let frontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }
+        let accepted = (pid == nil || pid == frontmost) && acceptsFocus?(frontmost) != false
+        if traceFocus { startupLog("Focus notification pid=\(pid ?? frontmost) frontmost=\(frontmost) accepted=\(accepted)") }
+        guard accepted else { return }
+        if case .known(let id) = currentFocus() {
+            if traceFocus { startupLog("Focus read id=\(id.map(String.init) ?? "none")") }
+            focused?(id)
+        }
     }
 }

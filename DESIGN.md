@@ -541,6 +541,8 @@ The shell uses the Swift 6 language mode. AX observer callbacks run on the main 
 
 Reports go to `build/smoke-*`. `MINITILE_SMOKE_DIRECTORY` restricts discovery to documents directly inside the test directory, so unsaved documents stay unmanaged, and `MINITILE_SMOKE_WINDOWS` restricts startup stash acquisition to the test's window ID/pid pairs. Cleanup closes only the test's documents, preserves files if cleanup fails, and quits TextEdit only if the test started it and no windows remain. `--cleanup` accepts only smoke directories directly inside TMPDIR.
 
+Smoke runs start on each display's first native desktop. The automatic mode also opens and closes a sixth document with another app frontmost, verifying that the shown page is preserved; if TextEdit becomes frontmost, that attempt is not a valid background test. `MINITILE_TRACE_FOCUS=1` optionally logs focus decisions and new-window foreground status using only pids and window IDs.
+
 ## Scope
 
 First version:

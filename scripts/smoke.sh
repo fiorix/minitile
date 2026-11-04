@@ -191,6 +191,7 @@ launch() {
         --env "MINITILE_SOCKET=$MINITILE_SOCKET" --env "MINITILE_SMOKE_DIRECTORY=$MINITILE_SMOKE_DIRECTORY" \
         --env "MINITILE_SMOKE_WINDOWS=$MINITILE_SMOKE_WINDOWS" \
         --env "MINITILE_TRACE_KEYS=$MINITILE_TRACE_KEYS" \
+        --env "MINITILE_TRACE_FOCUS=${MINITILE_TRACE_FOCUS:-0}" \
         --stdout "$testdir/stdout.log" --stderr "$testdir/stderr.log" "$PWD/build/Minitile.app"
     while ((SECONDS < deadline)); do
         if [ -z "$app_pid" ]; then app_pid=$(pgrep -n -x minitile || true); fi
@@ -281,7 +282,7 @@ if [ "$display_test" = 1 ] && ! jq -e '.grid_indicator_displays == 1 and .grid_i
     echo 'Transient position indicators are unavailable. Rebuild by omitting --no-build.' >&2
     exit 1
 fi
-echo 'This run manages only its five test files; unsaved Cmd+N documents are ignored.'
+echo 'This run manages only its test files; unsaved Cmd+N documents are ignored.'
 for ((index=1; index<=5; index++)); do
     printf 'minitile smoke document %s\n' "$index" > "$testdir/$prefix-$index.txt"
     open -a TextEdit "$testdir/$prefix-$index.txt"
@@ -296,7 +297,7 @@ a=${ids[0]}; b=${ids[1]}; c=${ids[2]}; e=${ids[4]}
 
 if [ "$activation_test" = 1 ]; then
     if [ "$front_pid" = "$textedit_pid" ] || [ "$front_pid" = 0 ]; then
-        echo 'Start the activation test from Terminal with Terminal frontmost.' >&2
+        echo 'Start the activation test with another application frontmost.' >&2
         exit 1
     fi
     for ((round=1; round<=10; round++)); do
@@ -306,7 +307,7 @@ if [ "$activation_test" = 1 ]; then
         build/smoke-support restore "$front_pid"
         sleep 0.2
         if [ "$(build/smoke-support front)" != "$front_pid" ]; then
-            echo 'Could not activate the original Terminal; activation sample would be invalid.' >&2
+            echo 'Could not activate the original app; activation sample would be invalid.' >&2
             exit 1
         fi
         build/smoke-support restore "$textedit_pid"
@@ -325,6 +326,43 @@ if [ "$display_test" = 1 ]; then
     # shellcheck source=scripts/smoke-displays.sh
     source scripts/smoke-displays.sh
     exit 0
+fi
+
+if [ "$interactive" = 0 ] && [ "$front_pid" != "$textedit_pid" ] && [ "$front_pid" != 0 ]; then
+    "$mntl" window show "$a"
+    build/smoke-support restore "$front_pid"
+    sleep 1.3
+    if [ "$(build/smoke-support front)" != "$front_pid" ]; then
+        echo 'Could not restore the original app for the background-window check.' >&2
+        exit 1
+    fi
+    "$mntl" --json state > "$report/background-before.json"
+    printf 'minitile background smoke document\n' > "$testdir/$prefix-background.txt"
+    open -g -a TextEdit "$testdir/$prefix-background.txt"
+    wait_state '.windows | length == 6'
+    cp "$report/state.json" "$report/background-open.json"
+    build/smoke-support front > "$report/background-open-front-pid.txt"
+    if [ "$(cat "$report/background-open-front-pid.txt")" != "$front_pid" ]; then
+        echo 'TextEdit became frontmost during creation; this run cannot validate background behavior.' >&2
+        exit 1
+    fi
+    background_id=$(jq -er --arg title "$prefix-background.txt" '.windows[] | select(.title == $title) | .id' "$report/state.json")
+    "$mntl" window close "$background_id"
+    wait_state '.windows | length == 5'
+    cp "$report/state.json" "$report/background-closed.json"
+    for stage in before open closed; do
+        jq -S '[.displays[] | {id, workspace, page: (.workspaces[] | select(.shown) | .page)}]' \
+            "$report/background-$stage.json" > "$report/background-$stage-view.json"
+    done
+    diff -u "$report/background-before-view.json" "$report/background-open-view.json"
+    diff -u "$report/background-before-view.json" "$report/background-closed-view.json"
+    if [ "$(build/smoke-support front)" != "$front_pid" ]; then
+        echo 'Background window lifecycle changed the frontmost application.' >&2
+        exit 1
+    fi
+    echo 'Background window creation and close preserved the shown page.'
+elif [ "$interactive" = 0 ]; then
+    echo 'Background-window check skipped: start with another application frontmost to exercise it.'
 fi
 
 if [ "$interactive" = 1 ]; then
@@ -355,7 +393,7 @@ Further checks, starting on the four-window page:
   5. Drag keys: start moving a title bar, hold the mouse down and press
      Ctrl+Right. That document should move to its own page. Release, then
      Ctrl+Shift+Left should return it to the four-window page.
-  6. Trackpad: swipe toward the second native desktop. Minitile should
+  6. Trackpad: swipe toward the last native desktop (the stash). Minitile should
      return to the first desktop with the same page visible. Immediately press
      Ctrl+Right, then Cmd+Tab away and back; commands must remain responsive.
   7. Immediate drag: flip pages, then start a title-bar drag within one second.
