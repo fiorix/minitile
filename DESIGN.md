@@ -255,7 +255,7 @@ Every response has `ok`, `text` and `data`. Errors and successful mutations use 
 | `page list`, `page info` | Array of page objects, or one page object. Fields: `id` (persistent identity), `index`, `display`, `workspace`, `shown`, `variant` (`standard` or `alternate`), `r1`, `r2`, `windows` (all assigned IDs in order), `tiled` (including reserved minimized/app-hidden slots), `floating`, `last_focus`. |
 | `workspace list`, `workspace info` | Array of workspace objects, or one workspace object. Fields: `id` (persistent identity), `index`, `display` (current host), `home`, `shown`, `page` (last-viewed page index), `pages` (page objects). |
 | `display list`, `display info` | Array of display objects, or one display object. Fields: `id` (UUID), `frame`, `visible_frame`, `primary`, `unmanaged_reason`, `visible_space`, `stash_space`, `workspace` (current index), `workspaces` (workspace objects), `home_workspaces`, `merged_workspaces` (workspace index arrays). |
-| `config list`, `config info` | Object with `gaps`, `padding`, `float_apps`, `only_apps`, `transition_ms`, `bindings`. Binding keys are canonical chords and values are command strings. |
+| `config list`, `config info` | Object with `gaps`, `padding`, `float_apps`, `only_apps`, `transition_ms`, `trackpad_swipes`, `bindings`. Binding keys are canonical chords and values are command strings. |
 | `state` | Object with `version: 1`, `focus`, `active_display`, `displays` (display objects), `windows` (window objects ordered by ID). This inspection shape is separate from the saved-state file. |
 
 Watch events have `{type, data}`. Types `focus`, `window_added`, `window_removed` and `window_moved` carry a window ID; `focus` can carry null. `page_shown` carries `{display, workspace, page}` with indices after empty-page cleanup. `display_changed` carries the supplied array of `DisplayInfo` objects using their Swift Codable field names. `config_reloaded` carries null. A watcher is disconnected if its pending output exceeds 4 MiB; ordinary command replies can be larger. The CLI prints the initial watch reply using its usual text/data choice, followed by JSON event lines.
@@ -505,7 +505,7 @@ padding = 8           # points between tiles and the layout area's edge
 float_apps = []       # bundle IDs that always float
 only_apps = []        # bundle IDs; when non-empty, minitile manages only these apps
 transition_ms = 500   # page slide duration, 0 to 2000; 0 turns slides and bounces off
-trackpad_swipes = true  # swipes navigate pages and workspaces; false leaves them to macOS (planned)
+trackpad_swipes = true  # swipes navigate pages and workspaces; false leaves them to macOS
 
 [bindings]            # merged over the defaults; a chord bound to "" is unbound
 "ctrl+left" = "page prev"
