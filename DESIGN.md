@@ -66,7 +66,7 @@ Untested in minitile: the panel on screen, key routing with physical keys, the q
 
 ### Grab highlight
 
-When a key binding moves or resizes the focused window (Ctrl+Shift+arrows to nudge or carry it, Ctrl+Option+arrows to resize it), minitile outlines that window so it reads as held.
+When a key binding moves or resizes the focused window (Ctrl+Shift+arrows to nudge or carry it, Cmd+Option+\` to swap it with a neighbouring slot, Ctrl+Option+arrows to resize it), minitile outlines that window so it reads as held.
 
 - The outline is a rounded border in the system accent colour, drawn by a click-through panel around the window's tile, or around its frame when it floats. It never takes focus, shows on whichever desktop is current, follows light and dark appearance, and sits above normal windows but below the page-transition overlays, the position indicator, the window switcher and the drop picker.
 - It stays while every modifier of the binding that started it is held, and goes when one is released, so holding Ctrl+Shift is holding the window. Further moves and resizes while it is held keep it on the same window.
@@ -194,6 +194,7 @@ Default bindings:
 | Ctrl+Left/Right | Show the previous or next page. | Move left/right a space |
 | Ctrl+Up/Down | Show the page above or below: same position in the workspace above or below, an empty page when that workspace ends one page short, or its last page when it is shorter still. | Mission Control, App Expose |
 | Cmd+\` / Cmd+Shift+\` | Focus the next or previous window on the shown page: tiles in slot order, then floating windows, wrapping around. | Move focus to next window, which cycles the frontmost app's windows |
+| Cmd+Option+\` / Cmd+Option+Shift+\` | Swap the focused window with the window in the next or previous slot on its page, wrapping around; focus stays with it. With two windows this swaps them. | Nothing by default |
 | Ctrl+Shift+Space | Cycle the shown page through its window count's layouts (see Layout). | Nothing by default; Ctrl+Space and Ctrl+Option+Space switch input sources |
 | Ctrl+Option+arrows | Resize the focused window: the divider on that side moves the way the arrow points (see Layout). | Nothing by default; VoiceOver uses Ctrl+Option as its modifier |
 | Cmd+Tab / Cmd+Shift+Tab | Open the window switcher and step through windows (see "Window switcher"). | App switcher |
@@ -276,7 +277,7 @@ Commands are noun then verb. Windows are addressed by window ID and default to t
 | `mntl window hide [id]` | Take the window off its page and keep it on the stash until shown. |
 | `mntl window move [id] <target>` | Move the window to a direction, page, workspace or display. |
 | `mntl window nudge [id] <dir>` | The Ctrl+Shift+Left/Right action. |
-| `mntl window swap [id] <id>` | Swap two tiled windows. |
+| `mntl window swap [id] <id>\|next\|prev` | Swap two tiled windows, or a window with the next or previous active tile on its page. |
 | `mntl window resize [id] <size>` | Tiled: set the page cuts so the window gets that share. Floating: set its size. |
 | `mntl window place [id] <variant> <slot>` | Set the page's layout and put the window in that tile of it, as dropping it on the layout picker does. |
 | `mntl window float [id] [on, off]` | Toggle or set floating. |
@@ -303,7 +304,7 @@ window nudge [ID] left|right
 window move [ID] left|right|up|down
 window move [ID] page|workspace INDEX|next|prev
 window move [ID] display UUID|next|prev
-window swap [ID] OTHER_ID
+window swap [ID] OTHER_ID|next|prev
 window resize [ID] SHARE|WIDTHxHEIGHT|left|right|up|down
 window place [ID] standard|alternate|mirrored|stacked SLOT
 page list
@@ -323,7 +324,7 @@ quit
 
 Page and workspace addresses are 1-based; tiled slots are 0-based. Floating and explicitly hidden windows have a null slot. Window IDs are decimal. With no focused window, commands use the most recently selected display, then the primary managed display. `page list` lists the current workspace; `workspace list` lists the current display. An explicit display UUID can inspect an unmanaged display. `info`, `show` and `variant` addresses resolve within the current context; `next`/`prev` in these addresses clamp at the ends. Only navigation commands and window moves create pages or workspaces. `workspace new` appends an empty workspace unless the current one is already empty. `page next|prev` and `workspace next|prev` navigate the display named by a trailing `display UUID` instead of the current context, with the same edge behaviour; the display must be known and managed, otherwise the command fails. Trackpad swipes use this to act on the display under the pointer.
 
-Window moves and swaps follow the addressed source window. A move to its existing page does nothing. Left/right moves are nudges; up/down moves carry between workspaces. Explicit moves to a full page use placement spill. Spatial focus chooses the nearest window center in the requested half-plane on the same page, with grid order breaking ties; it does not wrap. Minimized and app-hidden windows are excluded from spatial focus. Next and previous focus walk the focused window's page in grid order, tiles by slot and then floating windows, and wrap; they skip minimized and app-hidden windows. With no managed window focused, both focus the first window of the shown page in the current display context. Like `window focus ID`, they emit a focus action. When no other window on the page can take focus, including on an empty page, they do nothing.
+Window moves and swaps follow the addressed source window. A move to its existing page does nothing. Left/right moves are nudges; up/down moves carry between workspaces. Explicit moves to a full page use placement spill. Spatial focus chooses the nearest window center in the requested half-plane on the same page, with grid order breaking ties; it does not wrap. Minimized and app-hidden windows are excluded from spatial focus. Next and previous focus walk the focused window's page in grid order, tiles by slot and then floating windows, and wrap; they skip minimized and app-hidden windows. With no managed window focused, both focus the first window of the shown page in the current display context. Like `window focus ID`, they emit a focus action. When no other window on the page can take focus, including on an empty page, they do nothing. Swapping with `next` or `prev` trades the window with the active tile after or before it on its page, wrapping around and skipping reserved slots of minimized and app-hidden windows; with fewer than two active tiles it does nothing, and a floating window is an error.
 
 Directional resize moves the window's cuts by 0.05 as described under Layout, or grows or shrinks a floating window by 0.05 of the layout area. For tiled resize, a single share applies along the layout's split axis, the axis r1 cuts: the long axis, except for two windows `alternate` and three `stacked`. `WIDTHxHEIGHT` supplies physical-axis fractional shares; an axis the tile spans whole ignores its share. Cuts are clamped by the layout rules. Floating resize requires `WIDTHxHEIGHT` in positive points and emits an explicit frame-write action. `page ratio R1` leaves r2 unchanged. Config reload is completed by the shell before its socket reply; failures keep the previous config. `config open` opens the config file in the user's editor.
 
@@ -620,6 +621,8 @@ trackpad_swipes = true  # swipes navigate pages and workspaces; false leaves the
 "ctrl+alt+right" = "window resize right"
 "ctrl+alt+up" = "window resize up"
 "ctrl+alt+down" = "window resize down"
+"cmd+alt+`" = "window swap next"
+"cmd+alt+shift+`" = "window swap prev"
 ```
 
 The command strings above use the final grammar. A chord is modifiers (`ctrl`, `shift`, `alt`, `cmd`) and one key (a letter, a digit, `left`, `right`, `up`, `down`, `return`, `space`, `tab`, `escape`, `f1` to `f20`, and `` ` `` for the key of macOS's Move focus to next window shortcut), joined with `+`.

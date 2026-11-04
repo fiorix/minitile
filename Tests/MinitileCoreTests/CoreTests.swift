@@ -21,7 +21,7 @@ import Testing
     for direction in ["left", "right", "up", "down"] {
         #expect(Config.default.bindings[Chord(modifiers: [.ctrl, .alt], key: direction)] == ["window", "resize", direction])
     }
-    #expect(Config.default.bindings.count == 17)
+    #expect(Config.default.bindings.count == 19)
 }
 
 @Test func displayMetadataDefaultsToFullFrame() {

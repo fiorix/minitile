@@ -1,7 +1,7 @@
 import Foundation
 import MinitileCore
 
-/// A keyboard move or resize the grab highlight follows: nudge, carry and directional resize.
+/// A keyboard move or resize the grab highlight follows: nudge, carry, slot swap and directional resize.
 struct GrabCommand: Equatable {
     private enum Target { case focused, window(WindowID) }
 
@@ -10,6 +10,7 @@ struct GrabCommand: Equatable {
         "nudge": [["left"], ["right"]],
         "move": [["left"], ["right"], ["up"], ["down"], ["workspace", "prev"], ["workspace", "next"]],
         "resize": [["left"], ["right"], ["up"], ["down"]],
+        "swap": [["next"], ["prev"]],
     ]
 
     var window: WindowID

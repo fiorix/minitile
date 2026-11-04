@@ -19,7 +19,7 @@ extension Engine {
     window move [ID] left|right|up|down
     window move [ID] page|workspace INDEX|next|prev
     window move [ID] display UUID|next|prev
-    window swap [ID] OTHER_ID
+    window swap [ID] OTHER_ID|next|prev
     window resize [ID] SHARE|WIDTHxHEIGHT|left|right|up|down
     window place [ID] standard|alternate|mirrored|stacked SLOT
     page list
@@ -167,7 +167,8 @@ extension Engine {
                 try moveTarget(id, noun: args[0], address: args[1], output: &output)
             }
         case "swap":
-            guard args.count == 1, let other = WindowID(args[0]) else { throw CommandError("Expected window swap [ID] OTHER_ID") }
+            if args == ["next"] || args == ["prev"] { try swapNeighbour(id, step: args[0] == "next" ? 1 : -1, output: &output); break }
+            guard args.count == 1, let other = WindowID(args[0]) else { throw CommandError("Expected window swap [ID] OTHER_ID|next|prev") }
             try swap(id, other, output: &output)
         case "resize":
             guard args.count == 1 else { throw CommandError("Expected window resize [ID] SHARE|WIDTHxHEIGHT|left|right|up|down") }

@@ -209,3 +209,34 @@ func command(_ engine: inout Engine, _ args: String) -> Output {
     command(&e, "page next")
     #expect(command(&e, "workspace prev").scene.displays["primary"]?.visible == [5, 6])
 }
+
+@Test func slotSwapTradesPlacesWithTheNeighbourAndWraps() {
+    var e = engine(4)
+    command(&e, "window focus 1")
+    #expect(command(&e, "window swap next").actions.last == .focus(1))
+    #expect(grid(e) == [[[2, 1, 3, 4]]])
+    command(&e, "window swap next")
+    #expect(grid(e) == [[[2, 3, 1, 4]]])
+    command(&e, "window swap prev")
+    command(&e, "window swap prev")
+    #expect(grid(e) == [[[1, 2, 3, 4]]])
+    command(&e, "window swap prev")
+    #expect(grid(e) == [[[4, 2, 3, 1]]])
+    command(&e, "window swap 2 next")
+    #expect(grid(e) == [[[4, 3, 2, 1]]])
+}
+
+@Test func slotSwapSkipsReservedSlotsAndNeedsTwoTiles() {
+    var e = engine(3)
+    var minimized = window(2)
+    minimized.minimized = true
+    _ = e.handle(.windowUpdated(minimized))
+    command(&e, "window focus 1")
+    command(&e, "window swap next")
+    #expect(grid(e) == [[[3, 2, 1]]])
+    var single = engine(1)
+    command(&single, "window focus 1")
+    let out = command(&single, "window swap next")
+    #expect(out.reply?.ok == true)
+    #expect(!out.stateChanged)
+}

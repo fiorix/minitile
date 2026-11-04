@@ -109,6 +109,15 @@ extension Engine {
         output.events += [Event(type: "window_moved", data: .number(Double(first))), Event(type: "window_moved", data: .number(Double(second)))]
     }
 
+    /// Trades the window with the active tile after or before it on its page, wrapping around; reserved slots of
+    /// minimized and app-hidden windows are skipped. Focus stays with the window.
+    mutating func swapNeighbour(_ id: WindowID, step: Int, output: inout Output) throws {
+        guard let (at, _) = activeTile(id) else { throw CommandError("Window has no active tile") }
+        let active = tiled(page(at), activeOnly: true)
+        guard active.count > 1, let index = active.firstIndex(of: id) else { return }
+        try swap(id, active[((index + step) % active.count + active.count) % active.count], output: &output)
+    }
+
     /// Sets the page's variant and puts the window in that tile of the layout. Slots count the page's active tiles; the
     /// other active tiles keep their order, and reserved and floating windows keep their places in the page's list.
     mutating func place(_ id: WindowID, variant: Variant, slot: Int, output: inout Output) throws {

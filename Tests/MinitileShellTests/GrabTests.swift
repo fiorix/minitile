@@ -35,9 +35,10 @@ private extension SavedState {
     }
 }
 
-@Test func onlyNudgeCarryAndDirectionalResizeGrab() {
+@Test func onlyNudgeCarrySlotSwapAndDirectionalResizeGrab() {
     let grabbing = ["window nudge left", "window nudge 42 right", "window move left", "window move 42 down",
-                    "window move workspace prev", "window move 42 workspace next", "window resize up", "window resize 42 left"]
+                    "window move workspace prev", "window move 42 workspace next", "window resize up", "window resize 42 left",
+                    "window swap next", "window swap 42 prev"]
     for text in grabbing { #expect(GrabCommand.grabs(split(text)), Comment(rawValue: text)) }
     let other = ["window nudge", "window nudge up", "window nudge x left", "window nudge 42 left right", "window move workspace 2",
                  "window move page next", "window move display next", "window move 42 workspace", "window resize 0.6",
