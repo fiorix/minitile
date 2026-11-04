@@ -137,14 +137,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         started = true
         starting = false
         handle(.started(saved: saved, windows: discovery.windows.values.map(\.info).sorted { $0.id < $1.id },
-                        displays: displays.infos, focus: discovery.currentFocus()))
+                        displays: displays.infos, focus: discovery.currentFocus().window))
         saved = nil
         discovery.input = { [weak self] in self?.handle($0) }
         discovery.activated = { [weak self] in self?.activate($0) }
-        discovery.focused = { [weak self] id in
-            guard let self, self.reconciler?.suppressesFocus(id) != true else { return }
-            self.handle(.focusChanged(id))
-        }
+        discovery.acceptsFocus = { [weak reconciler] in reconciler?.acceptsFocus($0) == true }
+        discovery.focused = { [weak self] in self?.handle(.focusChanged($0)) }
         discovery.moved = { [weak self] in self?.windowMoved($0) }
         let keyboard = KeyboardTap(traceEnabled: ProcessInfo.processInfo.environment["MINITILE_TRACE_KEYS"] == "1") { [weak self] decision, trace in
             self?.handleKey(decision, trace: trace)

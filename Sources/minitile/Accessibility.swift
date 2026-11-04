@@ -3,8 +3,26 @@ import AppKit
 import CSkyLight
 import MinitileCore
 
+enum FocusObservation: Equatable {
+    case unknown
+    case known(WindowID?)
+
+    var window: WindowID? {
+        if case .known(let id) = self { return id }
+        return nil
+    }
+}
+
 @MainActor
 enum AX {
+    static func focus(_ app: AXUIElement) -> FocusObservation {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(app, kAXFocusedWindowAttribute as CFString, &value) == .success else { return .unknown }
+        guard let value else { return .known(nil) }
+        guard CFGetTypeID(value) == AXUIElementGetTypeID(), let id = id(value as! AXUIElement) else { return .unknown }
+        return .known(id)
+    }
+
     static func value(_ element: AXUIElement, _ attribute: String) -> CFTypeRef? {
         var result: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &result) == .success else { return nil }

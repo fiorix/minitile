@@ -112,7 +112,8 @@ extension AppDelegate {
         } catch { warnings["config"] = "Config: \(error)" }
         discovery.scan()
         finishDragIfReleased()
-        handle(.focusChanged(discovery.currentFocus()))
+        discovery.refreshFocus()
+        reconciler.apply(Output(scene: reconciler.scene))
         keyboard?.update(config: engine.config, displays: displays, dragged: reconciler.dragging)
         updateMenu()
     }
@@ -138,7 +139,7 @@ extension AppDelegate {
         lastActivation = (pid, now)
         // No AX reads before this input: Cmd-Tab's desktop switch has a narrow race.
         handle(.appActivated(pid: pid))
-        if discovery?.applications[pid] == nil { handle(.focusChanged(nil)) }
+        if let app = NSRunningApplication(processIdentifier: pid), discovery?.allows(app) == false { handle(.focusChanged(nil)) }
         discovery?.recheckSoon()
     }
 

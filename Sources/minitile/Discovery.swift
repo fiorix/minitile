@@ -38,6 +38,7 @@ final class Discovery {
     var input: ((Input) -> Void)?
     var activated: ((Int32) -> Void)?
     var focused: ((WindowID?) -> Void)?
+    var acceptsFocus: ((Int32) -> Bool)?
     var moved: ((WindowID) -> Void)?
     var suppressGeometry: ((WindowID) -> Bool)?
 
@@ -191,8 +192,7 @@ final class Discovery {
         // Activation must reach the reconciler before any AX discovery reads.
         if name == kAXApplicationActivatedNotification { activated?(pid); return }
         if name == kAXFocusedWindowChangedNotification || name == kAXMainWindowChangedNotification {
-            let current = applications[pid].flatMap { AX.element($0.element, kAXFocusedWindowAttribute) }.flatMap(AX.id)
-            focused?(current)
+            refreshFocus(pid: pid)
             recheckSoon()
             return
         }
@@ -233,9 +233,16 @@ final class Discovery {
         adoption.removeAll()
     }
 
-    func currentFocus() -> WindowID? {
-        guard let app = NSWorkspace.shared.frontmostApplication, let context = applications[app.processIdentifier],
-              let element = AX.element(context.element, kAXFocusedWindowAttribute) else { return nil }
-        return AX.id(element)
+    func currentFocus() -> FocusObservation {
+        guard let app = NSWorkspace.shared.frontmostApplication else { return .unknown }
+        guard allows(app) else { return .known(nil) }
+        guard let context = applications[app.processIdentifier] else { return .unknown }
+        return AX.focus(context.element)
+    }
+
+    func refreshFocus(pid: Int32? = nil) {
+        guard !frozen, let frontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier,
+              pid == nil || pid == frontmost, acceptsFocus?(frontmost) != false else { return }
+        if case .known(let id) = currentFocus() { focused?(id) }
     }
 }

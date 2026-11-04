@@ -9,6 +9,7 @@ Work stays on `shell-build` in `.build-shell`; core, IPC and mntl sources remain
 Plan: commit desktop-switch recovery, focus forwarding, drag detection, key bookkeeping, observer retries, notification recheck coalescing, the small keyboard/drag fixes, and transient position indicators separately. Run focused regressions per fix, then a warning-free build/full test pass and a separate diff review. Native activation timing needs a measured baseline and a fixed-build run. Automatic, interactive and external-monitor smoke runs require the user's Terminal and physical input. Merge and unrestricted operation remain unapproved.
 
 - Desktop switches now bounce and refresh membership without adding a suspension. Real interruptions resume only after every reason clears, refresh topology and window membership, complete a released drag, reread focus and reconcile the current scene. Wake/session recovery retains display debounce before resuming. A pure state test covers overlapping sleep, lock and display interruptions and one-shot recovery.
+- Focus notifications are accepted only from the frontmost app and are suppressed for the whole pid during minitile's focus interval. Each focus action replaces one delayed reread; switching to another app cancels it. Failed AX reads retain the current focus, including after lifecycle recovery. An allowed app awaiting observation is also unknown rather than unfocused. All 24 shell tests pass without warnings; native lag and background-window checks remain pending.
 
 ## Coordinator handoff: 2026-11-04
 

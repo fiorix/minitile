@@ -22,6 +22,19 @@ enum ReconcilePlan {
     }
 }
 
+struct FocusEcho {
+    var pid: Int32
+    var until: TimeInterval
+
+    func suppresses(_ pid: Int32, now: TimeInterval) -> Bool { self.pid == pid && now < until }
+}
+
+enum FocusForwarding {
+    static func accepts(pid: Int32, frontmost: Int32?, echo: FocusEcho?, now: TimeInterval) -> Bool {
+        pid == frontmost && echo?.suppresses(pid, now: now) != true
+    }
+}
+
 @MainActor
 final class Reconciler {
     let discovery: Discovery
@@ -32,21 +45,26 @@ final class Reconciler {
     private var frames: [WindowID: Rect] = [:]
     private var deferred: [WindowID: Rect] = [:]
     private var suppression: [WindowID: TimeInterval] = [:]
-    private var ownFocus: (id: WindowID, pid: Int32, until: TimeInterval)?
+    private var ownFocus: FocusEcho?
+    private var focusRead: DispatchWorkItem?
     var warning: ((String) -> Void)?
     private(set) var lastMilliseconds = 0.0
 
     init(discovery: Discovery, displays: DisplayCatalog) { self.discovery = discovery; self.displays = displays }
 
     func suppresses(_ id: WindowID) -> Bool { suppression[id, default: 0] > ProcessInfo.processInfo.systemUptime }
-    func suppressesFocus(_ id: WindowID?) -> Bool {
-        guard let ownFocus else { return false }
-        return id == ownFocus.id && ProcessInfo.processInfo.systemUptime < ownFocus.until
+    func acceptsFocus(_ pid: Int32) -> Bool {
+        FocusForwarding.accepts(pid: pid, frontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier,
+                                echo: ownFocus, now: ProcessInfo.processInfo.systemUptime)
     }
     func suppressesActivation(_ pid: Int32) -> Bool {
         guard let ownFocus else { return false }
-        if pid != ownFocus.pid { self.ownFocus = nil; return false }
-        return pid == ownFocus.pid && ProcessInfo.processInfo.systemUptime < ownFocus.until
+        if pid != ownFocus.pid {
+            self.ownFocus = nil
+            focusRead?.cancel()
+            return false
+        }
+        return ownFocus.suppresses(pid, now: ProcessInfo.processInfo.systemUptime)
     }
 
     func forget(_ id: WindowID) {
@@ -137,7 +155,13 @@ final class Reconciler {
 
     func focus(_ id: WindowID) {
         guard let window = discovery.windows[id], let app = NSRunningApplication(processIdentifier: window.info.pid) else { return }
-        ownFocus = (id, window.info.pid, ProcessInfo.processInfo.systemUptime + 1.2)
+        ownFocus = FocusEcho(pid: window.info.pid, until: ProcessInfo.processInfo.systemUptime + 1.2)
+        focusRead?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated { self?.discovery.refreshFocus(pid: window.info.pid) }
+        }
+        focusRead = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: work)
         AX.set(window.element, kAXMainAttribute, kCFBooleanTrue)
         AX.set(window.element, kAXFocusedAttribute, kCFBooleanTrue)
         AXUIElementPerformAction(window.element, kAXRaiseAction as CFString)
