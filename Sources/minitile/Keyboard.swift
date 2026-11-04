@@ -42,8 +42,14 @@ enum SwitcherKey: Equatable, Sendable {
     case cancel
 }
 
-/// A switcher decision carries the session it belongs to, so the main thread can drop ones for a closed switcher.
-enum KeyDecision: Equatable, Sendable { case pass, swallow, command([String]), switcher(SwitcherKey, session: Int) }
+/// A switcher decision carries the session it belongs to, so the main thread can drop ones for a closed switcher. A
+/// command from a grabbing binding carries the grab's session, which `grabReleased` ends.
+enum KeyDecision: Equatable, Sendable {
+    case pass, swallow
+    case command([String], grab: Int? = nil)
+    case switcher(SwitcherKey, session: Int)
+    case grabReleased(Int)
+}
 
 struct KeyTrace: Sendable {
     var time: TimeInterval
@@ -69,6 +75,12 @@ struct KeyRouter {
         var held: Modifiers
     }
 
+    /// A grab started by a binding, held while all of the binding's modifiers are.
+    struct HeldGrab: Equatable {
+        var session: Int
+        var held: Modifiers
+    }
+
     var bindings: [Chord: [String]] = [:]
     var names: [UInt16: String] = [:]
     var blocked: Set<NativeChord> = []
@@ -79,7 +91,9 @@ struct KeyRouter {
         didSet { if !switcherAvailable { switcher = nil } }
     }
     private(set) var switcher: OpenSwitcher?
+    private(set) var grab: HeldGrab?
     private var sessions = 0
+    private var grabSessions = 0
     private var swallowed: Set<UInt16> = []
     /// Held keys whose press ran a repeating binding.
     private var repeating: Set<UInt16> = []
@@ -122,6 +136,8 @@ struct KeyRouter {
             default: break
             }
         }
+        // The pointer already holds a dragged window, so its keys never grab it.
+        let bound = command == nil
         command = command ?? chord.flatMap { bindings[$0] }
         if let argv = command, argv.count == 2, argv[0] == "switcher", argv[1] == "next" || argv[1] == "prev" {
             if switcherAvailable {
@@ -139,10 +155,10 @@ struct KeyRouter {
             swallowed.insert(code)
             if !autorepeat {
                 if Self.repeats(command) { repeating.insert(code) }
-                return .command(command)
+                return .command(command, grab: bound ? grabSession(command, modifiers) : nil)
             }
             // A held repeating binding runs again while its chord still names one; every other binding fires once.
-            return repeating.contains(code) && Self.repeats(command) ? .command(command) : .swallow
+            return repeating.contains(code) && Self.repeats(command) ? .command(command, grab: grabSession(command, modifiers)) : .swallow
         }
         if autorepeat, swallowed.contains(code) { return .swallow }
         if blocked.contains(NativeChord(keycode: code, modifiers: modifiers)) {
@@ -157,6 +173,23 @@ struct KeyRouter {
         guard let open = switcher, !open.held.isEmpty, !modifiers.isSuperset(of: open.held) else { return .pass }
         switcher = nil
         return .switcher(.commit, session: open.session)
+    }
+
+    /// A grab started by a binding ends once any of the binding's modifiers, Shift included, is released.
+    mutating func grabFlags(_ modifiers: Modifiers) -> KeyDecision {
+        guard let open = grab, !modifiers.isSuperset(of: open.held) else { return .pass }
+        grab = nil
+        return .grabReleased(open.session)
+    }
+
+    /// A grabbing binding with modifiers holds its window while they are held. Further presses with the same
+    /// modifiers, resize repeats included, continue the grab; without modifiers there is nothing to hold.
+    private mutating func grabSession(_ command: [String], _ modifiers: Modifiers) -> Int? {
+        guard !modifiers.isEmpty, GrabCommand.grabs(command) else { return nil }
+        if let grab, grab.held == modifiers { return grab.session }
+        grabSessions += 1
+        grab = HeldGrab(session: grabSessions, held: modifiers)
+        return grabSessions
     }
 
     /// The main thread opened the switcher without a key, as `mntl switcher next` does; it stays open until closed.
@@ -248,6 +281,13 @@ final class KeyboardTap: @unchecked Sendable {
         return lock.withLock { router.flags(modifiers) }
     }
 
+    /// Whether the grab's binding modifiers are still held, rereading them in case the tap missed a release. False
+    /// also when the router has moved on to another grab.
+    func grabHeld(_ session: Int) -> Bool {
+        let modifiers = KeyRouter.modifiers(CGEventSource.flagsState(.combinedSessionState))
+        return lock.withLock { _ = router.grabFlags(modifiers); return router.grab?.session == session }
+    }
+
     var unavailable: Bool { lock.withLock { failed } }
 
     func start() {
@@ -306,8 +346,9 @@ final class KeyboardTap: @unchecked Sendable {
             return Unmanaged.passUnretained(event)
         }
         if type == .flagsChanged {
-            let decision = lock.withLock { router.flags(KeyRouter.modifiers(event.flags)) }
-            if case .switcher = decision { DispatchQueue.main.async { [handle] in handle(decision, nil) } }
+            let modifiers = KeyRouter.modifiers(event.flags)
+            let decisions = lock.withLock { [router.flags(modifiers), router.grabFlags(modifiers)] }
+            for decision in decisions where decision != .pass { DispatchQueue.main.async { [handle] in handle(decision, nil) } }
             return Unmanaged.passUnretained(event)
         }
         guard type == .keyDown || type == .keyUp else { return Unmanaged.passUnretained(event) }
@@ -323,7 +364,7 @@ final class KeyboardTap: @unchecked Sendable {
             return (decision, trace)
         }
         switch decision {
-        case .command, .switcher:
+        case .command, .switcher, .grabReleased:
             DispatchQueue.main.async { [handle] in handle(decision, trace) }
         case .pass, .swallow:
             if trace != nil { DispatchQueue.main.async { [handle] in handle(decision, trace) } }

@@ -59,7 +59,7 @@ import Testing
     for (code, name, expected) in arrows {
         for releasedFlags: CGEventFlags in [[.maskControl, .maskSecondaryFn, .maskNumericPad], []] {
             var router = KeyRouter(bindings: config.bindings, names: [code: name])
-            #expect(router.key(code, modifiers: KeyRouter.modifiers(flags), down: true) == .command(expected))
+            #expect(router.key(code, modifiers: KeyRouter.modifiers(flags), down: true) == .command(expected, grab: 1))
             #expect(router.key(code, modifiers: KeyRouter.modifiers(releasedFlags), down: false) == .swallow)
             #expect(router.key(code, modifiers: [], down: false) == .pass)
             #expect(router.key(code, modifiers: [], down: true) == .pass)
@@ -109,7 +109,7 @@ func dragCommandsAddressDraggedWindow(_ direction: String) {
 
 @Test func heldResizeBindingRepeatsWhileOtherBindingsFireOnce() {
     let arrows: [UInt16: String] = [123: "left", 124: "right", 125: "down", 126: "up"]
-    let resize: (String) -> KeyDecision = { .command(["window", "resize", $0]) }
+    let resize: (String) -> KeyDecision = { .command(["window", "resize", $0], grab: 1) }
     var router = KeyRouter(bindings: Config.defaultBindings, names: arrows)
     for (code, name) in arrows {
         #expect(router.key(code, modifiers: [.ctrl, .alt], down: true) == resize(name))
@@ -138,8 +138,8 @@ func dragCommandsAddressDraggedWindow(_ direction: String) {
     // A custom binding naming a window repeats too; resize by share does not.
     var custom = KeyRouter(bindings: [Chord(modifiers: .alt, key: "left"): ["window", "resize", "42", "left"],
                                       Chord(modifiers: .alt, key: "right"): ["window", "resize", "0.6"]], names: arrows)
-    #expect(custom.key(123, modifiers: .alt, down: true) == .command(["window", "resize", "42", "left"]))
-    #expect(custom.key(123, modifiers: .alt, down: true, autorepeat: true) == .command(["window", "resize", "42", "left"]))
+    #expect(custom.key(123, modifiers: .alt, down: true) == .command(["window", "resize", "42", "left"], grab: 1))
+    #expect(custom.key(123, modifiers: .alt, down: true, autorepeat: true) == .command(["window", "resize", "42", "left"], grab: 1))
     #expect(custom.key(124, modifiers: .alt, down: true) == .command(["window", "resize", "0.6"]))
     #expect(custom.key(124, modifiers: .alt, down: true, autorepeat: true) == .swallow)
     // The open switcher takes the arrows whatever the modifiers.

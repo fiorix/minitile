@@ -10,8 +10,9 @@ extension AppDelegate {
             switch decision {
             case .pass: route = "pass"; argv = []
             case .swallow: route = "swallow"; argv = []
-            case .command(let command): route = "command"; argv = command
+            case .command(let command, _): route = "command"; argv = command
             case .switcher(let key, _): route = "switcher"; argv = [String(describing: key)]
+            case .grabReleased: route = "grab_released"; argv = []
             }
             let key = [123: "left", 124: "right", 125: "down", 126: "up"][Int(trace.keycode)] ?? String(trace.keycode)
             let chord = Chord(modifiers: KeyRouter.modifiers(CGEventFlags(rawValue: trace.flags)), key: key)
@@ -24,7 +25,7 @@ extension AppDelegate {
                     "suspended": .array(suspendedReasons.sorted().map(JSONValue.string))])
         }
         if case .switcher(let key, let session) = decision { switcherKey(key, session: session) }
-        if case .command(let argv) = decision {
+        if case .command(let argv, _) = decision {
             let reply = command(argv)
             if let trace {
                 logKey(["phase": .string("result"), "event_time": .number(trace.time),

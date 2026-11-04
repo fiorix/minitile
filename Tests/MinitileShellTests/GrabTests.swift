@@ -269,3 +269,70 @@ private func highlight() -> (GrabHighlight, FakeOutline, FakeTimer) {
     grab.command(GrabCommand(window: 1, acted: true), session: 1, focus: 1)
     #expect(timer.pending.isEmpty)
 }
+
+private let arrows: [UInt16: String] = [123: "left", 124: "right", 125: "down", 126: "up", 49: "space", 48: "tab", 0: "a", 96: "f5"]
+
+@Test func grabbingBindingHoldsUntilAnyOfItsModifiersIsReleased() {
+    var router = KeyRouter(bindings: Config.defaultBindings, names: arrows)
+    #expect(router.grabFlags([.ctrl, .shift]) == .pass)
+    #expect(router.key(124, modifiers: [.ctrl, .shift], down: true) == .command(["window", "nudge", "right"], grab: 1))
+    #expect(router.grab == KeyRouter.HeldGrab(session: 1, held: [.ctrl, .shift]))
+    #expect(router.key(124, modifiers: [.ctrl, .shift], down: false) == .swallow)
+    // Further presses while held continue it, carries included, and so does a binding that does not grab.
+    #expect(router.key(123, modifiers: [.ctrl, .shift], down: true) == .command(["window", "nudge", "left"], grab: 1))
+    #expect(router.key(125, modifiers: [.ctrl, .shift], down: true) == .command(["window", "move", "workspace", "next"], grab: 1))
+    #expect(router.key(49, modifiers: [.ctrl, .shift], down: true) == .command(["page", "variant"]))
+    #expect(router.grab?.session == 1)
+    // Adding a modifier keeps it, and the switcher's check is not affected.
+    #expect(router.grabFlags([.ctrl, .shift, .cmd]) == .pass)
+    #expect(router.flags([.ctrl]) == .pass)
+    #expect(router.grabFlags([.ctrl]) == .grabReleased(1))
+    #expect(router.grab == nil)
+    #expect(router.grabFlags([]) == .pass)
+    #expect(router.key(124, modifiers: [.ctrl, .shift], down: true) == .command(["window", "nudge", "right"], grab: 2))
+    #expect(router.grabFlags(.shift) == .grabReleased(2))
+}
+
+@Test func resizeRepeatsContinueTheGrabUntilItsModifiersChange() {
+    var router = KeyRouter(bindings: Config.defaultBindings, names: arrows)
+    let resize: KeyDecision = .command(["window", "resize", "right"], grab: 1)
+    #expect(router.key(124, modifiers: [.ctrl, .alt], down: true) == resize)
+    for _ in 0..<3 { #expect(router.key(124, modifiers: [.ctrl, .alt], down: true, autorepeat: true) == resize) }
+    #expect(router.grabFlags(.ctrl) == .grabReleased(1))
+    #expect(router.key(124, modifiers: .ctrl, down: true, autorepeat: true) == .swallow)
+    #expect(router.grab == nil)
+    // A held repeat after the release grabs again only when its chord still names a resize.
+    var custom = KeyRouter(bindings: [Chord(modifiers: [.ctrl, .alt], key: "left"): ["window", "resize", "left"],
+                                      Chord(modifiers: .alt, key: "left"): ["window", "resize", "left"]], names: arrows)
+    #expect(custom.key(123, modifiers: [.ctrl, .alt], down: true) == .command(["window", "resize", "left"], grab: 1))
+    #expect(custom.grabFlags(.alt) == .grabReleased(1))
+    #expect(custom.key(123, modifiers: .alt, down: true, autorepeat: true) == .command(["window", "resize", "left"], grab: 2))
+    #expect(custom.grab == KeyRouter.HeldGrab(session: 2, held: .alt))
+}
+
+@Test func dragKeysAndBindingsWithoutModifiersHoldNothing() {
+    var dragging = KeyRouter(bindings: Config.defaultBindings, names: arrows, dragged: 42)
+    #expect(dragging.key(123, modifiers: .ctrl, down: true) == .command(["window", "nudge", "42", "left"]))
+    #expect(dragging.grab == nil)
+    var bare = KeyRouter(bindings: [Chord(modifiers: [], key: "f5"): ["window", "nudge", "left"]], names: arrows)
+    #expect(bare.key(96, modifiers: [], down: true) == .command(["window", "nudge", "left"]))
+    #expect(bare.grab == nil)
+}
+
+@Test func openSwitcherSwallowsGrabbingBindingsAndBothReleasesAreReported() {
+    var bindings = Config.defaultBindings
+    bindings[Chord(modifiers: [.ctrl, .shift], key: "a")] = ["window", "nudge", "left"]
+    bindings[Chord(modifiers: [.ctrl, .shift], key: "tab")] = ["switcher", "next"]
+    var router = KeyRouter(bindings: bindings, names: arrows)
+    router.switcherAvailable = true
+    let session = router.openSwitcher()
+    #expect(router.key(0, modifiers: [.ctrl, .shift], down: true) == .swallow)
+    #expect(router.grab == nil)
+    router.closeSwitcher(session)
+    // A grab held when a binding opens the switcher ends with the same release that commits it.
+    #expect(router.key(123, modifiers: [.ctrl, .shift], down: true) == .command(["window", "nudge", "left"], grab: 1))
+    #expect(router.key(48, modifiers: [.ctrl, .shift], down: true) == .switcher(.open(forward: true, held: .ctrl), session: 2))
+    #expect(router.key(123, modifiers: [.ctrl, .shift], down: true) == .switcher(.move(.left), session: 2))
+    #expect(router.flags(.shift) == .switcher(.commit, session: 2))
+    #expect(router.grabFlags(.shift) == .grabReleased(1))
+}
