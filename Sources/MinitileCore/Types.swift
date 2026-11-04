@@ -128,6 +128,8 @@ public struct Output: Sendable {
     public var reply: Reply?
     public var events: [Event]
     public var stateChanged: Bool
+    /// The display a command crossed into past the edge of a grid, if it did.
+    public var crossed: DisplayID? = nil
     public init(scene: Scene = Scene(), actions: [Action] = [], rewrite: Set<WindowID> = [],
                 reply: Reply? = nil, events: [Event] = [], stateChanged: Bool = false) {
         self.scene = scene; self.actions = actions; self.rewrite = rewrite

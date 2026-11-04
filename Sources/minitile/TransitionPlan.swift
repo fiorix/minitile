@@ -57,16 +57,6 @@ enum TransitionPlan {
         return result
     }
 
-    /// The display a command crossed into past the edge of a grid. After a navigation without a display address,
-    /// the core's command display (`context` before, `contextAfter` after) is another one, which navigation within
-    /// a display never makes it; after a nudge or carry, the window it acted on (`window`) is on another display.
-    static func crossing(argv: [String], window: WindowID?, before: SavedState, after: SavedState,
-                         context: DisplayID?, contextAfter: DisplayID?) -> DisplayID? {
-        if let navigation = navigation(argv) { return navigation.display == nil && contextAfter != context ? contextAfter : nil }
-        guard let window, let to = after.windows[window]?.display, before.windows[window]?.display != to else { return nil }
-        return to
-    }
-
     static func direction(before: DisplayState, after: DisplayState, from: ShownView, to: ShownView) -> TransitionDirection {
         guard from.workspace == to.workspace else {
             return TransitionDirection(dx: 0, dy: step(before.workspaces.map(\.id), after.workspaces.map(\.id), from.workspace, to.workspace))

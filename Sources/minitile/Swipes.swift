@@ -202,7 +202,18 @@ extension AppDelegate {
     /// The same path as a key binding, so swipes slide, bounce and focus like Ctrl+arrows.
     func swiped(_ argv: [String], received: TimeInterval) {
         inputWaited("Swipe \(argv.joined(separator: " "))", since: received)
+        lastCrossed = nil
         let reply = command(argv)
         if !reply.ok { logger.info("Swipe \(argv.joined(separator: " "), privacy: .public): \(reply.text, privacy: .public)") }
+        // Swipes act on the display under the pointer, so the next one continues where this one crossed to.
+        if let crossed = lastCrossed { movePointer(to: crossed) }
+    }
+
+    /// Moves the pointer to the middle of a display's usable area without holding back the user's next movement.
+    func movePointer(to id: DisplayID) {
+        guard let display = displays.displays.first(where: { $0.info.id == id }) else { return }
+        let area = display.info.visibleFrame
+        CGWarpMouseCursorPosition(CGPoint(x: area.x + area.width / 2, y: area.y + area.height / 2))
+        CGAssociateMouseAndMouseCursorPosition(1)
     }
 }
