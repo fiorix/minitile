@@ -43,6 +43,9 @@ final class Discovery {
     private(set) var windows: [WindowID: Window] = [:]
     private(set) var applications: [Int32: Application] = [:]
     private var misses: [WindowID: Int] = [:]
+    private var rechecks = PresenceRechecks()
+    private var recheckWork: DispatchWorkItem?
+    private var creations: [Int32: [AXUIElement]] = [:]
     private var adoption: [WindowID: (pid: Int32, display: NativeDisplay)] = [:]
     var config: Config
     let displays: DisplayCatalog
@@ -97,6 +100,10 @@ final class Discovery {
     }
 
     func stop() {
+        recheckWork?.cancel()
+        recheckWork = nil
+        rechecks = PresenceRechecks()
+        creations.removeAll()
         applications.values.forEach { $0.stop() }
         applications.removeAll()
     }
@@ -119,7 +126,11 @@ final class Discovery {
             observe(app)
             scan(app, cg: cg)
         }
-        for id in Array(windows.keys) {
+        checkPresence(cg, pids: Set(windows.values.map { $0.info.pid }))
+    }
+
+    private func checkPresence(_ cg: [WindowID: CGWindowRecord], pids: Set<Int32>) {
+        for id in Array(windows.keys) where windows[id].map({ pids.contains($0.info.pid) }) == true {
             guard let window = windows[id] else { continue }
             if cg[id]?.pid == window.info.pid { misses.removeValue(forKey: id) }
             else {
@@ -210,17 +221,48 @@ final class Discovery {
 
     func terminated(_ pid: Int32) {
         applications.removeValue(forKey: pid)?.stop()
-        recheckSoon()
+        creations.removeValue(forKey: pid)
+        recheckSoon(pids: [pid])
     }
 
-    func recheckSoon() {
+    func recheckSoon(pids: Set<Int32>? = nil) {
         recheckRequests += 1
-        for delay in [0.15, 0.4, 0.9] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                self?.recheckPasses += 1
-                self?.scan()
+        rechecks.request(pids ?? Set(windows.values.map { $0.info.pid }))
+        scheduleRecheck()
+    }
+
+    private func scheduleRecheck() {
+        guard recheckWork == nil, !rechecks.isEmpty else { return }
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.recheckWork = nil
+                guard !self.frozen else {
+                    self.rechecks = PresenceRechecks()
+                    self.creations.removeAll()
+                    return
+                }
+                let pids = self.rechecks.take()
+                self.recheckPasses += 1
+                if let cg = CGWindowRecord.snapshot() {
+                    self.checkPresence(cg, pids: pids)
+                    // Only new-window elements need AX reads; focus/destroy bursts use CG presence alone.
+                    for pid in pids {
+                        guard let app = NSRunningApplication(processIdentifier: pid), self.allows(app) else { continue }
+                        let candidates = self.creations.removeValue(forKey: pid) ?? []
+                        for element in candidates {
+                            self.discover(element, app: app, cg: cg)
+                            if let id = AX.id(element), self.windows[id] != nil { continue }
+                            self.creations[pid, default: []].append(element)
+                        }
+                    }
+                }
+                if self.rechecks.isEmpty { self.creations.removeAll() }
+                self.scheduleRecheck()
             }
         }
+        recheckWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + rechecks.delay, execute: work)
     }
 
     private func notification(pid: Int32, element: AXUIElement, name: String) {
@@ -230,15 +272,20 @@ final class Discovery {
         if name == kAXApplicationActivatedNotification { activated?(pid, received); return }
         if name == kAXFocusedWindowChangedNotification || name == kAXMainWindowChangedNotification {
             refreshFocus(pid: pid)
-            recheckSoon()
+            recheckSoon(pids: [pid])
+            return
+        }
+        if name == kAXWindowCreatedNotification {
+            if creations[pid]?.contains(where: { CFEqual($0, element) }) != true { creations[pid, default: []].append(element) }
+            recheckSoon(pids: [pid])
             return
         }
         let id = AX.id(element) ?? windows.first { $0.value.info.pid == pid && CFEqual($0.value.element, element) }?.key
-        if name == kAXUIElementDestroyedNotification { recheckSoon(); return }
+        if name == kAXUIElementDestroyedNotification { recheckSoon(pids: [pid]); return }
         if let id, windows[id] != nil {
             if name == kAXMovedNotification || name == kAXResizedNotification { moved?(id) }
             update(id)
-        } else { recheckSoon() }
+        } else { recheckSoon(pids: [pid]) }
     }
 
     /// Temporarily expose allowed stash windows to acquire AX handles at startup.

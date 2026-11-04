@@ -204,6 +204,6 @@ final class Reconciler {
     private func close(_ id: WindowID) {
         guard let window = discovery.windows[id], let button = AX.element(window.element, kAXCloseButtonAttribute) else { return }
         AXUIElementPerformAction(button, kAXPressAction as CFString)
-        discovery.recheckSoon()
+        discovery.recheckSoon(pids: [window.info.pid])
     }
 }

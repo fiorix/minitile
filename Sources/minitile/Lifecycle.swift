@@ -19,7 +19,7 @@ extension AppDelegate {
         observeActivation(workspace)
         observe(workspace, NSWorkspace.didLaunchApplicationNotification) { [weak self] pid in
             guard let pid, let app = NSRunningApplication(processIdentifier: pid) else { return }
-            self?.discovery?.observe(app); self?.discovery?.recheckSoon()
+            self?.discovery?.observe(app); self?.discovery?.scan(app); self?.discovery?.recheckSoon(pids: [pid])
         }
         observe(workspace, NSWorkspace.didTerminateApplicationNotification) { [weak self] pid in
             if let pid { self?.discovery?.terminated(pid) }
@@ -122,6 +122,7 @@ extension AppDelegate {
             if try paths.configContents() != lastConfig { _ = reloadConfig() }
         } catch { warnings["config"] = "Config: \(error)" }
         discovery.scan()
+        discovery.recheckSoon()
         finishDragIfReleased()
         discovery.refreshFocus()
         reconciler.apply(Output(scene: reconciler.scene))
@@ -153,7 +154,7 @@ extension AppDelegate {
         // No AX reads before this input: Cmd-Tab's desktop switch has a narrow race.
         handle(.appActivated(pid: pid))
         if let app = NSRunningApplication(processIdentifier: pid), discovery?.allows(app) == false { handle(.focusChanged(nil)) }
-        discovery?.recheckSoon()
+        discovery?.recheckSoon(pids: [pid])
     }
 
     func windowMoved(_ id: WindowID) {
