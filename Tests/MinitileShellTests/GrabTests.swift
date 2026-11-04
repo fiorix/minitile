@@ -282,7 +282,10 @@ private func highlight() -> (GrabHighlight, FakeOutline, FakeTimer) {
 private let arrows: [UInt16: String] = [123: "left", 124: "right", 125: "down", 126: "up", 49: "space", 48: "tab", 0: "a", 96: "f5"]
 
 @Test func grabbingBindingHoldsUntilAnyOfItsModifiersIsReleased() {
-    var router = KeyRouter(bindings: Config.defaultBindings, names: arrows)
+    // No default Ctrl+Shift binding is non-grabbing, so add one.
+    var bindings = Config.defaultBindings
+    bindings[Chord(modifiers: [.ctrl, .shift], key: "space")] = ["page", "variant"]
+    var router = KeyRouter(bindings: bindings, names: arrows)
     #expect(router.grabFlags([.ctrl, .shift]) == .pass)
     #expect(router.key(124, modifiers: [.ctrl, .shift], down: true) == .command(["window", "nudge", "right"], grab: 1))
     #expect(router.grab == KeyRouter.HeldGrab(session: 1, held: [.ctrl, .shift]))
