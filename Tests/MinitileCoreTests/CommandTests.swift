@@ -70,6 +70,23 @@ func malformedCommandsFailWithoutStateChanges(_ text: String) {
     #expect(command(&e, "watch").reply?.ok == true)
     #expect(command(&e, "config info").reply?.text.contains("bindings:") == true)
     #expect(e.handle(.command(["debug", "spaces"])).reply?.ok == false)
+    #expect(Engine.help.hasPrefix("help [show]\nignore\n"))
+}
+
+@Test func ignoreRepliesOKWithoutChangingAnything() {
+    var e = engine(3)
+    command(&e, "window focus 2")
+    let before = e.savedState()
+    let out = command(&e, "ignore")
+    #expect(out.reply == Reply(text: "OK"))
+    #expect(out.actions.isEmpty)
+    #expect(out.events.isEmpty)
+    #expect(out.rewrite.isEmpty)
+    #expect(!out.stateChanged)
+    #expect(e.savedState() == before)
+    var empty = Engine()
+    #expect(empty.handle(.command(["ignore"])).reply?.ok == true)
+    #expect(e.handle(.command(["ignore", "extra"])).reply?.ok == false)
 }
 
 @Test func spatialFocusStaysOnPageAndUsesNearestWindow() {
@@ -108,8 +125,9 @@ func malformedCommandsFailWithoutStateChanges(_ text: String) {
 }
 
 @Test func everyDefaultBindingUsesAcceptedGrammar() {
-    // The app shell answers switcher commands, so the core grammar check skips them; the shell tests cover them.
-    for args in Config.default.bindings.values where args.first != "switcher" {
+    // The app shell answers switcher commands and help show, so the core grammar check skips them; the shell tests
+    // cover them.
+    for args in Config.default.bindings.values where args.first != "switcher" && args != ["help", "show"] {
         var e = engine(4)
         command(&e, "window focus 1")
         #expect(e.handle(.command(args)).reply?.ok == true)

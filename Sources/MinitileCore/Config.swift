@@ -63,5 +63,7 @@ public struct Config: Sendable, Equatable {
         Chord(modifiers: [.ctrl, .alt], key: "down"): ["window", "resize", "down"],
         Chord(modifiers: [.cmd, .alt], key: "`"): ["window", "swap", "next"],
         Chord(modifiers: [.cmd, .alt, .shift], key: "`"): ["window", "swap", "prev"],
+        Chord(modifiers: .cmd, key: "h"): ["help", "show"],
+        Chord(modifiers: [.cmd, .alt], key: "h"): ["ignore"],
     ]
 }
