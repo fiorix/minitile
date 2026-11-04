@@ -2,6 +2,17 @@ import AppKit
 import CSkyLight
 import MinitileCore
 
+struct SuspensionState {
+    private(set) var reasons: Set<String> = []
+
+    /// Resume only when the last outstanding interruption ends.
+    mutating func set(_ reason: String, enabled: Bool) -> Bool {
+        let wasSuspended = !reasons.isEmpty
+        if enabled { reasons.insert(reason) } else { reasons.remove(reason) }
+        return wasSuspended && reasons.isEmpty
+    }
+}
+
 extension AppDelegate {
     func observeLifecycle() {
         let workspace = NSWorkspace.shared.notificationCenter
@@ -26,7 +37,6 @@ extension AppDelegate {
             self.displays.bounceFromStash()
             self.reconciler?.refreshSpaces()
             self.discovery?.recheckSoon()
-            self.scheduleDisplays()
         }
         observe(.default, NSApplication.didChangeScreenParametersNotification) { [weak self] _ in self?.scheduleDisplays() }
         for name in [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification] {
@@ -36,13 +46,13 @@ extension AppDelegate {
             observe(workspace, name) { [weak self] _ in
                 guard let self else { return }
                 self.wakeUntil = ProcessInfo.processInfo.systemUptime + 5
-                self.suspend("sleep", enabled: false)
                 self.scheduleDisplays()
+                self.suspend("sleep", enabled: false)
             }
         }
         observe(workspace, NSWorkspace.sessionDidResignActiveNotification) { [weak self] _ in self?.suspend("session", enabled: true) }
         observe(workspace, NSWorkspace.sessionDidBecomeActiveNotification) { [weak self] _ in
-            self?.suspend("session", enabled: false); self?.scheduleDisplays()
+            self?.scheduleDisplays(); self?.suspend("session", enabled: false)
         }
         var ticks = 0
         healthTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
@@ -86,8 +96,25 @@ extension AppDelegate {
     }
 
     func suspend(_ reason: String, enabled: Bool) {
-        if enabled { suspendedReasons.insert(reason) } else { suspendedReasons.remove(reason) }
+        let shouldResume = suspension.set(reason, enabled: enabled)
         discovery?.frozen = !suspendedReasons.isEmpty
+        if shouldResume { resume() }
+    }
+
+    func resume() {
+        guard started, !quitting, let discovery, let reconciler else { return }
+        let changed = displays.refresh()
+        displays.bounceFromStash()
+        reconciler.refreshSpaces()
+        if changed { handle(.displaysChanged(displays.infos)) }
+        do {
+            if try paths.configContents() != lastConfig { _ = reloadConfig() }
+        } catch { warnings["config"] = "Config: \(error)" }
+        discovery.scan()
+        finishDragIfReleased()
+        handle(.focusChanged(discovery.currentFocus()))
+        keyboard?.update(config: engine.config, displays: displays, dragged: reconciler.dragging)
+        updateMenu()
     }
 
     func scheduleDisplays() {
@@ -97,17 +124,6 @@ extension AppDelegate {
             MainActor.assumeIsolated {
                 guard let self, !self.quitting else { return }
                 self.suspend("display", enabled: false)
-                guard self.discovery?.frozen == false else { return }
-                let changed = self.displays.refresh()
-                self.displays.bounceFromStash()
-                self.reconciler?.refreshSpaces()
-                if changed { self.handle(.displaysChanged(self.displays.infos)) }
-                do {
-                    if try self.paths.configContents() != self.lastConfig { _ = self.reloadConfig() }
-                } catch { self.warnings["config"] = "Config: \(error)" }
-                self.discovery?.scan()
-                self.keyboard?.update(config: self.engine.config, displays: self.displays, dragged: self.reconciler?.dragging)
-                self.updateMenu()
             }
         }
         displayWork = work

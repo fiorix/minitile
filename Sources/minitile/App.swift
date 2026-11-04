@@ -53,7 +53,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var lastConfig: String?
     var quitting = false
     var signalSources: [DispatchSourceSignal] = []
-    var suspendedReasons: Set<String> = []
+    var suspension = SuspensionState()
+    var suspendedReasons: Set<String> { suspension.reasons }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         startupLog("Application launched; Accessibility trusted: \(AXIsProcessTrusted())")

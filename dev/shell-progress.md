@@ -2,6 +2,14 @@
 
 Implement the macOS shell from `agent-2-shell.md` against `core-v1`, preserving core sources. Live runs use temporary config/state/socket paths and TextEdit only. User participation is required for Accessibility, hardware keys and monitor tests. Merging into main remains subject to approval.
 
+## Fix session: 2026-11-04
+
+Work stays on `shell-build` in `.build-shell`; core, IPC and mntl sources remain outside this work order. The unchanged design-session edits and fix instructions were committed first as `1ff556b`. The exact stale test directory `minitile-smoke.n2jP9E` was inspected and deleted as authorized.
+
+Plan: commit desktop-switch recovery, focus forwarding, drag detection, key bookkeeping, observer retries, notification recheck coalescing, the small keyboard/drag fixes, and transient position indicators separately. Run focused regressions per fix, then a warning-free build/full test pass and a separate diff review. Native activation timing needs a measured baseline and a fixed-build run. Automatic, interactive and external-monitor smoke runs require the user's Terminal and physical input. Merge and unrestricted operation remain unapproved.
+
+- Desktop switches now bounce and refresh membership without adding a suspension. Real interruptions resume only after every reason clears, refresh topology and window membership, complete a released drag, reread focus and reconcile the current scene. Wake/session recovery retains display debounce before resuming. A pure state test covers overlapping sleep, lock and display interruptions and one-shot recovery.
+
 ## Coordinator handoff: 2026-11-04
 
 - Integration branch: `shell-build`, worktree `/Users/fiorix/dev/github.com/fiorix/minitile/.build-shell`. It includes core through `19b3ada`; the latest implementation commit is `5033e31`. The sibling `shell` branch is stale at core-v1 and does not contain this work. Review `git diff core...shell-build`; no merge into main was performed.
