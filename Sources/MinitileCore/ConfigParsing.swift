@@ -48,10 +48,11 @@ private struct ConfigFields: Decodable {
     var onlyApps: [String]?
     var bindings: [String: String]?
     var transitionMs: Double?
+    var trackpadSwipes: Bool?
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: ConfigKey.self)
-        let known = Set(["gaps", "padding", "float_apps", "only_apps", "bindings", "transition_ms"])
+        let known = Set(["gaps", "padding", "float_apps", "only_apps", "bindings", "transition_ms", "trackpad_swipes"])
         for key in container.allKeys where !known.contains(key.stringValue) {
             throw ConfigError(key: key.stringValue, message: "Unknown config key")
         }
@@ -65,6 +66,7 @@ private struct ConfigFields: Decodable {
         onlyApps = try decode([String].self, "only_apps")
         bindings = try decode([String: String].self, "bindings")
         transitionMs = try decode(Double.self, "transition_ms")
+        trackpadSwipes = try decode(Bool.self, "trackpad_swipes")
     }
 }
 
@@ -86,6 +88,7 @@ extension Config {
             guard ms.isFinite, (0...2000).contains(ms) else { throw ConfigError(key: "transition_ms", message: "Expected milliseconds from 0 to 2000") }
             config.transitionMs = ms
         }
+        config.trackpadSwipes = fields.trackpadSwipes ?? config.trackpadSwipes
         config.floatApps = fields.floatApps ?? []
         config.onlyApps = fields.onlyApps ?? []
         for (key, apps) in [("float_apps", config.floatApps), ("only_apps", config.onlyApps)] {

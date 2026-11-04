@@ -150,12 +150,12 @@ Mouse:
 - Press Ctrl+arrow while dragging a window to do to it what Ctrl+Shift+arrow does. This is how macOS moves a window to another desktop. Frames of a window being dragged are not written until the mouse button is released.
 - A move or resize that minitile did not cause, seen while the mouse button is down, is a user drag. minitile acts on release.
 
-Trackpad (not yet implemented; the mechanism is under "Trackpad swipe mechanism"):
+Trackpad (the mechanism is under "Trackpad swipe mechanism"):
 
 - The swipe macOS uses to switch desktops and open Mission Control and App Expose (three or four fingers, as set in System Settings) navigates the grid instead. Fingers left show the next page, fingers right the previous page, fingers up the workspace below and fingers down the workspace above. These run the same commands as Ctrl+Right, Ctrl+Left, Ctrl+Down and Ctrl+Up, with the same slides and edge bounces.
-- A swipe acts when it ends, if it travelled at least 30% of the way or was still moving fast (end velocity of at least 2). A shorter, slower swipe does nothing.
-- It acts on the display under the pointer, as the native swipe does.
-- minitile leaves the whole swipe to macOS when, as it begins, the display under the pointer is unmanaged or not showing its visible desktop (for example a fullscreen app's Space), when minitile is not started or is suspended, or when `trackpad_swipes` is false.
+- A swipe acts when it ends, if it travelled at least 30% of the way or was still moving fast (end velocity of at least 2). A shorter, slower swipe, or one macOS cancels, does nothing; it still never reaches macOS.
+- It acts on the display under the pointer as the swipe begins, as the native swipe does, whichever display has focus.
+- minitile leaves the whole swipe to macOS when, as it begins, the display under the pointer is unmanaged or not showing its visible desktop (for example a fullscreen app's Space), when minitile is not started or is suspended, or when `trackpad_swipes` is false. It also stays with macOS while minitile's swipe tap is unavailable or disabled.
 - Mission Control and App Expose stay reachable through their keys and the Dock.
 
 Everything else (floating, spatial focus, exact ratios) is a command: reachable from `mntl`, from the menu bar where it makes sense, and bindable to keys in the config.
@@ -183,7 +183,7 @@ Every minitile function is a command. Key bindings, the menu bar, mouse gestures
 
 The shell provides `debug spaces`, `debug windows`, `debug scene`, `debug timings` and `debug health`. Spaces include the native display identifier, every native Space and its type, current Space, and core display metadata. The desktop list comes from the last catalog refresh; current Space is read for each request. Windows include allowed apps' raw layer-0 windows, AX observation status, current spaces, frames and tileability. Scene frame keys are decimal window-ID strings. Health includes process ID, startup/suspension state and reasons, secure input, tap availability, paths and warnings. The menu can open config, retry startup after a config error, or quit while normal command handling is still unavailable.
 
-`grid_indicator_displays` counts physical displays whose indicator state is tracked, including hidden indicators; `grid_indicator_visible_displays` counts currently visible panels, and `grid_indicator_duration_ms` is 1500. `transitions_enabled` says whether page transitions run, and `transitions_disabled_reason` says why not (`transition_ms` is 0, Reduce Motion is on, Screen Recording is not granted, or screen capture content is not loaded) or is null. Timing diagnostics include full-scan counts/duration, recheck requests/passes, and the latest 128 activation-triggered first move submissions. Activation latency runs from delivery of the workspace or AX notification callback through return of the bridged move submission; it does not measure time before notification delivery or completion in WindowServer.
+`grid_indicator_displays` counts physical displays whose indicator state is tracked, including hidden indicators; `grid_indicator_visible_displays` counts currently visible panels, and `grid_indicator_duration_ms` is 1500. `transitions_enabled` says whether page transitions run, and `transitions_disabled_reason` says why not (`transition_ms` is 0, Reduce Motion is on, Screen Recording is not granted, or screen capture content is not loaded) or is null. `trackpad_swipes` is the configured setting; `swipe_tap_running` says whether the swipe tap exists and is enabled; `swipe_tap_unavailable` says it could not be created or its thread exited unexpectedly. `last_swipe` is the latest swipe that began, or null: its `location` in global points, the `display` minitile took it for (null when it went to macOS) and the `command` it ran (null when none). Timing diagnostics include full-scan counts/duration, recheck requests/passes, and the latest 128 activation-triggered first move submissions. Activation latency runs from delivery of the workspace or AX notification callback through return of the bridged move submission; it does not measure time before notification delivery or completion in WindowServer.
 
 Commands are noun then verb. Windows are addressed by window ID and default to the focused window. Pages and workspaces are addressed by index or `next`/`prev`, and default to the display with the focused window.
 
@@ -228,18 +228,19 @@ window swap [ID] OTHER_ID
 window resize [ID] SHARE|WIDTHxHEIGHT
 page list
 page info|show|variant [INDEX|next|prev]
-page next|prev
+page next|prev [display UUID]
 page ratio R1 [R2]
 workspace list
 workspace info|show [INDEX|next|prev]
-workspace next|prev|new
+workspace next|prev [display UUID]
+workspace new
 display list
 display info [UUID|next|prev]
 config list|info|reload|open
 quit
 ```
 
-Page and workspace addresses are 1-based; tiled slots are 0-based. Floating and explicitly hidden windows have a null slot. Window IDs are decimal. With no focused window, commands use the most recently selected display, then the primary managed display. `page list` lists the current workspace; `workspace list` lists the current display. An explicit display UUID can inspect an unmanaged display. `info`, `show` and `variant` addresses resolve within the current context; `next`/`prev` in these addresses clamp at the ends. Only navigation commands and window moves create pages or workspaces. `workspace new` appends an empty workspace unless the current one is already empty.
+Page and workspace addresses are 1-based; tiled slots are 0-based. Floating and explicitly hidden windows have a null slot. Window IDs are decimal. With no focused window, commands use the most recently selected display, then the primary managed display. `page list` lists the current workspace; `workspace list` lists the current display. An explicit display UUID can inspect an unmanaged display. `info`, `show` and `variant` addresses resolve within the current context; `next`/`prev` in these addresses clamp at the ends. Only navigation commands and window moves create pages or workspaces. `workspace new` appends an empty workspace unless the current one is already empty. `page next|prev` and `workspace next|prev` navigate the display named by a trailing `display UUID` instead of the current context, with the same edge behaviour; the display must be known and managed, otherwise the command fails. Trackpad swipes use this to act on the display under the pointer.
 
 Window moves and swaps follow the addressed source window. A move to its existing page does nothing. Left/right moves are nudges; up/down moves carry between workspaces. Explicit moves to a full page use placement spill. Spatial focus chooses the nearest window center in the requested half-plane on the same page, with grid order breaking ties; it does not wrap. Minimized and app-hidden windows are excluded from spatial focus. Next and previous focus walk the focused window's page in grid order, tiles by slot and then floating windows, and wrap; they skip minimized and app-hidden windows. With no managed window focused, both focus the first window of the shown page in the current display context. Like `window focus ID`, they emit a focus action. When no other window on the page can take focus, including on an empty page, they do nothing.
 
@@ -256,7 +257,7 @@ Every response has `ok`, `text` and `data`. Errors and successful mutations use 
 | `page list`, `page info` | Array of page objects, or one page object. Fields: `id` (persistent identity), `index`, `display`, `workspace`, `shown`, `variant` (`standard` or `alternate`), `r1`, `r2`, `windows` (all assigned IDs in order), `tiled` (including reserved minimized/app-hidden slots), `floating`, `last_focus`. |
 | `workspace list`, `workspace info` | Array of workspace objects, or one workspace object. Fields: `id` (persistent identity), `index`, `display` (current host), `home`, `shown`, `page` (last-viewed page index), `pages` (page objects). |
 | `display list`, `display info` | Array of display objects, or one display object. Fields: `id` (UUID), `frame`, `visible_frame`, `primary`, `unmanaged_reason`, `visible_space`, `stash_space`, `workspace` (current index), `workspaces` (workspace objects), `home_workspaces`, `merged_workspaces` (workspace index arrays). |
-| `config list`, `config info` | Object with `gaps`, `padding`, `float_apps`, `only_apps`, `transition_ms`, `bindings`. Binding keys are canonical chords and values are command strings. |
+| `config list`, `config info` | Object with `gaps`, `padding`, `float_apps`, `only_apps`, `transition_ms`, `trackpad_swipes`, `bindings`. Binding keys are canonical chords and values are command strings. |
 | `state` | Object with `version: 1`, `focus`, `active_display`, `displays` (display objects), `windows` (window objects ordered by ID). This inspection shape is separate from the saved-state file. |
 
 Watch events have `{type, data}`. Types `focus`, `window_added`, `window_removed` and `window_moved` carry a window ID; `focus` can carry null. `page_shown` carries `{display, workspace, page}` with indices after empty-page cleanup. `display_changed` carries the supplied array of `DisplayInfo` objects using their Swift Codable field names. `config_reloaded` carries null. A watcher is disconnected if its pending output exceeds 4 MiB; ordinary command replies can be larger. The CLI prints the initial watch reply using its usual text/data choice, followed by JSON event lines.
@@ -359,7 +360,7 @@ Validated with `dev/spikes/slide` on macOS 27, one Retina display (scale 2, 120 
 
 minitile's transitions:
 
-- Which changes animate: only outputs of `.command` inputs (key bindings, the menu, `mntl`). For each display, the shell compares the shown workspace and page identities before and after the command. A changed page within a workspace slides horizontally, by the pages' order; a changed workspace slides vertically, by the workspaces' order. The order comes from the state that holds both identities, before the command first, since cleanup removes the page or workspace being left and navigation creates the one entered; failing both, the old index before is compared with the new index after. `page next|prev` and `workspace next|prev` that leave the command's display unchanged bounce on that display. The command's display is the core's: the focused window's display, else the last active one, else the primary.
+- Which changes animate: only outputs of `.command` inputs (key bindings, the menu, `mntl`). For each display, the shell compares the shown workspace and page identities before and after the command. A changed page within a workspace slides horizontally, by the pages' order; a changed workspace slides vertically, by the workspaces' order. The order comes from the state that holds both identities, before the command first, since cleanup removes the page or workspace being left and navigation creates the one entered; failing both, the old index before is compared with the new index after. `page next|prev` and `workspace next|prev` that leave the display they navigate unchanged bounce on that display: the display named by their `display UUID` suffix, else the core's command display (the focused window's display, else the last active one, else the primary).
 - Capture: `SCScreenshotManager` with a per-display content filter that excludes minitile's own application, so the overlays and the position indicator never appear in a capture; `sourceRect` is the usable area in display-local top-left coordinates, at full backing resolution, BGRA, without the cursor. Shareable content is fetched when transitions turn on, after display changes, and on a config reload or Reduce Motion change while it is not loaded, followed by a throwaway capture. Until it arrives, view changes are instant.
 - Overlay: one per display, a borderless, non-activating, click-through panel over the usable area that cannot become key or main, joins all Spaces and is ordered front without activating minitile. Its level is one below `.floating`, the position indicator's level, so the indicator stays above it and both stay above normal windows. Slides use cubic Bezier (0.4, 0, 0.2, 1) over `transition_ms`; bounces have keyframes at 0, 35% and 100% of 0.3 s, easing out and then in and out. The overlay is removed when its animation ends.
 - Held reconcile: a command that slides captures each sliding display first and holds its reconcile. Every output that arrives meanwhile, from any input, is merged into the held one: the latest scene, the union of rewrites, frame and close actions in order, and the last focus action, which is applied only if the model still focuses that window. Config reload, config open and quit run when their input is handled. When the captures arrive, each captured display's overlay starts sliding, and about one frame (16 ms) later the merged output is applied in the usual order, focus last. Slide directions are taken from the state before the first held command to the state at that moment, so a second navigation within the capture slides from the captured page to the final one. `mntl` replies once a held reconcile is applied, except `watch`, which replies at once.
@@ -377,8 +378,20 @@ Validated with `dev/spikes/gesture` on macOS 27 with the built-in trackpad and f
 - Fields: 132 is the phase (1 began, 2 changed, 4 ended; cancelled was not seen), 123 the axis (1 sideways, 2 vertical), 124 the signed progress, and 129 the velocity on the ended event. Sideways progress is positive for fingers left; vertical progress is negative for fingers up. Across 23 swipes, each sent 17-81 events over 80-370 ms and ended at progress 0.19-1.32 with end velocity 1.4-8.6.
 - Raw touch frames arrive alongside as event type 29 with HID event type 0; they are not needed.
 - An active HID tap that swallows every type 30 event stops desktop switching, Mission Control and App Expose: 621 events over 11 swipes were swallowed, the tap was never disabled, and the screen did not change.
-- minitile's tap for swipes listens to event type 30 only, so other input never passes through it. It decides at the began event whether it owns the swipe and then swallows or passes every event of that swipe, so macOS never sees half a gesture. If the fields stop matching (another HID event type, an unknown axis), the swipe passes to macOS. If macOS disables the tap, swipes fall back to macOS until it is re-enabled.
 - Untested: three-finger swipes, Magic Mouse swipes, external trackpads and multiple displays.
+
+minitile's swipes:
+
+- Tap: an active tap at `kCGHIDEventTap`, inserted at the head, whose mask is event type 30 only (`1 << 30`), so no other input passes through minitile's callback. It runs on its own thread (`minitile.swipes`) with its own run loop. The callback reads fields 110, 132, 123, 124 and 129 and `CGEventGetLocation`, runs the swipe decision under a lock against a policy snapshot, and never waits for the main thread.
+- Decision at began: minitile owns a swipe when its began event has HID event type 23 and axis 1 or 2, minitile is started and not suspended, and the display under the event location is managed and showing its visible desktop (not the stash, a fullscreen Space or an extra desktop). It then swallows every HID type 23 event until ended or cancelled, or passes them all, whatever the policy says meanwhile; an event with another phase follows the same decision. Type 30 events with another HID event type pass without affecting the swipe. Events without a preceding began, as when the tap starts mid-swipe, pass, and so does a swipe whose began has an unknown axis.
+- Ended: the swipe acts if the absolute progress is at least 0.3 or the absolute end velocity at least 2. The sign of the progress gives the direction, and the sign of the velocity when the progress is exactly 0: sideways positive (fingers left) runs `page next`, sideways negative `page prev`, vertical negative (fingers up) `workspace next`, vertical positive `workspace prev`. The direction uses the axis of the began event. Cancelled does nothing.
+- Command: the tap thread sends the command to the main thread asynchronously with the swiped display's address, for example `page next display UUID`, and the main thread runs it through the same path as a key binding, so it slides, bounces, holds the reconcile and focuses like Ctrl+arrows. A command that fails, for example because the session went inactive, is logged and dropped.
+- Policy: the main thread rebuilds the snapshot (started, suspended, and each display's frame and whether it is managed with its visible desktop current, by `csl_current_space`) when minitile starts, on every native desktop switch (`activeSpaceDidChange`), when suspension begins or ends (resume also refreshes displays), on config reload and with the three-second topology probe.
+- Coordinates: `CGEventGetLocation` and `DisplayInfo.frame` are both CG global coordinates (origin at the top-left of the primary display, y down), so hit-testing needs no conversion. Display frames are half-open, so a point on a shared edge belongs to the display to its right or below; a point outside every display passes.
+- Lifecycle: the tap exists while minitile is started and `trackpad_swipes` is true. It is stopped on quit and when a config reload turns the setting off, and created again when one turns it back on.
+- Failures: if the tap cannot be created or its thread exits unexpectedly, minitile logs it, the menu shows a warning and swipes stay with macOS; everything else keeps working, and a config reload tries again. When macOS disables the tap (`tapDisabledByTimeout`, `tapDisabledByUserInput`), the callback re-enables it at once and the one-second health check re-enables it if it finds it disabled; macOS handles swipes in between, and a swipe already decided keeps its decision.
+- Health: `mntl debug health` reports `trackpad_swipes`, `swipe_tap_running`, `swipe_tap_unavailable` and `last_swipe` (see "Command line: mntl").
+- Untested in minitile: the implementation as a whole, whether type 30 events carry the pointer location (`last_swipe` shows it), and swipes while Mission Control or App Expose is open: minitile cannot tell that they are open, so a swipe it owns navigates the grid behind them instead of closing them.
 
 ### Required user setup
 
@@ -506,7 +519,7 @@ padding = 8           # points between tiles and the layout area's edge
 float_apps = []       # bundle IDs that always float
 only_apps = []        # bundle IDs; when non-empty, minitile manages only these apps
 transition_ms = 500   # page slide duration, 0 to 2000; 0 turns slides and bounces off
-trackpad_swipes = true  # swipes navigate pages and workspaces; false leaves them to macOS (planned)
+trackpad_swipes = true  # swipes navigate pages and workspaces; false leaves them to macOS
 
 [bindings]            # merged over the defaults; a chord bound to "" is unbound
 "ctrl+left" = "page prev"
@@ -524,7 +537,7 @@ trackpad_swipes = true  # swipes navigate pages and workspaces; false leaves the
 
 The command strings above use the final grammar. A chord is modifiers (`ctrl`, `shift`, `alt`, `cmd`) and one key (a letter, a digit, `left`, `right`, `up`, `down`, `return`, `space`, `tab`, `escape`, `f1` to `f20`, and `` ` `` for the key of macOS's Move focus to next window shortcut), joined with `+`.
 
-`Config.parse` accepts file contents, with nil for an absent file; file I/O stays in the shell. Gaps and padding must be finite, nonnegative numbers. App lists contain nonempty bundle ID strings without surrounding whitespace. Unknown config keys, invalid field types, unsupported keys, repeated modifiers and duplicate normalized chords are rejected. Chords accept case and modifier-order variations and are displayed as ctrl, shift, alt, cmd, then key. Binding commands are split on whitespace; they are not shell commands and do not perform shell expansion. Command validation happens when executed, allowing shell-owned debug verbs.
+`Config.parse` accepts file contents, with nil for an absent file; file I/O stays in the shell. Gaps and padding must be finite, nonnegative numbers. `trackpad_swipes` is a boolean. App lists contain nonempty bundle ID strings without surrounding whitespace. Unknown config keys, invalid field types, unsupported keys, repeated modifiers and duplicate normalized chords are rejected. Chords accept case and modifier-order variations and are displayed as ctrl, shift, alt, cmd, then key. Binding commands are split on whitespace; they are not shell commands and do not perform shell expansion. Command validation happens when executed, allowing shell-owned debug verbs.
 
 ## macOS behaviour to respect
 
@@ -583,11 +596,12 @@ Focus and closing:
 - Threads:
   - the main thread runs the `NSApplication` loop, AX work, the core and the reconciler;
   - the keyboard event tap runs on its own thread and hands commands to the main thread;
+  - the trackpad swipe tap runs on its own thread and does the same;
   - the socket server reads on a background queue and does the same.
 
   If hung apps stall the main thread in practice, AX calls move to per-app threads, as AeroSpace does.
 
-The shell uses the Swift 6 language mode. AX observer callbacks run on the main run loop; the keyboard tap owns a separate run loop and locks its small command-matching state. Letter and digit bindings use the current keyboard layout, with function and navigation keys matched by native keycode. Stash Desktop N blockers use user-desktop order from the native display-space enumeration; their numbering with multiple displays is unverified. State writes are atomic and serialized off the main thread, and quit flushes pending writes.
+The shell uses the Swift 6 language mode. AX observer callbacks run on the main run loop; the keyboard tap owns a separate run loop and locks its small command-matching state, and the swipe tap does the same for its swipe decision and policy snapshot. Letter and digit bindings use the current keyboard layout, with function and navigation keys matched by native keycode. Stash Desktop N blockers use user-desktop order from the native display-space enumeration; their numbering with multiple displays is unverified. State writes are atomic and serialized off the main thread, and quit flushes pending writes.
 
 ## Development and testing
 

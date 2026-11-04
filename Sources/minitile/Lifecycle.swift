@@ -36,6 +36,7 @@ extension AppDelegate {
             self.reconciler?.refreshSpaces()
             self.discovery?.recheckSoon()
             self.keyboard?.update(config: self.engine.config, displays: self.displays, dragged: self.reconciler?.dragging)
+            self.updateSwipes()
         }
         observe(.default, NSApplication.didChangeScreenParametersNotification) { [weak self] _ in self?.scheduleDisplays() }
         observe(workspace, NSWorkspace.accessibilityDisplayOptionsDidChangeNotification) { [weak self] _ in
@@ -61,8 +62,10 @@ extension AppDelegate {
             MainActor.assumeIsolated {
                 guard let self, !self.quitting else { return }
                 self.keyboard?.checkHealth()
+                self.swipes?.checkHealth()
                 self.warnings["secure-input"] = csl_secure_input_enabled() ? "Secure input is blocking keyboard shortcuts" : nil
                 self.warnings["keyboard"] = self.keyboard?.unavailable == true ? "Keyboard tap unavailable; check Accessibility and restart" : nil
+                self.warnings["swipes"] = self.swipes?.unavailable == true ? "Trackpad swipe tap unavailable; swipes stay with macOS until a config reload" : nil
                 let session = CGSessionCopyCurrentDictionary() as? [String: Any]
                 self.suspend("locked", enabled: session?["CGSSessionScreenIsLocked"] as? Bool == true)
                 ticks += 1
@@ -72,6 +75,7 @@ extension AppDelegate {
                     } else {
                         self.discovery?.scan()
                         self.keyboard?.update(config: self.engine.config, displays: self.displays, dragged: self.reconciler?.dragging)
+                        self.updateSwipes()
                     }
                 }
                 self.updateMenu()
@@ -118,9 +122,11 @@ extension AppDelegate {
     func suspend(_ reason: String, enabled: Bool) {
         // A reconcile held for a transition goes out before freezing, which would skip it.
         if enabled { transitions.flush() }
+        let wasSuspended = !suspendedReasons.isEmpty
         let shouldResume = suspension.set(reason, enabled: enabled)
         discovery?.frozen = !suspendedReasons.isEmpty
         if shouldResume { resume() }
+        else if wasSuspended != !suspendedReasons.isEmpty { updateSwipes() }
     }
 
     func resume() {
@@ -138,6 +144,7 @@ extension AppDelegate {
         discovery.refreshFocus()
         reconciler.apply(Output(scene: reconciler.scene))
         keyboard?.update(config: engine.config, displays: displays, dragged: reconciler.dragging)
+        updateSwipes()
         updateMenu()
     }
 

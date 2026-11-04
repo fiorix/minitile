@@ -42,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var discovery: Discovery?
     var reconciler: Reconciler?
     var keyboard: KeyboardTap?
+    var swipes: SwipeTap?
     var server: Server?
     var configWatcher: ConfigWatcher?
     lazy var stateWriter = StateWriter(file: paths.state)
@@ -167,6 +168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.keyboard = keyboard
         updateFrontmost()
         keyboard.start()
+        updateSwipes()
         let watcher = ConfigWatcher(file: paths.config)
         watcher.changed = { [weak self] in
             guard let self else { return }
@@ -310,6 +312,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             discovery?.scan()
             finishReloadAdoption(attempt: 0)
             keyboard?.update(config: config, displays: displays, dragged: reconciler?.dragging)
+            // A reload retries a swipe tap that could not be created.
+            if swipes?.unavailable == true { swipes = nil }
+            updateSwipes()
             updateFrontmost()
             return Reply(text: "Config reloaded")
         } catch {
@@ -332,13 +337,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !quitting else { return }
         quitting = true
         keyboard?.stop()
+        updateSwipes()
         // Let the background socket writer flush the quit reply before stopping it.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { NSApp.terminate(nil) }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         quitting = true
-        keyboard?.stop(); server?.stop(); configWatcher?.stop(); discovery?.finishAdoption(restoreAll: true); discovery?.stop()
+        keyboard?.stop(); swipes?.stop(); server?.stop(); configWatcher?.stop(); discovery?.finishAdoption(restoreAll: true); discovery?.stop()
         gridIndicator.stop()
         transitions.stop()
         permissionTimer?.invalidate(); healthTimer?.invalidate(); dragTimer?.invalidate(); displayWork?.cancel(); activationFocusRead?.cancel()

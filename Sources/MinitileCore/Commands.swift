@@ -23,11 +23,12 @@ extension Engine {
     window resize [ID] SHARE|WIDTHxHEIGHT
     page list
     page info|show|variant [INDEX|next|prev]
-    page next|prev
+    page next|prev [display UUID]
     page ratio R1 [R2]
     workspace list
     workspace info|show [INDEX|next|prev]
-    workspace next|prev|new
+    workspace next|prev [display UUID]
+    workspace new
     display list
     display info [UUID|next|prev]
     config list|info|reload|open
@@ -77,6 +78,13 @@ extension Engine {
         return try addressedIndex(address, current: d, count: state.displays.count)
     }
 
+    /// An explicit navigation target: unlike inspection, it must be a display minitile manages.
+    func managedDisplay(_ id: String) throws -> Int {
+        guard let d = displayIndex(id) else { throw CommandError("Unknown display \(id)") }
+        guard state.displays[d].info.unmanagedReason == nil else { throw CommandError("Display \(id) is not managed") }
+        return d
+    }
+
     mutating func gridCommand(_ noun: String, verb: String, args: [String], output: inout Output) throws -> Reply {
         guard let d = currentDisplay(), var at = currentLocation(display: d) else { throw CommandError("No managed display") }
         let workspace = state.displays[d].workspaces[at.workspace]
@@ -101,9 +109,10 @@ extension Engine {
             if verb == "info" { return infoReply(noun == "page" ? pageRecord(at) : workspaceRecord(display: d, workspace: at.workspace)) }
             if verb == "show" { show(at, output: &output) }
             else { variant(at) }
-        } else if args.isEmpty, verb == "next" || verb == "prev" {
-            if noun == "page" { try navigatePage(verb == "next" ? 1 : -1, output: &output) }
-            else { try navigateWorkspace(verb == "next" ? 1 : -1, output: &output) }
+        } else if verb == "next" || verb == "prev", args.isEmpty || (args.count == 2 && args[0] == "display") {
+            let target = try args.last.map(managedDisplay) ?? d
+            if noun == "page" { try navigatePage(verb == "next" ? 1 : -1, display: target, output: &output) }
+            else { try navigateWorkspace(verb == "next" ? 1 : -1, display: target, output: &output) }
         } else if noun == "workspace", verb == "new", args.isEmpty {
             try navigateWorkspace(1, alwaysNew: true, output: &output)
         } else if noun == "page", verb == "ratio", (1...2).contains(args.count),

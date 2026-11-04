@@ -33,6 +33,8 @@ public struct Config: Sendable, Equatable {
     public var bindings: [Chord: [String]]
     /// Page slide duration in milliseconds; 0 turns slides and edge bounces off.
     public var transitionMs: Double = 500
+    /// Trackpad swipes navigate pages and workspaces; false leaves them to macOS.
+    public var trackpadSwipes = true
 
     public init(gaps: Double = 8, padding: Double = 8, floatApps: [String] = [], onlyApps: [String] = [],
                 bindings: [Chord: [String]] = Config.defaultBindings) {

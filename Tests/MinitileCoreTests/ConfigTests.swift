@@ -61,6 +61,7 @@ func invalidChordsNameBinding(_ text: String) {
     ("padding = 'bad'", "padding"), ("float_apps = [3]", "float_apps"),
     ("transition_ms = -1", "transition_ms"), ("transition_ms = 2001", "transition_ms"),
     ("transition_ms = nan", "transition_ms"), ("transition_ms = 'fast'", "transition_ms"),
+    ("trackpad_swipes = 1", "trackpad_swipes"), ("trackpad_swipes = 'no'", "trackpad_swipes"),
     ("only_apps = ['']", "only_apps"), ("other = 3", "other"),
     ("[bindings]\n'ctrl+a' = 3", "bindings"),
     ("[bindings]\n'ctrl+a' = '   '", "bindings.ctrl+a"),
@@ -89,4 +90,18 @@ func configErrorsNameTheKey(_ test: (String, String)) {
     _ = e.handle(.configLoaded(try Config.parse("transition_ms = 300")))
     guard case .object(let fields)? = command(&e, "config info").reply?.data else { Issue.record("Expected config object"); return }
     #expect(fields["transition_ms"] == .number(300))
+}
+
+@Test func trackpadSwipesDefaultOnAndShowInConfigInfo() throws {
+    #expect(Config.default.trackpadSwipes)
+    #expect(try Config.parse("gaps = 4").trackpadSwipes)
+    #expect(try Config.parse("trackpad_swipes = true").trackpadSwipes)
+    let off = try Config.parse("trackpad_swipes = false")
+    #expect(!off.trackpadSwipes)
+    var e = engine(1)
+    guard case .object(let on)? = command(&e, "config list").reply?.data else { Issue.record("Expected config object"); return }
+    #expect(on["trackpad_swipes"] == .bool(true))
+    _ = e.handle(.configLoaded(off))
+    guard case .object(let fields)? = command(&e, "config info").reply?.data else { Issue.record("Expected config object"); return }
+    #expect(fields["trackpad_swipes"] == .bool(false))
 }

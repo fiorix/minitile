@@ -97,3 +97,40 @@ func twoDisplays() -> Engine {
     _ = e.handle(.focusChanged(1))
     #expect(e.commandDisplay == "primary")
 }
+
+@Test func navigationCanAddressADisplayOtherThanTheCommandDisplay() {
+    var e = twoDisplays()
+    #expect(e.commandDisplay == "primary")
+    command(&e, "page next display secondary")
+    #expect(grid(e) == [[[1]]])
+    #expect(grid(e, display: 1) == [[[2], []]])
+    #expect(e.savedState().activeDisplay == "secondary")
+    let back = command(&e, "page prev display secondary")
+    #expect(back.actions == [.focus(2)])
+    #expect(e.savedState().focus == 2)
+    command(&e, "workspace next display secondary")
+    #expect(grid(e, display: 1) == [[[2]], [[]]])
+    #expect(grid(e) == [[[1]]])
+    // Nothing above the primary's first workspace: the view stays put on both displays.
+    let before = e.savedState()
+    command(&e, "workspace prev display primary")
+    #expect(e.savedState() == before)
+    command(&e, "workspace prev display secondary")
+    #expect(grid(e, display: 1) == [[[2]]])
+    command(&e, "page next display primary")
+    #expect(e.savedState().activeDisplay == "primary")
+    #expect(grid(e) == [[[1], []]])
+}
+
+@Test(arguments: ["page next display nowhere", "workspace prev display nowhere", "page next display secondary", "workspace next display secondary",
+                  "page next display", "page next screen primary", "workspace prev display primary extra", "workspace new display primary"])
+func addressedNavigationRejectsUnknownAndUnmanagedDisplays(_ text: String) {
+    var e = Engine()
+    var unmanaged = secondDisplay
+    unmanaged.unmanagedReason = "Create two desktops in Mission Control"
+    _ = e.handle(.started(saved: nil, windows: [window(1)], displays: [testDisplay, unmanaged], focus: 1))
+    let before = e.savedState()
+    let out = e.handle(.command(text.split(separator: " ").map(String.init)))
+    #expect(out.reply?.ok == false)
+    #expect(e.savedState() == before)
+}
