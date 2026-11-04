@@ -130,14 +130,20 @@ Geometry:
 
 The count for cycling and ratio resets is the number of non-minimized, non-app-hidden tiled windows. The core describes each layout as a list of tiles by slot, each side of a tile lying on the layout area's border or on r1 or r2; frames, edge drags, share resizes and keyboard resizes all read their cuts from it. A square visible frame uses width as its long axis. Cuts are centered in gaps; frame edges are rounded individually and width/height are the differences of rounded edges. Insets and unusually large gaps never produce negative sizes. A single-cut edit preserves the other cut when enforcing three-slice spacing; setting both ratios clamps r1 first, then brings r2 above it, moving r1 back if necessary to fit within 0.8.
 
-Drop picker (not yet implemented):
+Drop picker:
 
-- While a tiled window is dragged as a move (the mouse button is down and the window has moved beyond the move tolerance without changing size), a layout picker appears at the bottom centre of its display's usable area, away from the tab strips and title bars at the tops of tiles. It shows each layout for the page's tiled window count as a miniature, in cycling order: two windows `standard` and `alternate`; three windows `standard`, `mirrored`, `alternate` and `stacked`; four windows the 2x2. With one tiled window there is nothing to pick and it does not appear. Edge drags (resizes) and floating windows never show it.
-- Each miniature's slots are drop targets. While the cursor is over a slot, the slot is highlighted with the dragged window's app icon and a translucent preview on the page shows the frame the window would get. Releasing the mouse there sets the page's variant to that layout and moves the dragged window into that slot; the other windows keep their relative order in the remaining slots. Ratios reset as for any variant change.
+- While a tiled window is dragged as a move (the mouse button is down and the window has moved beyond the move tolerance without changing size), a layout picker appears at the bottom centre of its display's usable area, away from the tab strips and title bars at the tops of tiles. It shows each layout for the page's active tiled window count as a miniature, in cycling order: two windows `standard` and `alternate`; three windows `standard`, `mirrored`, `alternate` and `stacked`; four windows the 2x2. With one active tiled window there is nothing to pick and it does not appear. Edge drags (resizes) and floating windows never show it.
+- Each miniature's tiles are drop targets. While the cursor is over a tile, the tile is highlighted with the dragged window's app icon and a translucent preview on the page shows the frame the window would get. Releasing the mouse there sets the page's variant to that layout and moves the dragged window into that tile; the other windows keep their relative order in the remaining tiles. Ratios reset when the layout changes, as for any variant change, and stay when only the window's tile changes.
 - Releasing anywhere else keeps the behaviour below: a swap with the tiled window under the cursor, or a snap back.
-- Browser tab drags keep working: the picker and the preview are click-through and never intercept the drag, and the preview shows only while the cursor is over a picker slot, so it never covers a tab strip. A window torn out of a browser by dragging a tab counts as dragged, so it can be dropped on a tile or a picker slot. If the dragged window disappears before the release, as when it is dropped into another window's tab strip, minitile does nothing for that drop.
+- Browser tab drags keep working: the picker and the preview are click-through and never intercept the drag, and the preview shows only while the cursor is over a picker tile, so it never covers a tab strip. A window torn out of a browser by dragging a tab counts as dragged, so it can be dropped on another window's tile or on the picker. If the dragged window disappears before the release, as when it is dropped into another window's tab strip, minitile does nothing for that drop.
 - The picker reflects the page the dragged window is on, including after Ctrl+arrow during the drag. It is click-through and never takes focus; the shell hit-tests the cursor against it while polling the drag. It uses the same miniature drawing as the position indicator and the window switcher.
-- The core command is `window place [ID] standard|alternate|mirrored|stacked SLOT`: it sets the variant of the window's page and moves the window to the 0-based slot. The variant must be defined for the page's tiled count and the slot must exist.
+- The core command is `window place [ID] standard|alternate|mirrored|stacked SLOT`: it sets the variant of the window's page and moves the window to that 0-based tile of the layout. The variant must be one the page's active tiled count cycles through and the tile must exist.
+
+The move test compares the window's frame with its tile when the drag began: within 3 pt in width and height, and more than 3 pt away in x or y. A Ctrl+arrow during the drag changes the tile but not the window, so the picker stays up; a release away from the picker is still judged by the core against the window's current tile. The 30 ms drag poll updates the picker and the preview from the frame the window's move notifications last read, so polling reads no AX attributes, and from the cursor's current event location. On release the shell reads the frame once more and repeats the move test and the hit test. A drop on a picker tile runs `window place ID VARIANT SLOT` through the normal command path; any other release sends the usual drag end to the core. A frame that cannot be read at release means the window went away, and the release does nothing. The picker and the preview hide when the drag ends, when the dragged window goes away, on suspension, which display changes cause, and on quit.
+
+The picker's cells are the switcher's, 128x80 pt of area in the usable area's proportions, in one row 12 pt apart with 12 pt margins, and the panel sits 12 pt above the bottom of the usable area. Tiles are empty; the hovered one is filled and outlined in the accent colour and holds the dragged window's app icon, and the page's current layout is outlined as the indicator outlines the shown page. Anywhere in a cell counts as its nearest tile, so the target does not drop out in the gaps between tiles. The preview is an accent-tinted rounded rectangle at the frame `window place` would lay out: with the page's ratios for the layout the page uses now, with the defaults for any other. Both are borderless, non-activating, click-through panels that cannot become key or main and join all Spaces, including fullscreen ones. The picker's level is `.floating`, the position indicator's, above the page-transition overlays, so a Ctrl+arrow slide leaves it shown; the preview's is one below, the overlays' level.
+
+`window place` counts SLOT among the page's active tiles, the tiles of its layout, while the `slot` field of `window list` also counts reserved minimized and app-hidden slots. The window goes before the active tile now at SLOT, or after the last one, so reserved and floating windows keep their places in the page's list. A page keeping `mirrored` or `stacked` with two windows already uses `standard`, so placing a window in `standard` keeps its ratios. The command shows the window's page, focuses the window and emits `window_moved` for each window whose tile changed. A placement that changes nothing emits nothing and only rewrites the window's frame, which snaps a dropped window back. A floating, minimized, app-hidden or explicitly hidden window has no tile, and placing it fails.
 
 Keyboard:
 
@@ -155,7 +161,7 @@ Mouse:
 
 The move tolerance is 3 points per dimension. Edge drags are converted from the tile edge to the gap center before computing a ratio. A drag can update the inner cut of a corner while its border edge snaps back. Three-slice middle-window resize by share holds its end cut (the right or bottom one) fixed and moves its start cut to obtain the requested share.
 
-Untested in minitile: the mirrored and stacked layouts on screen, keyboard resizing with physical keys, and key repeat.
+Untested in minitile: the mirrored and stacked layouts on screen, keyboard resizing with physical keys, key repeat, the drop picker and its preview on screen, hover tracking during real drags, and browser tab drags in both directions.
 
 ## Keys
 
@@ -252,6 +258,7 @@ Commands are noun then verb. Windows are addressed by window ID and default to t
 | `mntl window nudge [id] <dir>` | The Ctrl+Shift+Left/Right action. |
 | `mntl window swap [id] <id>` | Swap two tiled windows. |
 | `mntl window resize [id] <size>` | Tiled: set the page cuts so the window gets that share. Floating: set its size. |
+| `mntl window place [id] <variant> <slot>` | Set the page's layout and put the window in that tile of it, as dropping it on the layout picker does. |
 | `mntl window float [id] [on, off]` | Toggle or set floating. |
 | `mntl window focus [id, dir]` | Focus by ID, spatially on the page, or the next or previous window on the page. |
 | `mntl window close [id]` | Press the window's close button. |
@@ -612,7 +619,7 @@ Frame writes:
 - Read back once after the window settles, with loose tolerance (about 20 pt, since Terminal snaps to its cell grid). If a window refuses its slot, adjust once; never fight the app.
 - Ignore move and resize notifications caused by minitile's own writes for about 1-1.5 s, since AX reads lag on macOS 26 and 27. Otherwise they look like user drags.
 
-While the left mouse button is down, an AX frame differing from the last write by more than 20 points identifies a user drag even during suppression. Delayed frame verification skips held mouse buttons and dragged windows. The 30 ms release poll runs only while a drag is active.
+While the left mouse button is down, an AX frame differing from the last write by more than 20 points identifies a user drag even during suppression. Delayed frame verification skips held mouse buttons and dragged windows. The 30 ms release poll runs only while a drag is active. A dragged window's frame is read on its move notifications even during suppression, so the drop picker can follow it.
 
 Discovery:
 
