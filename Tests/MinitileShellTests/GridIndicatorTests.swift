@@ -71,9 +71,10 @@ import Testing
     #expect(content.miniature(workspace: 0, page: 1) == nil)
 }
 
-@Test func miniaturesMirrorTheCoreLayoutOnShownAndStashedPages() {
-    let display = DisplayInfo(id: "d", frame: Rect(x: 0, y: 0, width: 1512, height: 982),
-                              visibleFrame: Rect(x: 0, y: 33, width: 1512, height: 900), isPrimary: true)
+@Test(arguments: [false, true])
+func miniaturesMirrorTheCoreLayoutOnShownAndStashedPages(portrait: Bool) {
+    let display = DisplayInfo(id: "d", frame: Rect(x: 0, y: 0, width: portrait ? 982 : 1512, height: portrait ? 1512 : 982),
+                              visibleFrame: Rect(x: 0, y: 33, width: portrait ? 949 : 1512, height: portrait ? 1479 : 900), isPrimary: true)
     func info(_ id: WindowID, minimized: Bool = false, appHidden: Bool = false) -> WindowInfo {
         WindowInfo(id: id, pid: Int32(100 + id), bundleID: "app.\(id)", tileable: id != 3, minimized: minimized, appHidden: appHidden, display: "d")
     }
@@ -81,25 +82,29 @@ import Testing
     _ = engine.handle(.started(saved: nil, windows: (1...7).map { info($0) }, displays: [display], focus: 1))
     _ = engine.handle(.windowUpdated(info(2, minimized: true)))
     _ = engine.handle(.windowUpdated(info(7, appHidden: true)))
-    _ = engine.handle(.command(["page", "variant"]))
-    let output = engine.handle(.command(["page", "ratio", "0.3", "0.6"]))
-    let state = engine.savedState()
-    let content = GridIndicatorContent(display: state.displays[0], state: state, config: engine.config, name: "Laptop")
-    let pages = content.pages[0]
-    #expect(pages.count == 2)
-    #expect(pages[0].slots.map(\.window) == [1, 2, 4, 5])
-    #expect(pages[0].reserved.map(\.window) == [2])
-    #expect(pages[0].tiles.filter(\.focused).map(\.window) == [1])
-    #expect(pages[0].floating == 1)
-    #expect(pages[1].slots.map(\.window) == [6, 7])
-    #expect(pages[1].reserved.map(\.window) == [7])
-    #expect(pages[1].reserved.map(\.dimmed) == [true])
-    #expect(pages[1].tiles.map(\.dimmed) == [false])
-    let frames = output.scene.displays["d"]?.frames ?? [:]
-    let tiles = pages.flatMap(\.tiles)
-    #expect(Set(tiles.map(\.window)) == Set(frames.keys))
-    for tile in tiles { #expect(tile.frame == frames[tile.window]) }
-    #expect(tiles.map(\.pid) == [101, 104, 105, 106])
+    // Three active tiles on the shown page: every three-window variant, each at moved ratios.
+    for variant in [Variant.mirrored, .alternate, .stacked, .standard] {
+        _ = engine.handle(.command(["page", "variant"]))
+        let output = engine.handle(.command(["page", "ratio", "0.3", "0.6"]))
+        let state = engine.savedState()
+        #expect(state.displays[0].workspaces[0].pages[0].variant == variant)
+        let content = GridIndicatorContent(display: state.displays[0], state: state, config: engine.config, name: "Laptop")
+        let pages = content.pages[0]
+        #expect(pages.count == 2)
+        #expect(pages[0].slots.map(\.window) == [1, 2, 4, 5])
+        #expect(pages[0].reserved.map(\.window) == [2])
+        #expect(pages[0].tiles.filter(\.focused).map(\.window) == [1])
+        #expect(pages[0].floating == 1)
+        #expect(pages[1].slots.map(\.window) == [6, 7])
+        #expect(pages[1].reserved.map(\.window) == [7])
+        #expect(pages[1].reserved.map(\.dimmed) == [true])
+        #expect(pages[1].tiles.map(\.dimmed) == [false])
+        let frames = output.scene.displays["d"]?.frames ?? [:]
+        let tiles = pages.flatMap(\.tiles)
+        #expect(Set(tiles.map(\.window)) == Set(frames.keys))
+        for tile in tiles { #expect(tile.frame == frames[tile.window], "\(variant) window \(tile.window)") }
+        #expect(tiles.map(\.pid) == [101, 104, 105, 106])
+    }
 }
 
 @Test func gridIndicatorCropsToFourRowsAndFiveColumnsAroundTheCurrentCell() {

@@ -8,14 +8,65 @@ public enum Layout {
         return Rect(x: frame.x + x, y: frame.y + y, width: max(0, frame.width - 2 * x), height: max(0, frame.height - 2 * y))
     }
 
+    /// A tile's extent along one axis. Each end lies on the layout area's border (nil) or on a cut: 0 for r1, 1 for r2.
+    struct Span: Equatable {
+        var start: Int?
+        var end: Int?
+    }
+
+    /// A tile in layout axes, which a portrait display swaps: `long` runs along the display's long axis.
+    struct Tile: Equatable {
+        var long: Span
+        var short: Span
+        func span(long: Bool) -> Span { long ? self.long : short }
+    }
+
+    /// The single description of every layout, by slot. Frames, edge drags and resizes all read their cuts from it.
+    /// Variants a count does not define use its `standard` layout.
+    static func tiles(count: Int, variant: Variant) -> [Tile] {
+        func tile(_ long: (Int?, Int?), _ short: (Int?, Int?)) -> Tile {
+            Tile(long: Span(start: long.0, end: long.1), short: Span(start: short.0, end: short.1))
+        }
+        let all: (Int?, Int?) = (nil, nil)
+        switch (count, variant) {
+        case (1, _): return [tile(all, all)]
+        case (2, .alternate): return [tile(all, (nil, 0)), tile(all, (0, nil))]
+        case (2, _): return [tile((nil, 0), all), tile((0, nil), all)]
+        case (3, .alternate): return [tile((nil, 0), all), tile((0, 1), all), tile((1, nil), all)]
+        case (3, .mirrored): return [tile((0, nil), all), tile((nil, 0), (nil, 1)), tile((nil, 0), (1, nil))]
+        case (3, .stacked): return [tile(all, (nil, 0)), tile(all, (0, 1)), tile(all, (1, nil))]
+        case (3, _): return [tile((nil, 0), all), tile((0, nil), (nil, 1)), tile((0, nil), (1, nil))]
+        case (4, _): return [tile((nil, 0), (nil, 1)), tile((0, nil), (nil, 1)), tile((nil, 0), (1, nil)), tile((0, nil), (1, nil))]
+        default: return []
+        }
+    }
+
+    /// The variant after `variant` in its count's cycling order, or nil when the count has one layout.
+    static func next(_ variant: Variant, count: Int) -> Variant? {
+        switch (count, variant) {
+        case (2, .alternate): .standard
+        case (2, _): .alternate
+        case (3, .standard): .mirrored
+        case (3, .mirrored): .alternate
+        case (3, .alternate): .stacked
+        case (3, .stacked): .standard
+        default: nil
+        }
+    }
+
+    /// Three slices: both cuts lie on one axis and keep 0.2 apart.
+    static func sliced(count: Int, variant: Variant) -> Bool {
+        count == 3 && (variant == .alternate || variant == .stacked)
+    }
+
     public static func defaults(count: Int, variant: Variant) -> (Double, Double) {
-        count == 3 && variant == .alternate ? (1.0 / 3, 2.0 / 3) : (0.5, 0.5)
+        sliced(count: count, variant: variant) ? (1.0 / 3, 2.0 / 3) : (0.5, 0.5)
     }
 
     public static func ratios(_ first: Double, _ second: Double, count: Int, variant: Variant) -> (Double, Double) {
         var a = min(0.8, max(0.2, first))
         var b = min(0.8, max(0.2, second))
-        if count == 3 && variant == .alternate && b - a < 0.2 {
+        if sliced(count: count, variant: variant) && b - a < 0.2 {
             b = min(0.8, a + 0.2)
             a = min(a, b - 0.2)
         }
@@ -43,13 +94,10 @@ public enum Layout {
             let y1 = (area.y + (landscape ? bottom : right)).rounded()
             return Rect(x: x0, y: y0, width: max(0, x1 - x0), height: max(0, y1 - y0))
         }
-        switch count {
-        case 1: return [rect(0, 1, 0, 1)]
-        case 2 where variant == .alternate: return [rect(0, 1, 0, a), rect(0, 1, a, 1)]
-        case 2: return [rect(0, a, 0, 1), rect(a, 1, 0, 1)]
-        case 3 where variant == .alternate: return [rect(0, a, 0, 1), rect(a, b, 0, 1), rect(b, 1, 0, 1)]
-        case 3: return [rect(0, a, 0, 1), rect(a, 1, 0, b), rect(a, 1, b, 1)]
-        default: return [rect(0, a, 0, b), rect(a, 1, 0, b), rect(0, a, b, 1), rect(a, 1, b, 1)]
+        let cuts = [a, b]
+        return tiles(count: count, variant: variant).map { tile in
+            rect(tile.long.start.map { cuts[$0] } ?? 0, tile.long.end.map { cuts[$0] } ?? 1,
+                 tile.short.start.map { cuts[$0] } ?? 0, tile.short.end.map { cuts[$0] } ?? 1)
         }
     }
 }
@@ -85,8 +133,9 @@ extension Engine {
     }
 
     mutating func variant(_ at: Location) {
-        let value: Variant = page(at).variant == .standard ? .alternate : .standard
-        let (a, b) = Layout.defaults(count: tiled(page(at), activeOnly: true).count, variant: value)
+        let count = tiled(page(at), activeOnly: true).count
+        guard let value = Layout.next(page(at).variant, count: count) else { return }
+        let (a, b) = Layout.defaults(count: count, variant: value)
         state.displays[at.display].workspaces[at.workspace].pages[at.page].variant = value
         setRatios(at, a, b)
     }
@@ -94,7 +143,7 @@ extension Engine {
     mutating func setRatios(_ at: Location, _ a: Double, _ b: Double, preserveFirst: Bool = false, preserveSecond: Bool = false) {
         let count = tiled(page(at), activeOnly: true).count
         var a = a, b = b
-        if count == 3 && page(at).variant == .alternate {
+        if Layout.sliced(count: count, variant: page(at).variant) {
             if preserveSecond { a = min(a, b - 0.2) }
             if preserveFirst { b = max(b, a + 0.2) }
         }

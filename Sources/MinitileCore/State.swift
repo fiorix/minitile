@@ -1,6 +1,7 @@
 import Foundation
 
-public enum Variant: String, Codable, Sendable { case standard, alternate }
+/// A page's layout for its window count. `mirrored` and `stacked` exist only for three windows.
+public enum Variant: String, Codable, Sendable, CaseIterable { case standard, alternate, mirrored, stacked }
 
 /// Persistent page identity and ordered windows, including floating windows and reserved slots.
 public struct PageState: Codable, Sendable, Equatable {

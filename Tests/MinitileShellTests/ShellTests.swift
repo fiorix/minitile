@@ -107,6 +107,47 @@ func dragCommandsAddressDraggedWindow(_ direction: String) {
     #expect(router.key(123, modifiers: .ctrl, down: false) == .swallow)
 }
 
+@Test func heldResizeBindingRepeatsWhileOtherBindingsFireOnce() {
+    let arrows: [UInt16: String] = [123: "left", 124: "right", 125: "down", 126: "up"]
+    let resize: (String) -> KeyDecision = { .command(["window", "resize", $0]) }
+    var router = KeyRouter(bindings: Config.defaultBindings, names: arrows)
+    for (code, name) in arrows {
+        #expect(router.key(code, modifiers: [.ctrl, .alt], down: true) == resize(name))
+        for _ in 0..<3 { #expect(router.key(code, modifiers: [.ctrl, .alt], down: true, autorepeat: true) == resize(name)) }
+        #expect(router.key(code, modifiers: [.ctrl, .alt], down: false) == .swallow)
+        #expect(router.key(code, modifiers: [.ctrl, .alt], down: false) == .pass)
+    }
+    // While the key stays held, a chord that is not a resize binding is swallowed without running anything.
+    #expect(router.key(124, modifiers: [.ctrl, .alt], down: true) == resize("right"))
+    #expect(router.key(124, modifiers: .ctrl, down: true, autorepeat: true) == .swallow)
+    #expect(router.key(124, modifiers: [.ctrl, .alt, .shift], down: true, autorepeat: true) == .swallow)
+    #expect(router.key(124, modifiers: [], down: true, autorepeat: true) == .swallow)
+    #expect(router.key(124, modifiers: [.ctrl, .alt], down: true, autorepeat: true) == resize("right"))
+    #expect(router.key(124, modifiers: .ctrl, down: false) == .swallow)
+    // Other bindings still fire once, and their repeats never turn into a resize.
+    #expect(router.key(124, modifiers: .ctrl, down: true) == .command(["page", "next"]))
+    #expect(router.key(124, modifiers: .ctrl, down: true, autorepeat: true) == .swallow)
+    #expect(router.key(124, modifiers: [.ctrl, .alt], down: true, autorepeat: true) == .swallow)
+    #expect(router.key(124, modifiers: .ctrl, down: false) == .swallow)
+    // A repeat without its press, as when the tap starts mid-press, or after a reset, does not resize.
+    #expect(router.key(126, modifiers: [.ctrl, .alt], down: true, autorepeat: true) == .swallow)
+    #expect(router.key(126, modifiers: [.ctrl, .alt], down: false) == .swallow)
+    #expect(router.key(125, modifiers: [.ctrl, .alt], down: true) == resize("down"))
+    router.resetHeld()
+    #expect(router.key(125, modifiers: [.ctrl, .alt], down: true, autorepeat: true) == .swallow)
+    // A custom binding naming a window repeats too; resize by share does not.
+    var custom = KeyRouter(bindings: [Chord(modifiers: .alt, key: "left"): ["window", "resize", "42", "left"],
+                                      Chord(modifiers: .alt, key: "right"): ["window", "resize", "0.6"]], names: arrows)
+    #expect(custom.key(123, modifiers: .alt, down: true) == .command(["window", "resize", "42", "left"]))
+    #expect(custom.key(123, modifiers: .alt, down: true, autorepeat: true) == .command(["window", "resize", "42", "left"]))
+    #expect(custom.key(124, modifiers: .alt, down: true) == .command(["window", "resize", "0.6"]))
+    #expect(custom.key(124, modifiers: .alt, down: true, autorepeat: true) == .swallow)
+    // The open switcher takes the arrows whatever the modifiers.
+    let session = router.openSwitcher()
+    #expect(router.key(123, modifiers: [.ctrl, .alt], down: true) == .switcher(.move(.left), session: session))
+    #expect(router.key(123, modifiers: [.ctrl, .alt], down: true, autorepeat: true) == .switcher(.move(.left), session: session))
+}
+
 @Test func stashShortcutOnlyBlocksItsExactSemanticChord() {
     var router = KeyRouter(blocked: [NativeChord(keycode: 19, modifiers: .ctrl)])
     #expect(router.key(19, modifiers: [.ctrl, .shift], down: true) == .pass)
