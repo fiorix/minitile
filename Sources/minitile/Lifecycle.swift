@@ -139,6 +139,7 @@ extension AppDelegate {
         displays.bounceFromStash()
         reconciler.refreshSpaces(invalidateFrames: true)
         if changed { transitions.displaysChanged(); handle(.displaysChanged(displays.infos)) }
+        else { transitions.warm() }
         do {
             if try paths.configContents() != lastConfig { _ = reloadConfig() }
         } catch { warnings["config"] = "Config: \(error)" }

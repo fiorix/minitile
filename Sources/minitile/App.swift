@@ -61,6 +61,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var wakeUntil: TimeInterval = 0
     var lastActivation: (pid: Int32, time: TimeInterval)?
     var activationFocusRead: DispatchWorkItem?
+    /// Keeps App Nap away: a windowless accessory app looks idle, and a napping one handles keys and gestures late.
+    var napActivity: NSObjectProtocol?
     var viewEchoUntil: TimeInterval = 0
     var lastConfig: String?
     var quitting = false
@@ -70,6 +72,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         startupLog("Application launched; Accessibility trusted: \(AXIsProcessTrusted())")
+        napActivity = ProcessInfo.processInfo.beginActivity(options: .userInitiatedAllowingIdleSystemSleep,
+                                                            reason: "Window management responds to keys and gestures")
         status.command = { [weak self] in self?.command($0) ?? Reply(ok: false, text: "Starting") }
         if !AXIsProcessTrusted() {
             warnings["accessibility"] = "Grant Accessibility to Minitile.app in System Settings > Privacy & Security"

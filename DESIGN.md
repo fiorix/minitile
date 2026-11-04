@@ -681,6 +681,8 @@ Responsiveness:
 - Set `AXUIElementSetMessagingTimeout` to about 1 s system-wide; the default of about 6 s freezes the manager on a hung app.
 - The keyboard event tap runs on its own thread. Re-enable it on `tapDisabledByTimeout` and `tapDisabledByUserInput`, reset modifier state, and check periodically that it is still alive. Secure input silently stops it; show that in the menu bar (`IsSecureEventInputEnabled`).
 - Swallow the key-up of every swallowed key-down.
+- Opt out of App Nap: hold a user-initiated activity (`ProcessInfo.beginActivity`, allowing idle system sleep) for the app's lifetime, and set `NSAppSleepDisabled` in Info.plist. A windowless accessory app otherwise looks idle and gets napped, and a napping app runs its main thread at low priority and delays its timers, so the first keys and gestures after a break are handled late.
+- After sleep, a session switch or a lock ends, reload screen capture content and take a throwaway capture, so the first slide afterwards is not slowed by a cold capture.
 
 Focus and closing:
 

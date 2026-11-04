@@ -50,6 +50,9 @@ final class Transitions {
         if gate != nil { capture.clear(); flush(); overlays.values.forEach { $0.end($0.generation) } }
     }
 
+    /// After sleep or a session switch, screen capture is cold again; reload it so the first slide is not slowed.
+    func warm() { if gate == nil { capture.refresh() } }
+
     func displaysChanged() {
         flush()
         let present = Set(NSScreen.screens.compactMap(DisplayCatalog.id(for:)))

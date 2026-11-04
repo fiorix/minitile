@@ -24,6 +24,7 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>26.0</string>
     <key>LSUIElement</key><true/>
+    <key>NSAppSleepDisabled</key><true/>
 </dict></plist>
 PLIST
 codesign --force --sign "${MINITILE_SIGN_IDENTITY:-Apple Development}" "$app"
