@@ -144,9 +144,10 @@ extension AppDelegate {
     }
 
     func windowMoved(_ id: WindowID) {
-        guard let reconciler, !reconciler.suppresses(id), discovery?.frozen == false else { return }
+        let mouseDown = NSEvent.pressedMouseButtons & 1 != 0
+        guard let reconciler, discovery?.frozen == false, reconciler.acceptsMove(id, mouseDown: mouseDown) else { return }
         reconciler.externalMove(id)
-        if NSEvent.pressedMouseButtons & 1 != 0, reconciler.dragging == nil {
+        if mouseDown, reconciler.dragging == nil {
             reconciler.dragging = id
             keyboard?.drag(id)
         }

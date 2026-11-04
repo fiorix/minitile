@@ -8,6 +8,12 @@ struct SpaceMove: Equatable {
 }
 
 enum ReconcilePlan {
+    static func acceptsMove(suppressed: Bool, mouseDown: Bool, actual: Rect?, lastWrite: Rect?) -> Bool {
+        guard suppressed else { return true }
+        guard mouseDown, let actual, let lastWrite else { return false }
+        return !Geometry.near(actual, lastWrite, tolerance: 20)
+    }
+
     /// Return every show before any hide, including when pages change on several displays.
     static func moves(scene: Scene, displays: [DisplayInfo], known: Set<WindowID>, spaces: [WindowID: UInt64]) -> [SpaceMove] {
         var shown: [SpaceMove] = [], hidden: [SpaceMove] = []
@@ -83,6 +89,12 @@ final class Reconciler {
 
     func externalMove(_ id: WindowID) { frames.removeValue(forKey: id) }
 
+    func acceptsMove(_ id: WindowID, mouseDown: Bool) -> Bool {
+        let suppressed = suppresses(id)
+        let actual = suppressed && mouseDown ? discovery.windows[id].flatMap { AX.frame($0.element) } : nil
+        return ReconcilePlan.acceptsMove(suppressed: suppressed, mouseDown: mouseDown, actual: actual, lastWrite: frames[id])
+    }
+
     func apply(_ output: Output) {
         let start = ProcessInfo.processInfo.systemUptime
         scene = output.scene
@@ -141,7 +153,8 @@ final class Reconciler {
                 AX.setFrame(window.element, target)
                 if verify {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.25) { [weak self] in
-                        guard let self, !self.discovery.frozen, self.dragging != id, self.frames[id] == target,
+                        guard let self, !self.discovery.frozen, NSEvent.pressedMouseButtons & 1 == 0,
+                              self.dragging != id, self.frames[id] == target,
                               let current = self.discovery.windows[id], CFEqual(current.element, window.element),
                               let actual = AX.frame(current.element) else { return }
                         if !Geometry.near(actual, target, tolerance: 20) { self.writeFrames([id: target], verify: false) }
