@@ -2,7 +2,7 @@
 
 minitile is a tiling window manager for macOS. It runs with SIP enabled and aims for a small core that blends with macOS: a handful of keys that reuse the native desktop shortcuts, mouse gestures where macOS users already use the mouse, and every function scriptable from the `mntl` command line tool. HyprMac (github.com/zacharytgray/HyprMac) is a source of macOS behaviour to respect, not a feature list to copy.
 
-Status: the core, IPC, `mntl` and the macOS shell are implemented and verified live on one display. Multiple displays and the items under "Open" are not yet verified. Page transitions, Cmd+\` window cycling and page miniatures in the position indicator are implemented and unit tested but not yet tried on screen; the transition mechanism was validated in a spike. Trackpad swipes are implemented and unit tested; the swipe mechanism was validated in a spike. The Cmd+Tab window switcher is implemented and unit tested but not yet tried on screen. Keyboard resizing and the mirrored and stacked three-window layouts are implemented and unit tested. The drop picker is implemented and unit tested but not yet tried on screen.
+Status: the core, IPC, `mntl` and the macOS shell are implemented and verified live on one display. Multiple displays and the items under "Open" are not yet verified. Page transitions, Cmd+\` window cycling and page miniatures in the position indicator are implemented and unit tested but not yet tried on screen; the transition mechanism was validated in a spike. Trackpad swipes are implemented and unit tested; the swipe mechanism was validated in a spike. The Cmd+Tab window switcher is implemented and unit tested but not yet tried on screen. Keyboard resizing and the mirrored and stacked three-window layouts are implemented and unit tested. The drop picker is implemented and unit tested. The grab highlight is designed but not yet implemented.
 
 ## Model
 
@@ -63,6 +63,18 @@ Keys: a bound `switcher next|prev` opens a session in the keyboard tap's router 
 `switcher next|prev` fail when the display has no window to offer, and `switcher commit|cancel` when the switcher is not open; `switcher commit` replies with the reply of `window focus ID`. `mntl debug health` reports `switcher_open` and `switcher_selected` (see "Command line: mntl").
 
 Untested in minitile: the panel on screen, key routing with physical keys, the quick Cmd+Tab, Shift+Tab, and detecting the Cmd release.
+
+### Grab highlight
+
+Not yet implemented.
+
+When a key binding moves or resizes the focused window (Ctrl+Shift+arrows to nudge or carry it, Ctrl+Option+arrows to resize it), minitile outlines that window so it reads as held.
+
+- The outline is a rounded border in the system accent colour, drawn by a click-through panel over the window's tile, or over its frame when it floats. It never takes focus, shows on whichever desktop is current, follows light and dark appearance, and sits above normal windows but below the position indicator, the window switcher and the drop picker.
+- It stays while every modifier of the binding that started it is held, and goes when one is released, so holding Ctrl+Shift is holding the window. Further moves and resizes while it is held keep it on the same window.
+- It follows the window to its new tile after each move. When a move shows another page with a slide, it hides during the slide and returns on the window's new tile when the slide ends.
+- A move or resize from `mntl` or the menu, with no modifier held, shows it for about 1 s.
+- It ends early when the window closes, is minimized or hidden, or loses focus to another window, and on suspension. Mouse drags never show it, including Ctrl+arrow while dragging, since the pointer already holds the window.
 
 ### Placement
 
@@ -708,12 +720,13 @@ First version:
 - trackpad swipes for pages and workspaces;
 - the Cmd+Tab window switcher;
 - keyboard resizing and the mirrored and stacked three-window layouts;
-- the drop picker for dragged windows.
+- the drop picker for dragged windows;
+- the grab highlight for keyboard moves and resizes.
 
 Not planned:
 
 - focus-follows-mouse;
-- focus borders and dimming;
+- persistent focus borders and dimming;
 - a mouse-driven overview;
 - live previews of edge drags;
 - saved layouts;
