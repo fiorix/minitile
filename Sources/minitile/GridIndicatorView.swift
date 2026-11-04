@@ -17,6 +17,9 @@ struct GridMetrics: Equatable {
                                        reservedIcon: 10, trayIcon: nil)
     static let switcher = GridMetrics(cellArea: 128 * 80, spacing: 12, labelGap: 12, minWidth: 300, icon: 16...32,
                                       reservedIcon: 14, trayIcon: 16)
+    /// The switcher's cells, in a single row without labels; their tiles are the drop targets.
+    static let picker = GridMetrics(cellArea: 128 * 80, spacing: 12, labelGap: 0, minWidth: 0, icon: 16...32,
+                                    reservedIcon: 14, trayIcon: nil)
 }
 
 /// Panel layout in flipped view coordinates, sized from the number of drawn cells.
@@ -183,7 +186,7 @@ struct GridPainter {
                 path.lineWidth = 1
                 path.stroke()
             }
-            icon(tile.pid, in: GridIndicatorGeometry.iconRect(tile: rect, range: metrics.icon), fraction: 1)
+            if !tile.placeholder { icon(tile.pid, in: GridIndicatorGeometry.iconRect(tile: rect, range: metrics.icon), fraction: 1) }
         }
         let reserved = GridIndicatorGeometry.reservedRects(count: miniature.reserved.count, cell: cell, side: metrics.reservedIcon)
         if let first = reserved.first, let last = reserved.last {
