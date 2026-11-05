@@ -20,13 +20,12 @@ enum DragMove {
     }
 }
 
-/// The layouts a dragged window's page can take, laid out in a row at the bottom centre of the page's usable area.
+/// The layouts a dragged window's page can take, laid out in a row in the middle of the page's usable area.
 /// `frame` is in CG global points and `cell` and `tiles` in the panel's flipped view, so the cursor needs no conversion
 /// beyond the panel's origin.
 struct DropPicker: Equatable {
+    /// The panel's margin at scale 1.
     static let margin: CGFloat = 12
-    /// Room between the panel and the bottom of the usable area.
-    static let inset: CGFloat = 12
 
     struct Option: Equatable {
         var variant: Variant
@@ -73,7 +72,7 @@ struct DropPicker: Equatable {
                           tiles: frames.map { GridIndicatorGeometry.tileRect($0, area: area, cell: rect) })
         }
         let size = Self.size(count: variants.count, area: area, metrics: metrics)
-        frame = CGRect(x: (area.center.x - size.width / 2).rounded(), y: (area.maxY - Self.inset - size.height).rounded(),
+        frame = CGRect(x: (area.center.x - size.width / 2).rounded(), y: (area.center.y - size.height / 2).rounded(),
                        width: size.width, height: size.height)
         self.metrics = metrics
         self.window = id

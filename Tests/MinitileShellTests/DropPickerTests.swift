@@ -38,20 +38,24 @@ func pickerOffersTheCountsLayoutsInARowAtTheBottomCentre(_ count: Int, _ variant
     #expect(picker.options.map(\.current) == variants.map { $0 == .standard })
     #expect(picker.pid == 101)
     #expect(picker.display == "d")
+    // The switcher's cell size, unscaled on this display, in the middle of the usable area.
+    #expect(picker.metrics == .picker)
+    #expect(GridMetrics.picker.scale == 2)
+    #expect(GridMetrics.picker.cellArea == GridMetrics.switcher.cellArea)
     let cell = GridIndicatorGeometry.cellSize(area: display.visibleFrame, metrics: .picker)
+    let margin = DropPicker.margin * GridMetrics.picker.scale
     for (index, option) in picker.options.enumerated() {
         #expect(option.frames.count == count)
         #expect(option.tiles.count == count)
         #expect(option.cell.size == cell)
-        #expect(option.cell.minX == DropPicker.margin + CGFloat(index) * (cell.width + GridMetrics.picker.spacing))
-        #expect(option.cell.minY == DropPicker.margin)
+        #expect(option.cell.minX == margin + CGFloat(index) * (cell.width + GridMetrics.picker.spacing))
+        #expect(option.cell.minY == margin)
         for tile in option.tiles { #expect(option.cell.contains(center(tile))) }
     }
-    #expect(picker.frame.width == picker.options.last!.cell.maxX + DropPicker.margin)
-    #expect(picker.frame.height == cell.height + 2 * DropPicker.margin)
+    #expect(picker.frame.width == picker.options.last!.cell.maxX + margin)
+    #expect(picker.frame.height == cell.height + 2 * margin)
     #expect(abs(picker.frame.midX - display.visibleFrame.center.x) <= 0.5)
-    let bottom: Double = picker.frame.maxY
-    #expect(bottom == display.visibleFrame.maxY - DropPicker.inset)
+    #expect(abs(picker.frame.midY - display.visibleFrame.center.y) <= 0.5)
 }
 
 @Test func pickerScalesDownToFitASmallDisplay() throws {
