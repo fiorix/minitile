@@ -87,7 +87,7 @@ transition_ms = 500
 "cmd+h" = ""
 ```
 
-Configuration reloads automatically. You can also open or reload it from the menu bar.
+Configuration reloads automatically when the file changes. `mntl config open` opens it and `mntl config reload` reloads it by hand.
 
 ## Mouse and trackpad
 
