@@ -6,10 +6,15 @@
 # Signing uses MINITILE_SIGN_IDENTITY (default "Developer ID Application") from the keychain.
 # Notarization uses either NOTARY_PROFILE (a notarytool keychain profile, for local releases) or
 # NOTARY_KEY_PATH, NOTARY_KEY_ID and NOTARY_ISSUER_ID (an App Store Connect API key, for CI).
+# The disk image is built by dmgbuild (pip package dmgbuild) from packaging/dmg.py.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 version=${1:?usage: scripts/release.sh VERSION}
+if ! command -v dmgbuild >/dev/null; then
+    echo "dmgbuild not found; install it with: python3 -m pip install dmgbuild==1.6.7 (in a venv if pip refuses)" >&2
+    exit 1
+fi
 export MINITILE_SIGN_IDENTITY=${MINITILE_SIGN_IDENTITY:-Developer ID Application}
 out=build/release
 app=build/Minitile.app
@@ -40,11 +45,7 @@ notarize "$out/Minitile.zip"
 xcrun stapler staple "$app"
 rm "$out/Minitile.zip"
 
-stage=$(mktemp -d)
-trap 'rm -rf "$stage"' EXIT
-ditto "$app" "$stage/Minitile.app"
-ln -s /Applications "$stage/Applications"
-hdiutil create -volname "minitile $version" -srcfolder "$stage" -fs APFS -format UDZO -ov "$dmg"
+dmgbuild -s packaging/dmg.py -D app="$app" -D version="$version" "minitile $version" "$dmg"
 codesign --force --sign "$MINITILE_SIGN_IDENTITY" --timestamp "$dmg"
 notarize "$dmg"
 xcrun stapler staple "$dmg"

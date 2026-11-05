@@ -64,6 +64,7 @@ The README retains the sixteen-second wireframe grid loop: pages run horizontall
 | `packaging/AppIcon.svg` | The app icon's 1024 px artwork |
 | `packaging/dmg-background.tiff` | The disk image window's background at 1x and 2x |
 | `packaging/dmg-background.svg` | The disk image background's artwork |
+| `packaging/dmg.py` | `dmgbuild` settings for the release disk image |
 
 The mark and wordmark are built by `scripts/branding/logo.mjs`. The tour uses `web/demo-scenes.mjs` and `web/demo-art.mjs`, sharing tile layouts from `web/layouts.mjs`. The original grid and README assets use `web/geometry.mjs`. Regenerate the SVG assets with Node:
 
