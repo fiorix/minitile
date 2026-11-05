@@ -16,16 +16,15 @@ import Testing
     let content = HelpContent(config: .default)
     #expect(content.sections.map(\.title) == ["", "Mouse and trackpad"])
     let rows = content.sections[0].entries
-    #expect(rows.map(\.text) == ["Move between pages", "Move between workspaces", "Nudge a window to another page",
-                                "Carry a window to another workspace", "Resize a window", "Cycle layouts", "Find a window anywhere",
+    #expect(rows.map(\.text) == ["Move around", "Move a window", "Resize a window", "Cycle layouts", "Find a window anywhere",
                                 "Cycle windows on this page", "Swap a window with its neighbour", "Show every shortcut"])
-    #expect(rows.map(\.keys) == [["Control", "Left / Right"], ["Control", "Up / Down"], ["Control", "Shift", "Left / Right"],
-                                ["Control", "Shift", "Up / Down"], ["Control", "Option", "Arrow keys"], ["Control", "Option", "Space"],
-                                ["Cmd", "Tab"], ["Cmd", "Backtick"], ["Option", "Cmd", "Backtick"], ["Cmd", "H"]])
-    #expect(rows[2].detail == "A shared window gets its own page; a window on its own joins its neighbour.")
-    #expect(rows[6].detail == "Hold Cmd, choose with Tab or arrows, then release to jump. Add Shift to go back.")
-    #expect(rows[7].detail == "Add Shift to go back." && rows[8].detail == "Add Shift to go back.")
-    #expect(rows[9].detail == "Press Esc or click anywhere else to close.")
+    #expect(rows.map(\.keys) == [["Control", "Arrow keys"], ["Control", "Shift", "Arrow keys"], ["Control", "Option", "Arrow keys"],
+                                ["Control", "Option", "Space"], ["Cmd", "Tab"], ["Cmd", "Backtick"], ["Option", "Cmd", "Backtick"],
+                                ["Cmd", "H"]])
+    #expect(rows[0].detail == nil && rows[1].detail == nil)
+    #expect(rows[4].detail == "Hold Cmd, choose with Tab or arrows, then release to jump. Add Shift to go back.")
+    #expect(rows[5].detail == "Add Shift to go back." && rows[6].detail == "Add Shift to go back.")
+    #expect(rows[7].detail == "Press Esc or click anywhere else to close.")
 }
 
 @Test func differentlyReboundDirectionsAndMissingBindingsStayExplicit() throws {
@@ -33,11 +32,12 @@ import Testing
     config.bindings[Chord(modifiers: .ctrl, key: "left")] = nil
     config.bindings[Chord(modifiers: .alt, key: "h")] = ["page", "prev"]
     let rows = HelpContent(config: config).sections[0].entries
-    #expect(rows[0].text == "Move between pages (previous)" && rows[0].keys == ["Option", "H"])
-    #expect(rows[1].text == "Move between pages (next)" && rows[1].keys == ["Control", "Right"])
+    #expect(rows[0].text == "Move around (left)" && rows[0].keys == ["Option", "H"])
+    #expect(rows[1].text == "Move around (right)" && rows[1].keys == ["Control", "Right"])
+    #expect(rows[2].text == "Move around (up / down)" && rows[2].keys == ["Control", "Up / Down"])
     let unbound = HelpContent(config: try Config.parse("[bindings]\n\"cmd+h\" = \"\"\n\"ctrl+left\" = \"window close\"\n"))
     #expect(!unbound.sections.flatMap(\.entries).contains { $0.text == "Show every shortcut" })
-    #expect(unbound.sections[0].entries[0].text == "Move between pages (next)")
+    #expect(unbound.sections[0].entries[0].text == "Move around (right)")
     #expect(unbound.sections.first { $0.title == "Other" }?.entries == [HelpContent.Entry(keys: ["Control", "Left"], text: "window close")])
 }
 
@@ -52,7 +52,7 @@ import Testing
     ])
     let rows = HelpContent(config: config).sections[0].entries
     #expect(rows.map(\.keys) == [["Option", "H / L"], ["Control", "Left / Right"], ["Control", "Up / Down"]])
-    #expect(rows.map(\.text) == ["Nudge a window to another page", "Nudge a window to another page", "Resize a window (up / down)"])
+    #expect(rows.map(\.text) == ["Move a window (left / right)", "Move a window (left / right)", "Resize a window (up / down)"])
 }
 
 @Test func onlyAnExactReverseShiftVariantBecomesADetail() {
@@ -77,9 +77,9 @@ import Testing
 
 @Test func swipesAreListedOnlyWhileMinitileTakesThem() {
     let on = HelpContent.gestures(swipes: true), off = HelpContent.gestures(swipes: false)
-    #expect(on.count == 6 && off.count == 4)
-    #expect(on.prefix(2).map(\.keys) == [["Swipe left or right"], ["Swipe up or down"]])
-    #expect(Array(on.dropFirst(2)) == off)
+    #expect(on.count == 5 && off.count == 4)
+    #expect(on.first == HelpContent.Entry(keys: ["Swipe in any direction"], text: "Move around", chord: false))
+    #expect(Array(on.dropFirst()) == off)
     #expect(off.last?.keys == ["Drag, then Control + arrows"])
     #expect(on.allSatisfy { !$0.chord })
     var config = Config(bindings: [:])
@@ -90,7 +90,7 @@ import Testing
 @Test func helpFitsOneColumnWhenTheUsableAreaIsTallEnough() {
     let layout = HelpLayout(content: HelpContent(config: .default), bounds: CGSize(width: 1480, height: 913))
     #expect(layout.columns.count == 1)
-    #expect(layout.size == CGSize(width: 592, height: 786))
+    #expect(layout.size == CGSize(width: 592, height: 654))
     #expect(layout.origin(column: 0) == CGPoint(x: 16, y: 46))
 }
 

@@ -61,14 +61,13 @@ struct HelpContent: Equatable {
 
     static let gesturesTitle = "Mouse and trackpad"
     private static let actions: [Action] = [
-        Action(text: "Move between pages", commands: [["page prev"], ["page next"]], directions: ["previous", "next"]),
-        Action(text: "Move between workspaces", commands: [["workspace prev"], ["workspace next"]], directions: ["above", "below"]),
-        Action(text: "Nudge a window to another page", commands: [["window nudge left", "window move left"],
-                                                                 ["window nudge right", "window move right"]], directions: ["left", "right"],
-               detail: "A shared window gets its own page; a window on its own joins its neighbour."),
-        Action(text: "Carry a window to another workspace", commands: [["window move workspace prev", "window move up"],
-                                                                       ["window move workspace next", "window move down"]],
-               directions: ["above", "below"]),
+        // Pages run sideways and workspaces up and down, but to the user the arrows simply move around the grid.
+        Action(text: "Move around", commands: [["page prev"], ["page next"], ["workspace prev"], ["workspace next"]],
+               directions: ["left", "right", "up", "down"]),
+        Action(text: "Move a window", commands: [["window nudge left", "window move left"], ["window nudge right", "window move right"],
+                                                 ["window move workspace prev", "window move up"],
+                                                 ["window move workspace next", "window move down"]],
+               directions: ["left", "right", "up", "down"]),
         Action(text: "Resize a window", commands: [["window resize left"], ["window resize right"], ["window resize up"], ["window resize down"]],
                directions: ["left", "right", "up", "down"]),
         Action(text: "Cycle layouts", commands: [["page variant"]]),
@@ -136,13 +135,12 @@ struct HelpContent: Equatable {
     }
 
     static func gestures(swipes: Bool) -> [Entry] {
-        let swipe = [Entry(keys: ["Swipe left or right"], text: "Next or previous page", chord: false),
-                     Entry(keys: ["Swipe up or down"], text: "Workspace below or above", chord: false)]
+        let swipe = [Entry(keys: ["Swipe in any direction"], text: "Move around", chord: false)]
         return (swipes ? swipe : []) + [
             Entry(keys: ["Drag an edge or corner"], text: "Resize tiles", chord: false),
             Entry(keys: ["Drag onto a tile"], text: "Swap the two windows", chord: false),
             Entry(keys: ["Drop on the picker"], text: "Set the layout and tile", chord: false),
-            Entry(keys: ["Drag, then Control + arrows"], text: "Nudge or carry the window", chord: false),
+            Entry(keys: ["Drag, then Control + arrows"], text: "Move the window", chord: false),
         ]
     }
 }
