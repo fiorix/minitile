@@ -8,47 +8,28 @@ protocol HelpPresenting: AnyObject {
     func hide()
 }
 
-/// The help screen's main-thread side: its session with the key router and, when no modifier holds it, its timer.
+/// The help screen's main-thread session with the key router.
 @MainActor
 final class HelpScreen {
-    typealias Schedule = @MainActor (TimeInterval, @escaping @MainActor @Sendable () -> Void) -> Void
-    /// How long a screen no modifier holds stays open, as one from `mntl help show`.
-    static let timeout: TimeInterval = 5
-
     private(set) var session: Int?
-    /// Opened by a binding with modifiers, so it closes when they are released.
-    private(set) var held = false
-    /// Runs with the session the timer closed, so the shell closes it in the key router too.
-    var expired: ((Int) -> Void)?
     /// The newest session seen, so an open the tap thread sent before a newer session cannot reopen a closed screen.
     private var latest = 0
     private let presenter: any HelpPresenting
-    private let schedule: Schedule
 
-    init(presenter: any HelpPresenting, schedule: @escaping Schedule = { delay, work in
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { MainActor.assumeIsolated { work() } }
-    }) {
+    init(presenter: any HelpPresenting) {
         self.presenter = presenter
-        self.schedule = schedule
     }
 
     var isOpen: Bool { session != nil }
 
     func isStale(_ session: Int) -> Bool { session <= latest }
 
-    /// Shows the screen under `session`. An open screen is updated in place rather than hidden first, so opening it
-    /// again does not flicker.
-    func open(session: Int, held: Bool, content: HelpContent, display: DisplayID?) {
+    /// Shows the screen under `session`; an already visible screen keeps its content and display.
+    func open(session: Int, content: HelpContent, display: DisplayID?) {
         latest = max(latest, session)
+        let showing = isOpen
         self.session = session
-        self.held = held
-        presenter.show(content, display: display)
-        guard !held else { return }
-        schedule(Self.timeout) { [weak self] in
-            guard let self, self.session == session else { return }
-            self.close()
-            self.expired?(session)
-        }
+        if !showing { presenter.show(content, display: display) }
     }
 
     /// Closes `session`; a newer one stays open.
@@ -59,7 +40,6 @@ final class HelpScreen {
     func close() {
         if session != nil { presenter.hide() }
         session = nil
-        held = false
     }
 
     /// The switcher took the keyboard under `session`, so the screen closes and ignores opens sent before it.
@@ -69,13 +49,16 @@ final class HelpScreen {
     }
 }
 
-/// A click-through panel in the middle of the active display's usable area, styled as the window switcher.
+/// A non-activating panel in the middle of the active display's usable area, styled as the window switcher.
 @MainActor
 final class HelpPanel: HelpPresenting {
     /// The window switcher's level, above the position indicator, the page-transition overlays and other apps'
     /// floating windows.
     static let level = SwitcherPanel.level
     private var panel: NSPanel?
+    private var mouseMonitor: Any?
+    private var localMouseMonitor: Any?
+    var clickedOutside: (() -> Void)?
 
     func show(_ content: HelpContent, display: DisplayID?) {
         guard let screen = NSScreen.screens.first(where: { DisplayCatalog.id(for: $0) == display }) ?? NSScreen.main ?? NSScreen.screens.first
@@ -85,16 +68,36 @@ final class HelpPanel: HelpPresenting {
         let panel = self.panel ?? makePanel(layout)
         self.panel = panel
         (panel.styledContent as? HelpView)?.layout = layout
-        let size = CGSize(width: min(layout.size.width, area.width), height: min(layout.size.height, area.height))
+        let size = CGSize(width: min(layout.size.width, area.width - 2 * inset), height: min(layout.size.height, area.height - 2 * inset))
         let frame = NSRect(x: (area.midX - size.width / 2).rounded(), y: (area.midY - size.height / 2).rounded(),
                            width: size.width, height: size.height)
         if panel.frame != frame { panel.setFrame(frame, display: true) }
         if !panel.isVisible { panel.orderFrontRegardless() }
+        if mouseMonitor == nil {
+            let mask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+            mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] _ in
+                MainActor.assumeIsolated { self?.clickedOutside?() }
+            }
+            // Global monitors exclude this app, including its menu bar and other panels.
+            localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+                MainActor.assumeIsolated {
+                    if let self, event.window !== self.panel { self.clickedOutside?() }
+                }
+                return event
+            }
+        }
     }
 
-    func hide() { panel?.orderOut(nil) }
+    func hide() {
+        if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
+        if let localMouseMonitor { NSEvent.removeMonitor(localMouseMonitor) }
+        mouseMonitor = nil
+        localMouseMonitor = nil
+        panel?.orderOut(nil)
+    }
 
     func stop() {
+        hide()
         panel?.close()
         panel = nil
     }
@@ -104,7 +107,7 @@ final class HelpPanel: HelpPresenting {
         panel.isReleasedWhenClosed = false
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
-        panel.ignoresMouseEvents = true
+        panel.ignoresMouseEvents = false
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
@@ -132,6 +135,10 @@ final class HelpView: NSView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override var isFlipped: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) {}
+    override func rightMouseDown(with event: NSEvent) {}
+    override func otherMouseDown(with event: NSEvent) {}
 
     override func draw(_ dirtyRect: NSRect) {
         let margin = HelpLayout.margin
@@ -147,11 +154,26 @@ final class HelpView: NSView {
                     GridPainter.text(title, rect: NSRect(x: origin.x, y: origin.y + line.height - 18, width: HelpLayout.columnWidth, height: 15),
                                      size: 11, weight: .semibold)
                 case .entry(let entry):
-                    GridPainter.text(entry.keys, rect: NSRect(x: origin.x, y: origin.y + 1, width: HelpLayout.keyWidth - 8, height: 16),
-                                     size: 12, weight: .medium, monospaced: entry.chord,
-                                     symbolTracking: entry.chord ? PanelStyle.chordTracking : 0)
-                    GridPainter.text(entry.text, rect: NSRect(x: origin.x + HelpLayout.keyWidth, y: origin.y + 1, width: HelpLayout.textWidth,
-                                                              height: 16), size: 12, color: PanelStyle.dim)
+                    GridPainter.text(entry.text, rect: NSRect(x: origin.x, y: origin.y + 5, width: HelpLayout.textWidth - 12, height: 16),
+                                     size: 12)
+                    if let detail = entry.detail {
+                        GridPainter.text(detail, rect: NSRect(x: origin.x, y: origin.y + 23, width: HelpLayout.textWidth - 12, height: 32),
+                                         size: 10, color: PanelStyle.dim, wrap: true)
+                    }
+                    if entry.chord {
+                        let gap: CGFloat = 4
+                        let width = entry.keys.reduce(CGFloat(0)) { $0 + PanelStyle.keycapSize($1).width } + CGFloat(entry.keys.count - 1) * gap
+                        let scale = min(1, HelpLayout.keyWidth / max(1, width))
+                        var x = origin.x + HelpLayout.columnWidth - width * scale
+                        for key in entry.keys {
+                            PanelStyle.keycap(key, at: CGPoint(x: x, y: origin.y), scale: scale)
+                            x += PanelStyle.keycapSize(key, scale: scale).width + gap * scale
+                        }
+                    } else {
+                        GridPainter.text(entry.keys.joined(separator: " "),
+                                         rect: NSRect(x: origin.x + HelpLayout.textWidth, y: origin.y + 5, width: HelpLayout.keyWidth, height: 16),
+                                         size: 12, color: PanelStyle.dim, alignment: .right)
+                    }
                 }
                 origin.y += line.height
             }
@@ -163,27 +185,27 @@ extension AppDelegate {
     /// Started and not suspended: the switcher and the help screen take keys only then.
     var modalsAvailable: Bool { started && !quitting && suspendedReasons.isEmpty }
 
-    /// `help show`, answered here since the help screen is shell UI. Without a held modifier it closes on its timer.
+    /// `help show`, answered here since the help screen is shell UI. Repeated requests leave it open.
     func helpCommand() -> Reply {
         guard modalsAvailable else { return Reply(ok: false, text: "Help is unavailable while minitile is suspended") }
-        openHelp(session: keyboard?.open(.help) ?? 0, held: false)
+        if !helpScreen.isOpen { openHelp(session: keyboard?.open(.help) ?? 0) }
         return Reply(text: "OK")
     }
 
     /// Keys the router sent for a session; ones for a screen that has since closed are dropped.
     func helpKey(_ key: HelpKey, session: Int) {
         switch key {
-        case .open(let held):
+        case .open:
             guard !helpScreen.isStale(session) else { return }
             guard modalsAvailable else { keyboard?.close(session); return }
-            openHelp(session: session, held: !held.isEmpty)
+            openHelp(session: session)
         case .close: helpScreen.close(session)
         }
     }
 
     /// Opens on the display a command without an address acts on, closing the switcher, which cannot be open with it.
-    func openHelp(session: Int, held: Bool) {
+    func openHelp(session: Int) {
         windowSwitcher.supersede(session)
-        helpScreen.open(session: session, held: held, content: HelpContent(config: engine.config), display: engine.commandDisplay)
+        helpScreen.open(session: session, content: HelpContent(config: engine.config), display: engine.commandDisplay)
     }
 }

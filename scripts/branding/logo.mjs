@@ -1,8 +1,5 @@
-// minitile's mark and wordmark, built from one stroke system so they stay consistent at every size.
-//
-// The mark is a three-window layout on a 32-unit grid: one wide tile over two tall ones, 2 units apart, all with
-// 3-unit corners, drawn as glass (a hairline over a faint fill). A single neon line, a pale core inside a cyan halo,
-// traces an m through it: up the outer edges, over the top tile and down the gap between the lower two.
+// minitile's framed three-tile mark on a 40-unit grid. Only the wide top tile is lit; the frame and lower tiles
+// are unfilled wire outlines.
 //
 // The wordmark is monoline lowercase on a 20-unit x-height with 27-unit ascenders. Stems, arches and the bowl share one
 // stroke with round ends. The three i-dots are small tiles, echoing the mark's three windows; the last one is lit.
@@ -21,44 +18,20 @@ const n = (value) => +value.toFixed(2);
 const halo = (id, deviation) =>
   `<filter id="${id}" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="${deviation}"/></filter>`;
 
-// A neon line: a blurred halo, the tube, and its pale core.
-function tube(d, width, filter) {
-  const line = `fill="none" stroke-linecap="round" stroke-linejoin="round"`;
-  return (
-    `<path d="${d}" ${line} stroke="${palette.neon}" stroke-width="${n(width * 2.4)}" stroke-opacity=".8" filter="url(#${filter})"/>` +
-    `<path d="${d}" ${line} stroke="${palette.neon}" stroke-width="${n(width * 1.6)}" stroke-opacity=".9"/>` +
-    `<path d="${d}" ${line} stroke="${palette.core}" stroke-width="${n(width * 0.75)}"/>`
-  );
-}
-
-const tiles = [
-  [3, 3, 26, 10],
-  [3, 15, 12, 14],
-  [17, 15, 12, 14],
-];
-const radius = 3;
-
-/** The mark's drawing in its 32-unit space; `id` keeps filter ids unique when several marks share a document. */
+/** The mark's drawing in its 40-unit space; `id` keeps filter ids unique when several marks share a document. */
 export function markContent(id = "mark-halo") {
-  const glass = `fill="${palette.wire}" fill-opacity=".09" stroke="${palette.wire}" stroke-opacity=".6" stroke-width=".75"`;
-  const tile = ([x, y, width, height]) =>
-    `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${radius}" ${glass}/>`;
-  // The m runs 0.4 inside the outer edges, so its corners stay concentric with the tiles' and its halo, not its core,
-  // reaches the edge. The middle stem starts in the gap under the top tile.
-  const i = 0.4,
-    r = radius - i,
-    [, , , top] = tiles[0];
-  const m = `M${3 + i} ${29 - i}V${3 + radius}A${r} ${r} 0 0 1 ${3 + radius} ${3 + i}H${29 - radius}A${r} ${r} 0 0 1 ${29 - i} ${3 + radius}V${29 - i}M16 ${3 + top + 1}V${29 - i}`;
-  return `<defs>${halo(id, 1.1)}</defs>${tiles.map(tile).join("")}${tube(m, 0.9, id)}`;
+  const wire = `fill="none" stroke="${palette.wire}" stroke-opacity=".6" stroke-width="1.5"`;
+  const top = `<rect x="9" y="9" width="22" height="9" rx="1.5" fill="${palette.neon}"`;
+  return `<defs>${halo(id, 1.1)}</defs><rect x="3" y="3" width="34" height="34" rx="7" ${wire}/><rect x="9" y="22" width="9" height="9" rx="1.5" ${wire}/><rect x="22" y="22" width="9" height="9" rx="1.5" ${wire}/>${top} opacity=".8" filter="url(#${id})"/>${top}/>`;
 }
 
 export function markSVG(size = 32) {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 32 32" fill="none">${markContent()}</svg>\n`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 40 40" fill="none">${markContent()}</svg>\n`;
 }
 
 /** The favicon: the mark on its own void tile, so it reads on light and dark tab bars alike. */
 export function faviconSVG() {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="7" fill="${palette.void}"/><rect x=".5" y=".5" width="31" height="31" rx="6.5" stroke="${palette.wire}" stroke-opacity=".35"/><g transform="translate(4 4) scale(.75)">${markContent("favicon-halo")}</g></svg>\n`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 40 40" fill="none"><rect width="40" height="40" rx="9" fill="${palette.void}"/>${markContent("favicon-halo")}</svg>\n`;
 }
 
 /** Glyph geometry for "minitile": stroke paths, i-dot tiles and the advance width. */
@@ -146,15 +119,15 @@ function wordContent(id, { lit = true, color = palette.ink } = {}) {
   };
 }
 
-/** The horizontal lockup: the mark's tiles span the wordmark's ascender to its baseline. */
+/** The horizontal lockup: the mark's frame spans the wordmark's ascender to its baseline. */
 export function lockup(options = {}) {
   const { word, content } = wordContent("word-halo", options);
   const span = word.base - word.ascender,
-    scale = n(span / 26),
+    scale = span / 34,
     pad = 2;
   const markX = pad - 3 * scale,
     markY = word.ascender - 3 * scale,
-    wordX = n(pad + 26 * scale + 9);
+    wordX = n(pad + span + 9);
   const width = n(wordX + word.width + pad),
     height = n(word.base + pad + 1);
   return {

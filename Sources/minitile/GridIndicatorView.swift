@@ -362,20 +362,14 @@ struct GridPainter {
              alignment: .center, monospaced: true)
     }
 
-    /// `symbolTracking` adds room after each non-ASCII character, such as a chord's modifier symbols and arrows.
     static func text(_ string: String, rect: NSRect, size: CGFloat, weight: NSFont.Weight = .regular, color: Paint = PanelStyle.ink,
-                     alignment: NSTextAlignment = .left, wrap: Bool = false, monospaced: Bool = false, symbolTracking: CGFloat = 0) {
+                     alignment: NSTextAlignment = .left, wrap: Bool = false, monospaced: Bool = false) {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = alignment
         paragraph.lineBreakMode = wrap ? .byWordWrapping : .byTruncatingTail
-        let text = NSMutableAttributedString(string: string, attributes: [
+        let text = NSAttributedString(string: string, attributes: [
             .font: PanelStyle.font(size: size, weight: weight, monospaced: monospaced), .foregroundColor: color.color, .paragraphStyle: paragraph,
         ])
-        if symbolTracking != 0 {
-            for index in string.indices where !string[index].isASCII {
-                text.addAttribute(.kern, value: symbolTracking, range: NSRange(index...index, in: string))
-            }
-        }
         text.draw(in: rect)
     }
 }

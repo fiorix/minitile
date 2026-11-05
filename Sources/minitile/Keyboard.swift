@@ -43,8 +43,7 @@ enum SwitcherKey: Equatable, Sendable {
 }
 
 enum HelpKey: Equatable, Sendable {
-    /// `held` are the opening binding's modifiers other than Shift; releasing one closes it. Empty closes it on a timer.
-    case open(held: Modifiers)
+    case open
     case close
 }
 
@@ -95,7 +94,7 @@ struct KeyRouter {
     struct OpenModal: Equatable {
         var kind: Modal
         var session: Int
-        /// The opening binding's modifiers other than Shift; releasing one closes the screen. Empty keeps it open.
+        /// The switcher's opening modifiers other than Shift; help always leaves these empty.
         var held: Modifiers
     }
 
@@ -181,12 +180,11 @@ struct KeyRouter {
             command = nil
         }
         if command == ["help", "show"] {
-            if helpAvailable { return helpBinding(code, held: modifiers.subtracting(.shift), autorepeat: autorepeat) }
+            if helpAvailable { return helpBinding(code, autorepeat: autorepeat) }
             command = nil
         }
-        // Every other key and binding goes nowhere while the switcher or the help screen is open, so Cmd+Q or Cmd+W
-        // never hits the app behind it.
-        if modal != nil {
+        // The switcher takes all keys; help leaves other shortcuts and bindings usable.
+        if switcher != nil {
             swallowed.insert(code)
             return .swallow
         }
@@ -206,12 +204,11 @@ struct KeyRouter {
         return .pass
     }
 
-    /// A switcher opened by a binding commits, and a help screen closes, once one of the binding's modifiers other
-    /// than Shift is released. Modifier changes themselves always pass.
+    /// A switcher opened by a binding commits once one of its modifiers other than Shift is released.
     mutating func flags(_ modifiers: Modifiers) -> KeyDecision {
-        guard let open = modal, !open.held.isEmpty, !modifiers.isSuperset(of: open.held) else { return .pass }
+        guard let open = switcher, !open.held.isEmpty, !modifiers.isSuperset(of: open.held) else { return .pass }
         modal = nil
-        return open.kind == .switcher ? .switcher(.commit, session: open.session) : .help(.close, session: open.session)
+        return .switcher(.commit, session: open.session)
     }
 
     /// A grab started by a binding ends once any of the binding's modifiers, Shift included, is released.
@@ -255,15 +252,17 @@ struct KeyRouter {
         return .switcher(.open(forward: forward, held: held), session: sessions)
     }
 
-    /// A bound `help show` opens the help screen, replacing an open switcher. Pressed again while the screen is open,
-    /// it reopens it under a new session, which restarts a timed screen's timer or holds it with the new modifiers;
-    /// key repeats never do.
-    private mutating func helpBinding(_ code: UInt16, held: Modifiers, autorepeat: Bool) -> KeyDecision {
+    /// A bound `help show` toggles help, replacing an open switcher. Repeats never toggle it again.
+    private mutating func helpBinding(_ code: UInt16, autorepeat: Bool) -> KeyDecision {
         swallowed.insert(code)
         if autorepeat { return .swallow }
+        if let open = help {
+            modal = nil
+            return .help(.close, session: open.session)
+        }
         sessions += 1
-        modal = OpenModal(kind: .help, session: sessions, held: held)
-        return .help(.open(held: held), session: sessions)
+        modal = OpenModal(kind: .help, session: sessions, held: [])
+        return .help(.open, session: sessions)
     }
 
     private static func switcherKey(_ name: String?, shift: Bool) -> SwitcherKey? {
