@@ -67,7 +67,7 @@ The script creates `build/Minitile.app`, with the `mntl` command line tool insid
 1. In Mission Control, give every display a second desktop: click + at the top of each display. minitile keeps hidden pages on the second desktop, and macOS does not let apps create desktops, so this step is yours. Until a display has one, minitile leaves it alone, and minitile's menu bar item names the display and shows how to add the desktop.
 2. In System Settings > Desktop & Dock, keep **Displays have separate Spaces** enabled, turn off **Automatically rearrange Spaces based on most recent use**, and turn off macOS drag-to-tile options.
 3. Launch minitile and grant Accessibility permission when prompted. Allow Screen Recording for page transitions, or set `transition_ms = 0` to turn transitions off.
-4. Open a few windows. Use Control+Left/Right for pages and Control+Up/Down for workspaces. Control+Down past the last workspace opens a new one. Press Cmd+H to see every shortcut, and Esc to close it.
+4. Open a few windows. Use Control and the arrow keys to move around, and add Shift to take the focused window with you. Press Cmd+H to see every shortcut, and Esc to close it.
 
 minitile takes over the system shortcuts listed below while active, including Mission Control's Control+Up/Down, Control+Option+Space for switching input sources, the native app switcher's Cmd+Tab, and Cmd+H, which hides apps in macOS. Apps can still be hidden from their app menu or the Dock. Mission Control remains available through its dedicated key or Dock. Quit minitile to return those keys to macOS. Windows on its stash desktop remain reachable through Mission Control after quitting.
 
@@ -75,10 +75,8 @@ minitile takes over the system shortcuts listed below while active, including Mi
 
 | Shortcut | Action |
 | --- | --- |
-| Control + Left / Right | Previous / next page |
-| Control + Up / Down | Workspace above / below |
-| Control + Shift + Left / Right | Nudge the focused window to another page |
-| Control + Shift + Up / Down | Carry the focused window to another workspace |
+| Control + arrows | Move around |
+| Control + Shift + arrows | Move the focused window |
 | Control + Option + arrows | Resize the focused window |
 | Control + Option + Space | Cycle the page's layouts |
 | Cmd + Tab / Cmd + Shift + Tab | Switch windows: a ring across the grid from the top-left; hold Cmd to see the switcher |
