@@ -5,7 +5,7 @@
 
 <p align="center">Free and open source under Apache-2.0. Native Swift. Familiar macOS shortcuts.</p>
 
-<p align="center"><a href="#download"><img src="web/assets/download.svg" alt="Download for macOS - coming soon" width="280"></a></p>
+<p align="center"><a href="https://github.com/fiorix/minitile/releases/latest/download/minitile.dmg"><img src="web/assets/download.svg" alt="Download for macOS" width="280"></a></p>
 
 <p align="center"><a href="#design">Design</a> &nbsp; / &nbsp; <a href="#getting-started">Getting started</a> &nbsp; / &nbsp; <a href="#shortcuts">Shortcuts</a> &nbsp; / &nbsp; <a href="#contributing">Contributing</a></p>
 
@@ -36,7 +36,14 @@ The [full design](DESIGN.md) describes placement, layouts, window lifecycles, ma
 
 ## Download
 
-**Coming soon.** There is no packaged public release yet. The download button is a placeholder until release artifacts are available. minitile targets macOS 26 or later; the project's live testing so far has been on macOS 27.
+[Download minitile for macOS](https://github.com/fiorix/minitile/releases/latest/download/minitile.dmg), for Apple silicon Macs with macOS 26 or later. Open the disk image and drag Minitile to Applications. Releases are signed with a Developer ID and notarized by Apple; release notes and SHA-256 checksums are on the [releases page](https://github.com/fiorix/minitile/releases). The project's live testing so far has been on macOS 27.
+
+The `mntl` command line tool ships inside the app. To run it from a terminal, link it onto your PATH:
+
+```sh
+sudo mkdir -p /usr/local/bin
+sudo ln -sf /Applications/Minitile.app/Contents/MacOS/mntl /usr/local/bin/mntl
+```
 
 For development, build from a checkout with a compatible Swift toolchain (the package requires Swift tools 6.2 or later):
 
