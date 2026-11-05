@@ -100,17 +100,17 @@ import Testing
     #expect(PanelStyle.font(size: 20, weight: .semibold).pointSize == 20)
 }
 
-@Test func indicatorAndSwitcherAreTwiceThePickersScale() {
+@Test func panelsAreAtScaleTwo() {
     let indicator = GridMetrics(cellArea: 64 * 40, spacing: 6, labelGap: 2, minWidth: 220, icon: 10...14, reservedIcon: 10, trayIcon: nil)
     let switcher = GridMetrics(cellArea: 128 * 80, spacing: 12, labelGap: 12, minWidth: 300, icon: 16...32, reservedIcon: 14, trayIcon: 16)
     #expect(indicator.scaled(2) == .indicator)
     #expect(switcher.scaled(2) == .switcher)
-    #expect(GridMetrics.picker.scale == 1 && GridMetrics.picker.cellArea == 128 * 80)
+    #expect(GridMetrics.picker.scale == 2 && GridMetrics.picker.cellArea == 256 * 160)
     #expect(GridMetrics.switcher.cellArea == 4 * GridMetrics.indicator.cellArea)
     let area = Rect(x: 0, y: 33, width: 1512, height: 945)
     #expect(GridIndicatorGeometry.cellSize(area: area, metrics: .indicator) == CGSize(width: 128, height: 80))
     #expect(GridIndicatorGeometry.cellSize(area: area, metrics: .switcher) == CGSize(width: 256, height: 160))
-    #expect(GridIndicatorGeometry.cellSize(area: area, metrics: .picker) == CGSize(width: 128, height: 80))
+    #expect(GridIndicatorGeometry.cellSize(area: area, metrics: .picker) == CGSize(width: 256, height: 160))
     // Scaling down keeps icons on whole points and the cell area in proportion.
     let half = GridMetrics.switcher.scaled(0.47)
     #expect(half.scale == 2 * 0.47 && half.spacing == 24 * 0.47 && half.cellArea == 256 * 160 * 0.47 * 0.47)

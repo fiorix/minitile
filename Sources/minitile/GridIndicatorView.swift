@@ -20,9 +20,9 @@ struct GridMetrics: Equatable {
                                        reservedIcon: 20, trayIcon: nil)
     static let switcher = GridMetrics(scale: 2, cellArea: 256 * 160, spacing: 24, labelGap: 24, minWidth: 600, icon: 32...64,
                                       reservedIcon: 28, trayIcon: 32)
-    /// Half the switcher's size, in a single row without labels; its tiles are the drop targets.
+    /// The switcher's cell size, in a single row without labels; its tiles are the drop targets.
     static let picker = GridMetrics(cellArea: 128 * 80, spacing: 12, labelGap: 0, minWidth: 0, icon: 16...32,
-                                    reservedIcon: 14, trayIcon: nil)
+                                    reservedIcon: 14, trayIcon: nil).scaled(2)
 
     /// Every length times `factor`, so the cell area times its square. Icons stay on whole points.
     func scaled(_ factor: CGFloat) -> GridMetrics {
