@@ -18,11 +18,11 @@ In the horizontal lockup the mark's frame spans the wordmark's ascender to its b
 
 ## App icon
 
-The app icon is the mark on a macOS icon tile, drawn to Apple's macOS icon grid so macOS 26 shows it as it is rather than shrinking it onto a grey tile: on a 1024 px canvas, a rounded-square tile 824 px across, inset 100 px, with corners of about 185 px and the soft drop shadow of Apple's template. The tile is void with a faint glass gradient, lighter towards the top, and a hairline wire edge. The framed mark sits centred at about 60% of the tile's width: the frame and the lower tiles in wire, the top tile lit neon with its halo, which stays inside the tile. The branding script renders it at every size `iconutil` takes (16 to 512 pt, at 1x and 2x) and packs `packaging/AppIcon.icns`.
+The app icon is the mark on a macOS icon tile, drawn to Apple's macOS icon grid so macOS 26 shows it as it is rather than shrinking it onto a grey tile: on a 1024 px canvas, a rounded-square tile 824 px across, inset 100 px, with Apple's continuous corners at a nominal radius of 185.4 px and the soft drop shadow of Apple's template (black at 30%, 10 px down, blurred). The tile is void with a faint glass gradient, wire from 9% at the top to 2% at the bottom, and a hairline wire edge. The framed mark sits centred with its frame at 60% of the tile's width: the frame and the lower tiles in wire, the top tile lit neon with its halo and a wider, fainter bloom, both inside the tile. At 16 and 32 px the halo and hairlines would blur together, so those sizes redraw the mark on the pixel grid and larger (the frame is about 70% of the tile at 32 px and 77% at 16 px): 1 px wire strokes at 90 to 95%, a solid neon top tile with no halo, solid lower tiles at 16 px, and no tile edge at 16 px. The branding script renders it at every size `iconutil` takes (16 to 512 pt, at 1x and 2x) and packs `packaging/AppIcon.icns`.
 
 ## Disk image
 
-The release disk image opens a 640 by 420 pt window on the website's palette, with no toolbar, sidebar or status bar: a void background with faint wire structure in the manner of the site's wireframes, the horizontal lockup centred near the top, `Minitile.app` on the left and the Applications link on the right as 128 pt icons, a lit neon arrow between them, and "Drag minitile to Applications" in dim text under the arrow. A line along the bottom reads "Before you start, give every display a second desktop. minitile.app". The icons' file names stay readable in light and dark appearance. The volume icon is the app icon. The background is a two-resolution TIFF (1x and 2x) at `packaging/dmg-background.tiff`, rendered by the branding script; `packaging/dmg.py` holds the `dmgbuild` settings.
+The release disk image opens a 640 by 420 pt window on the website's palette, with no toolbar, sidebar, status bar or path bar: a void background with the website's faint field of page-shaped cells (160 by 100 pt, wire at 9%, fading out towards the edges) and its cold bloom, the horizontal lockup 32 pt tall centred near the top, `Minitile.app` on the left and the Applications link on the right as 128 pt icons centred at (160, 200) and (480, 200), a lit neon arrow between them, and "Drag minitile to Applications" in dim text under the arrow. Along the bottom, under a hairline wire rule, a line reads "Before you start, give every display a second desktop. minitile.app", with the address in ink. Finder draws the icons' file names itself, at 14 pt, in dark text in light appearance and light text in dark appearance, so each name sits on a soft plate of `#5f779a`: the wire colour darkened to the luminance at which black and white text have the same contrast, 4.6:1, so the name reads in both. The volume icon is the app icon. The background is a two-resolution TIFF (1x and 2x) at `packaging/dmg-background.tiff`, rendered by the branding script; `packaging/dmg.py` holds the `dmgbuild` settings, with the window size and icon positions the artwork is drawn around.
 
 ## Palette and typography
 
@@ -60,6 +60,10 @@ The README retains the sixteen-second wireframe grid loop: pages run horizontall
 | `web/assets/welcome.png` | Static welcome image |
 | `web/assets/welcome.gif` | Animated README welcome image |
 | `web/assets/download.svg` | README download placeholder |
+| `packaging/AppIcon.icns` | The app icon at every size, copied into the app bundle |
+| `packaging/AppIcon.svg` | The app icon's 1024 px artwork |
+| `packaging/dmg-background.tiff` | The disk image window's background at 1x and 2x |
+| `packaging/dmg-background.svg` | The disk image background's artwork |
 
 The mark and wordmark are built by `scripts/branding/logo.mjs`. The tour uses `web/demo-scenes.mjs` and `web/demo-art.mjs`, sharing tile layouts from `web/layouts.mjs`. The original grid and README assets use `web/geometry.mjs`. Regenerate the SVG assets with Node:
 
@@ -74,6 +78,12 @@ node scripts/branding/generate.mjs --raster
 ```
 
 The GIF is exported at 960x400, eight frames per second, with a limited palette and optimized frames. The editable SVG composition is 1200x500. Generated assets are checked in so serving the site and rendering the README require no build tooling.
+
+The app icon and the disk image background are drawn by `scripts/branding/packaging.mjs`, and their SVG artwork is written with the other SVG assets. To rasterize them, add `--packaging`: headless Chrome renders the icon at each size and the background at 1x and 2x, `iconutil` packs `packaging/AppIcon.icns`, and `tiffutil` joins the two backgrounds into `packaging/dmg-background.tiff`. The results are checked in, so building the app and the disk image needs no browser.
+
+```sh
+node scripts/branding/generate.mjs --packaging
+```
 
 `web/assets/demo.svg` is rebuilt from the rendered page by `scripts/branding/snapshot-demo.mjs`; its header comment has the steps. It embeds the rules between the `illustration:start` and `illustration:end` markers in `web/style.css`.
 
