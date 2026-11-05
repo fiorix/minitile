@@ -14,7 +14,7 @@ The mark is a three-window layout in a frame, on a 40-unit grid: a frame 34 unit
 
 The wordmark is a custom monoline lowercase `minitile`, not set in a font: a 20-unit x-height, 27-unit ascenders, and one 2.2-unit stroke with round ends for stems, arches and the bowl of the e. The three i-dots are small square tiles that echo the mark's three windows; the last one is lit. The t's crossbar gets extra room before it and its foot tucks toward the next letter.
 
-In the horizontal lockup the mark's tiles span the wordmark's ascender to its baseline, 9 units before the first stem. Use the lockup on dark backgrounds only; the unlit parts are drawn for near-black.
+In the horizontal lockup the mark's frame spans the wordmark's ascender to its baseline, 9 units before the first stem. Use the lockup on dark backgrounds only; the unlit parts are drawn for near-black.
 
 ## Palette and typography
 
