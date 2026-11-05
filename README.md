@@ -38,7 +38,15 @@ The [full design](DESIGN.md) describes placement, layouts, window lifecycles, ma
 
 [Download minitile for macOS](https://github.com/fiorix/minitile/releases/latest/download/minitile.dmg), for Apple silicon Macs with macOS 26 or later. Open the disk image and drag Minitile to Applications. Releases are signed with a Developer ID and notarized by Apple; release notes and SHA-256 checksums are on the [releases page](https://github.com/fiorix/minitile/releases). The project's live testing so far has been on macOS 27.
 
-The `mntl` command line tool ships inside the app. To run it from a terminal, link it onto your PATH:
+Or install with [Homebrew](https://brew.sh), which also links `mntl` onto your PATH. Homebrew loads packages from taps outside its own catalogue only once you trust them:
+
+```sh
+brew tap fiorix/tap
+brew trust --cask fiorix/tap/minitile
+brew install --cask fiorix/tap/minitile
+```
+
+With the disk image, the `mntl` command line tool ships inside the app. To run it from a terminal, link it onto your PATH:
 
 ```sh
 sudo mkdir -p /usr/local/bin

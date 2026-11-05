@@ -922,6 +922,29 @@ details[open] > summary::before {
   font-size: 15px;
   color: var(--dim);
 }
+.brew {
+  max-width: 460px;
+  margin: 0 auto 30px;
+  text-align: left;
+}
+.brew > p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--faint);
+  text-align: center;
+}
+.brew pre {
+  margin: 0;
+  padding: 14px 18px;
+  overflow-x: auto;
+  border: 1px solid var(--wire-strong);
+  border-radius: 10px;
+  background: var(--glass);
+}
+.brew code {
+  font: 12px/1.7 var(--mono);
+  color: var(--ink);
+}
 .download > p.release-note {
   margin: 22px 0 30px;
   font-size: 13px;
