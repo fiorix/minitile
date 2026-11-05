@@ -82,6 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         napActivity = ProcessInfo.processInfo.beginActivity(options: .userInitiatedAllowingIdleSystemSleep,
                                                             reason: "Window management responds to keys and gestures")
         status.command = { [weak self] in self?.command($0) ?? Reply(ok: false, text: "Starting") }
+        watchConfig()
         if !AXIsProcessTrusted() {
             warnings["accessibility"] = "Grant Accessibility to Minitile.app in System Settings > Privacy & Security"
             updateMenu()
@@ -112,25 +113,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             fail(SetupAdvice.separateSpaces.title); return
         }
         AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 1)
+        // Keep IPC available after a config error so mntl can retry startup.
+        if server == nil {
+            do {
+                let server = Server(path: try socketPath(), handlerQueue: .main) { [weak self] argv, complete in
+                    MainActor.assumeIsolated {
+                        guard let self else { complete(Reply(ok: false, text: "Stopping")); return }
+                        let reply = self.command(argv)
+                        // Scripts expect windows to have been moved once a command returns; a watcher must not miss events.
+                        if argv == ["watch"] { complete(reply) } else { self.transitions.afterReconcile { complete(reply) } }
+                    }
+                }
+                try server.start()
+                self.server = server
+                startupLog("Listening on \(try socketPath())")
+            } catch { fail(String(describing: error)); NSApp.terminate(nil); return }
+        }
         do {
             lastConfig = try paths.configContents()
             engine = Engine(config: try Config.parse(lastConfig))
+            warnings.removeValue(forKey: "config")
         }
         catch { fail("Config: \(error)"); return }
         startupLog("Config loaded; only_apps: \(engine.config.onlyApps)")
-        do {
-            let server = Server(path: try socketPath(), handlerQueue: .main) { [weak self] argv, complete in
-                MainActor.assumeIsolated {
-                    guard let self else { complete(Reply(ok: false, text: "Stopping")); return }
-                    let reply = self.command(argv)
-                    // Scripts expect windows to have been moved once a command returns; a watcher must not miss events.
-                    if argv == ["watch"] { complete(reply) } else { self.transitions.afterReconcile { complete(reply) } }
-                }
-            }
-            try server.start()
-            self.server = server
-            startupLog("Listening on \(try socketPath())")
-        } catch { fail(String(describing: error)); NSApp.terminate(nil); return }
         displays.refresh()
         displays.bounceFromStash()
         let discovery = Discovery(config: engine.config, displays: displays)
@@ -189,23 +194,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.keyboard = keyboard
         updateFrontmost()
         windowSwitcher.willShow = { [weak self] in self?.checkModalModifiers() }
-        helpScreen.expired = { [weak self] in self?.keyboard?.close($0) }
+        helpPanel.clickedOutside = { [weak self] in
+            guard let self, let session = self.helpScreen.session else { return }
+            self.helpScreen.close()
+            self.keyboard?.close(session)
+        }
         updateModalAvailability()
         keyboard.start()
         updateSwipes()
+        observeLifecycle()
+        startupLog("Ready; \(displays.infos.count) displays, \(discovery.windows.count) windows")
+        updateMenu()
+        configWatcher?.changed?()
+    }
+
+    /// Watch before startup parses the config, so correcting an initial error can retry startup.
+    func watchConfig() {
+        guard configWatcher == nil else { return }
         let watcher = ConfigWatcher(file: paths.config)
         watcher.changed = { [weak self] in
-            guard let self else { return }
+            guard let self, !self.quitting else { return }
             do {
                 let contents = try self.paths.configContents()
-                if contents != self.lastConfig { _ = self.reloadConfig() }
+                if !self.started || contents != self.lastConfig { _ = self.command(["config", "reload"]) }
             } catch { self.warnings["config"] = "Config: \(error)"; self.updateMenu() }
         }
         watcher.start()
         configWatcher = watcher
-        observeLifecycle()
-        startupLog("Ready; \(displays.infos.count) displays, \(discovery.windows.count) windows")
-        updateMenu()
     }
 
     func fail(_ message: String) {
@@ -223,7 +238,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateGrab()
         desktopNotice.update(needing: started && !quitting ? DesktopNoticeTiming.needing(displays.infos) : [])
         let active = snapshot.activeDisplay ?? displays.infos.first(where: \.isPrimary)?.id
-        let label = active.flatMap { reconciler?.scene.displays[$0]?.label } ?? "minitile"
+        let label = started ? active.flatMap { reconciler?.scene.displays[$0]?.label } : nil
         status.update(label: label, warnings: statusWarnings,
                       state: started ? "\(snapshot.windows.count) windows, \(displays.infos.count) displays" : "Starting")
     }

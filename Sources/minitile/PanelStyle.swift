@@ -144,13 +144,29 @@ enum PanelStyle {
     /// Wider than the preview's line, since it has no fill to carry it.
     static let grab = lit(width: 2)
 
-    /// Room after each of a chord's modifier symbols and arrows, which are wider than the monospaced advance.
-    static let chordTracking: CGFloat = 1.5
-
     /// Labels (indices, counts, positions, chords) are monospaced; other text keeps proportional letters with tabular
     /// digits.
     static func font(size: CGFloat, weight: NSFont.Weight = .regular, monospaced: Bool = false) -> NSFont {
         monospaced ? .monospacedSystemFont(ofSize: size, weight: weight) : .monospacedDigitSystemFont(ofSize: size, weight: weight)
+    }
+
+    static func keycapSize(_ name: String, scale: CGFloat = 1) -> CGSize {
+        let text = (name as NSString).size(withAttributes: [.font: font(size: 11 * scale, monospaced: true)])
+        return CGSize(width: max(26 * scale, ceil(text.width) + 14 * scale), height: 26 * scale)
+    }
+
+    /// A named key over glass, with the website's wire edge and faint inner bottom edge.
+    static func keycap(_ name: String, at origin: CGPoint, scale: CGFloat = 1) {
+        let rect = CGRect(origin: origin, size: keycapSize(name, scale: scale)), radius = 6 * scale
+        let path = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+        NSGradient(starting: wire.opacity(0.07).color, ending: wire.opacity(0.02).color)?.draw(in: path, angle: 90)
+        Stroke(paint: wire.opacity(0.5), width: 0.75).draw(inside: rect, radius: radius)
+        let edge = NSBezierPath()
+        edge.move(to: CGPoint(x: rect.minX + radius, y: rect.maxY - 1.5 * scale))
+        edge.line(to: CGPoint(x: rect.maxX - radius, y: rect.maxY - 1.5 * scale))
+        Stroke(paint: wire.opacity(0.25), width: 0.75).draw(edge)
+        let text = NSAttributedString(string: name, attributes: [.font: font(size: 11 * scale, monospaced: true), .foregroundColor: ink.color])
+        text.draw(at: CGPoint(x: rect.midX - text.size().width / 2, y: rect.midY - text.size().height / 2))
     }
 }
 

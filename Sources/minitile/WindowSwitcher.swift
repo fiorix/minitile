@@ -366,10 +366,9 @@ extension AppDelegate {
         }
     }
 
-    /// A release of the opening binding's modifiers that the tap missed commits the switcher, or closes the help
-    /// screen, like one it saw.
+    /// A release of the opening binding's modifiers that the tap missed commits the switcher, like one it saw.
     func checkModalModifiers() {
-        guard windowSwitcher.held || helpScreen.held, let decision = keyboard?.checkModalModifiers() else { return }
+        guard windowSwitcher.held, let decision = keyboard?.checkModalModifiers() else { return }
         handleKey(decision, trace: nil)
     }
 }

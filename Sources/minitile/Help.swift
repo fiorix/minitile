@@ -1,49 +1,47 @@
 import CoreGraphics
 import MinitileCore
 
-/// Chords as macOS menus show them: control, option, shift and command symbols in that order, then the key.
+/// Named keycaps, in the same modifier order as the website.
 enum HelpKeys {
-    static func text(_ chord: Chord) -> String {
-        let symbols: [(Modifiers, String)] = [(.ctrl, "\u{2303}"), (.alt, "\u{2325}"), (.shift, "\u{21E7}"), (.cmd, "\u{2318}")]
-        return symbols.filter { chord.modifiers.contains($0.0) }.map(\.1).joined() + key(chord.key)
+    static func caps(_ chord: Chord) -> [String] { caps(chord.modifiers, key: key(chord.key)) }
+
+    static func caps(_ modifiers: Modifiers, key: String) -> [String] {
+        let names: [(Modifiers, String)] = [(.ctrl, "Control"), (.alt, "Option"), (.shift, "Shift"), (.cmd, "Cmd")]
+        return names.filter { modifiers.contains($0.0) }.map(\.1) + [key]
     }
 
     static func key(_ name: String) -> String {
         switch name {
-        case "left": "\u{2190}"
-        case "right": "\u{2192}"
-        case "up": "\u{2191}"
-        case "down": "\u{2193}"
+        case "left": "Left"
+        case "right": "Right"
+        case "up": "Up"
+        case "down": "Down"
         case "return": "Return"
         case "space": "Space"
         case "tab": "Tab"
         case "escape": "Esc"
+        case "`": "Backtick"
         default: name.uppercased()
+        }
+    }
+
+    static func combined(_ keys: [String]) -> String {
+        switch Set(keys) {
+        case ["left", "right", "up", "down"]: "Arrow keys"
+        case ["left", "right"]: "Left / Right"
+        case ["up", "down"]: "Up / Down"
+        default: keys.map(key).joined(separator: " / ")
         }
     }
 }
 
-/// The help screen's text: the merged config's bindings grouped by what they do, then the gestures that are on.
+/// The website's shortcut table, using the merged config's actual bindings, followed by other commands and gestures.
 struct HelpContent: Equatable {
-    enum Group: Int, CaseIterable {
-        case navigation, windows, layout, switcher, help, other
-
-        var title: String {
-            switch self {
-            case .navigation: "Pages and workspaces"
-            case .windows: "Windows"
-            case .layout: "Layout"
-            case .switcher: "Switcher"
-            case .help: "Help"
-            case .other: "Other"
-            }
-        }
-    }
-
     struct Entry: Equatable {
-        var keys: String
+        var keys: [String]
         var text: String
-        /// False for a gesture, whose keys are a phrase rather than a chord.
+        var detail: String? = nil
+        /// False for a gesture, whose keys are a phrase rather than keycaps.
         var chord = true
     }
 
@@ -52,89 +50,111 @@ struct HelpContent: Equatable {
         var entries: [Entry]
     }
 
-    static let gesturesTitle = "Mouse and trackpad"
+    private struct Action {
+        var text: String
+        /// One list of exact command aliases per direction, in reading order.
+        var commands: [[String]]
+        var directions: [String] = []
+        var detail: String? = nil
+        var reverse: String? = nil
+    }
 
-    /// Known commands in the order the screen lists them within their group.
-    static let known: [(command: [String], group: Group, text: String)] = [
-        (["page", "prev"], .navigation, "Previous page"),
-        (["page", "next"], .navigation, "Next page"),
-        (["workspace", "prev"], .navigation, "Workspace above"),
-        (["workspace", "next"], .navigation, "Workspace below"),
-        (["window", "focus", "next"], .windows, "Focus next window"),
-        (["window", "focus", "prev"], .windows, "Focus previous window"),
-        (["window", "focus", "left"], .windows, "Focus window to the left"),
-        (["window", "focus", "right"], .windows, "Focus window to the right"),
-        (["window", "focus", "up"], .windows, "Focus window above"),
-        (["window", "focus", "down"], .windows, "Focus window below"),
-        (["window", "nudge", "left"], .windows, "Nudge window left"),
-        (["window", "nudge", "right"], .windows, "Nudge window right"),
-        (["window", "move", "left"], .windows, "Nudge window left"),
-        (["window", "move", "right"], .windows, "Nudge window right"),
-        (["window", "move", "workspace", "prev"], .windows, "Carry to workspace above"),
-        (["window", "move", "workspace", "next"], .windows, "Carry to workspace below"),
-        (["window", "move", "up"], .windows, "Carry to workspace above"),
-        (["window", "move", "down"], .windows, "Carry to workspace below"),
-        (["window", "swap", "next"], .windows, "Swap with next slot"),
-        (["window", "swap", "prev"], .windows, "Swap with previous slot"),
-        (["window", "float"], .windows, "Toggle floating"),
-        (["page", "variant"], .layout, "Cycle page layout"),
-        (["window", "resize", "left"], .layout, "Resize window left"),
-        (["window", "resize", "right"], .layout, "Resize window right"),
-        (["window", "resize", "up"], .layout, "Resize window up"),
-        (["window", "resize", "down"], .layout, "Resize window down"),
-        (["switcher", "next"], .switcher, "Window switcher"),
-        (["switcher", "prev"], .switcher, "Window switcher, backwards"),
-        (["help", "show"], .help, "Show this help"),
-        (["ignore"], .other, "Blocked"),
+    static let gesturesTitle = "Mouse and trackpad"
+    private static let actions: [Action] = [
+        Action(text: "Move between pages", commands: [["page prev"], ["page next"]], directions: ["previous", "next"]),
+        Action(text: "Move between workspaces", commands: [["workspace prev"], ["workspace next"]], directions: ["above", "below"]),
+        Action(text: "Nudge a window to another page", commands: [["window nudge left", "window move left"],
+                                                                 ["window nudge right", "window move right"]], directions: ["left", "right"],
+               detail: "A shared window gets its own page; a window on its own joins its neighbour."),
+        Action(text: "Carry a window to another workspace", commands: [["window move workspace prev", "window move up"],
+                                                                       ["window move workspace next", "window move down"]],
+               directions: ["above", "below"]),
+        Action(text: "Resize a window", commands: [["window resize left"], ["window resize right"], ["window resize up"], ["window resize down"]],
+               directions: ["left", "right", "up", "down"]),
+        Action(text: "Cycle layouts", commands: [["page variant"]]),
+        Action(text: "Find a window anywhere", commands: [["switcher next"]],
+               detail: "Hold Cmd, choose with Tab or arrows, then release to jump.", reverse: "switcher prev"),
+        Action(text: "Cycle windows on this page", commands: [["window focus next"]], reverse: "window focus prev"),
+        Action(text: "Swap a window with its neighbour", commands: [["window swap next"]], reverse: "window swap prev"),
+        Action(text: "Show every shortcut", commands: [["help show"]], detail: "Press Esc or click anywhere else to close."),
+    ]
+    private static let other: [(command: String, text: String)] = [
+        ("window focus prev", "Focus previous window"),
+        ("window focus left", "Focus window to the left"), ("window focus right", "Focus window to the right"),
+        ("window focus up", "Focus window above"), ("window focus down", "Focus window below"),
+        ("window swap prev", "Swap with previous slot"), ("window float", "Toggle floating"),
+        ("switcher prev", "Window switcher, backwards"),
     ]
 
     var sections: [Section]
 
     init(config: Config) {
-        typealias Row = (group: Group, rank: Int, command: String, chord: String, entry: Entry)
-        let rows: [Row] = config.bindings.compactMap { chord, argv in
-            guard !argv.isEmpty else { return nil }
-            let command = argv.joined(separator: " ")
-            let keys = HelpKeys.text(chord)
-            if let rank = Self.known.firstIndex(where: { $0.command == argv }) {
-                let known = Self.known[rank]
-                return (known.group, rank, command, chord.description, Entry(keys: keys, text: known.text))
+        let bindings = config.bindings.filter { !$0.value.isEmpty && $0.value != ["ignore"] }
+            .sorted { $0.key.description < $1.key.description }
+        var used = Set<Chord>(), entries: [Entry] = []
+        for action in Self.actions {
+            let matches = bindings.compactMap { chord, argv -> (chord: Chord, direction: Int)? in
+                guard let direction = action.commands.firstIndex(where: { $0.contains(argv.joined(separator: " ")) }) else { return nil }
+                return (chord, direction)
+            }.sorted { ($0.direction, $0.chord.description) < ($1.direction, $1.chord.description) }
+            for match in matches where !used.contains(match.chord) {
+                let peers = matches.filter { !used.contains($0.chord) && $0.chord.modifiers == match.chord.modifiers }
+                var group = action.commands.indices.compactMap { direction in peers.first { $0.direction == direction } }
+                if group.count != action.commands.count {
+                    // A partial resize can still show an opposite pair together.
+                    let pair = match.direction < 2 ? [0, 1] : [2, 3]
+                    group = action.commands.count == 4 ? pair.compactMap { direction in peers.first { $0.direction == direction } } : []
+                    if group.count != 2 { group = [match] }
+                }
+                used.formUnion(group.map(\.chord))
+                let suffix = group.count == action.commands.count ? "" : " (\(group.map { action.directions[$0.direction] }.joined(separator: " / ")))"
+                var detail = action.detail
+                if let reverse = action.reverse, !match.chord.modifiers.contains(.shift) {
+                    let backwards = Chord(modifiers: match.chord.modifiers.union(.shift), key: match.chord.key)
+                    if config.bindings[backwards]?.joined(separator: " ") == reverse {
+                        used.insert(backwards)
+                        detail = [detail, "Add Shift to go back."].compactMap { $0 }.joined(separator: " ")
+                    }
+                }
+                entries.append(Entry(keys: HelpKeys.caps(match.chord.modifiers, key: HelpKeys.combined(group.map { $0.chord.key })),
+                                     text: action.text + suffix, detail: detail))
             }
-            return (.other, Self.known.count, command, chord.description, Entry(keys: keys, text: command))
         }
-        // Unknown commands follow the known ones by command text; a command's chords follow each other by name.
-        let sorted = rows.sorted { a, b in
-            (a.group.rawValue, a.rank, a.command, a.chord) < (b.group.rawValue, b.rank, b.command, b.chord)
+        sections = entries.isEmpty ? [] : [Section(title: "", entries: entries)]
+        let others = bindings.filter { !used.contains($0.key) }.sorted { a, b in
+            func order(_ binding: (key: Chord, value: [String])) -> (Int, String, String) {
+                let command = binding.value.joined(separator: " ")
+                return (Self.other.firstIndex { $0.command == command } ?? Self.other.count, command, binding.key.description)
+            }
+            return order(a) < order(b)
+        }.map { chord, argv in
+            let command = argv.joined(separator: " ")
+            return Entry(keys: HelpKeys.caps(chord), text: Self.other.first { $0.command == command }?.text ?? command)
         }
-        sections = Group.allCases.compactMap { group in
-            let entries = sorted.filter { $0.group == group }.map(\.entry)
-            return entries.isEmpty ? nil : Section(title: group.title, entries: entries)
-        }
+        if !others.isEmpty { sections.append(Section(title: "Other", entries: others)) }
         sections.append(Section(title: Self.gesturesTitle, entries: Self.gestures(swipes: config.trackpadSwipes)))
     }
 
-    /// The mouse and trackpad gestures, without swipes when `trackpad_swipes` leaves them to macOS.
     static func gestures(swipes: Bool) -> [Entry] {
-        let swipe = [Entry(keys: "Swipe left or right", text: "Next or previous page", chord: false),
-                     Entry(keys: "Swipe up or down", text: "Workspace below or above", chord: false)]
+        let swipe = [Entry(keys: ["Swipe left or right"], text: "Next or previous page", chord: false),
+                     Entry(keys: ["Swipe up or down"], text: "Workspace below or above", chord: false)]
         return (swipes ? swipe : []) + [
-            Entry(keys: "Drag an edge or corner", text: "Resize tiles", chord: false),
-            Entry(keys: "Drag onto a tile", text: "Swap the two windows", chord: false),
-            Entry(keys: "Drop on the picker", text: "Set the layout and tile", chord: false),
-            Entry(keys: "Drag, then \u{2303} arrows", text: "Nudge or carry the window", chord: false),
+            Entry(keys: ["Drag an edge or corner"], text: "Resize tiles", chord: false),
+            Entry(keys: ["Drag onto a tile"], text: "Swap the two windows", chord: false),
+            Entry(keys: ["Drop on the picker"], text: "Set the layout and tile", chord: false),
+            Entry(keys: ["Drag, then Control + arrows"], text: "Nudge or carry the window", chord: false),
         ]
     }
 }
 
-/// The panel's layout in flipped view coordinates: sections in one column, or in as few balanced columns as fit the
-/// usable area.
+/// Sections in flipped view coordinates, in one column or as few balanced columns as fit the usable area.
 struct HelpLayout: Equatable {
     static let margin: CGFloat = 16
-    static let titleHeight: CGFloat = 26
-    static let headerHeight: CGFloat = 26
-    static let rowHeight: CGFloat = 18
-    static let keyWidth: CGFloat = 140
-    static let textWidth: CGFloat = 180
+    static let titleHeight: CGFloat = 30
+    static let headerHeight: CGFloat = 30
+    static let rowHeight: CGFloat = 34
+    static let keyWidth: CGFloat = 280
+    static let textWidth: CGFloat = 280
     static let columnWidth = keyWidth + textWidth
     static let columnGap: CGFloat = 24
 
@@ -145,21 +165,19 @@ struct HelpLayout: Equatable {
         var height: CGFloat {
             switch self {
             case .header: HelpLayout.headerHeight
-            case .entry: HelpLayout.rowHeight
+            case .entry(let entry): entry.detail == nil ? HelpLayout.rowHeight : HelpLayout.rowHeight + 30
             }
         }
     }
 
     var columns: [[Line]]
 
-    /// `bounds` is the room the panel may take, the usable area less a margin. Content that does not fit even in
-    /// columns overflows it.
+    /// Content that cannot fit even in columns overflows the panel and is clipped to its usable area.
     init(content: HelpContent, bounds: CGSize) {
         let height = bounds.height - 2 * Self.margin - Self.titleHeight
         let width = bounds.width - 2 * Self.margin + Self.columnGap
         let fitting = max(1, Int((width / (Self.columnWidth + Self.columnGap)).rounded(.down)))
         let tallest = Self.pack(content.sections, limit: .infinity).first.map(Self.height) ?? 0
-        // The fewest columns that fit the height, then the lowest column height that needs no more of them.
         let count = min(fitting, Self.pack(content.sections, limit: height).count)
         var low: CGFloat = 0, high = tallest
         while high - low > 1 {
@@ -175,14 +193,12 @@ struct HelpLayout: Equatable {
                       height: 2 * Self.margin + Self.titleHeight + (columns.map(Self.height).max() ?? 0))
     }
 
-    func origin(column: Int) -> CGPoint {
-        CGPoint(x: Self.margin + CGFloat(column) * (Self.columnWidth + Self.columnGap), y: Self.margin + Self.titleHeight)
-    }
+    func origin(column: Int) -> CGPoint { CGPoint(x: Self.margin + CGFloat(column) * (Self.columnWidth + Self.columnGap),
+                                                 y: Self.margin + Self.titleHeight) }
 
     static func height(_ column: [Line]) -> CGFloat { column.reduce(0) { $0 + $1.height } }
 
-    /// Fills columns in order up to `limit`. A section moves to a new column when it would not fit the current one
-    /// but fits an empty one; a taller one splits between rows, and a header always keeps a row below it.
+    /// A section moves whole when it fits an empty column. Taller ones split, keeping a heading with its first row.
     static func pack(_ sections: [HelpContent.Section], limit: CGFloat) -> [[Line]] {
         var columns: [[Line]] = [[]], used: CGFloat = 0
         func add(_ line: Line, room: CGFloat) {
@@ -190,10 +206,14 @@ struct HelpLayout: Equatable {
             columns[columns.count - 1].append(line)
             used += line.height
         }
-        for section in sections {
-            let block = headerHeight + CGFloat(section.entries.count) * rowHeight
-            add(.header(section.title), room: block <= limit ? block : headerHeight + (section.entries.isEmpty ? 0 : rowHeight))
-            for entry in section.entries { add(.entry(entry), room: rowHeight) }
+        for section in sections where !section.entries.isEmpty {
+            let rows = section.entries.map { Line.entry($0) }
+            let heading = section.title.isEmpty ? 0 : headerHeight
+            let block = heading + height(rows)
+            let room = block <= limit ? block : heading + rows[0].height
+            if !section.title.isEmpty { add(.header(section.title), room: room) }
+            else if used + room > limit, !columns[columns.count - 1].isEmpty { columns.append([]); used = 0 }
+            for row in rows { add(row, room: row.height) }
         }
         return columns.filter { !$0.isEmpty }
     }
