@@ -60,7 +60,7 @@ For development, build from a checkout with a compatible Swift toolchain (the pa
 open build/Minitile.app
 ```
 
-The script creates `build/Minitile.app`, with the `mntl` command line tool inside it, and a copy at `build/mntl`. It signs the app using an installed Apple Development identity by default. Set `MINITILE_SIGN_IDENTITY` to another installed signing identity if needed. For an ad-hoc development build, use `MINITILE_SIGN_IDENTITY=- ./scripts/build-app.sh`; the Accessibility grant may need renewing after rebuilds.
+The script creates `build/Minitile.app`, with the `mntl` command line tool inside it, and a copy at `build/mntl`. It signs the app using an installed Apple Development identity by default. Set `MINITILE_SIGN_IDENTITY` to another installed signing identity if needed. For an ad-hoc development build, use `MINITILE_SIGN_IDENTITY=- ./scripts/build-app.sh`; the Accessibility grant may need renewing after rebuilds. Local builds are named Minitile Dev and have their own bundle ID, so System Settings lists them apart from an installed release, with their own Accessibility and Screen Recording permissions. Both share the configuration, state and socket, so run only one at a time.
 
 ## Getting started
 

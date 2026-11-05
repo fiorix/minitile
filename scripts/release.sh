@@ -29,8 +29,8 @@ notarize() {
     fi
 }
 
-MINITILE_CONFIGURATION=release MINITILE_HARDENED=1 MINITILE_VERSION=$version MINITILE_BUILD=${MINITILE_BUILD:-1} \
-    scripts/build-app.sh
+MINITILE_CHANNEL=release MINITILE_CONFIGURATION=release MINITILE_HARDENED=1 MINITILE_VERSION=$version \
+    MINITILE_BUILD=${MINITILE_BUILD:-1} scripts/build-app.sh
 rm -rf "$out"
 mkdir -p "$out"
 
