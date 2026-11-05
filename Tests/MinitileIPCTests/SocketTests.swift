@@ -169,7 +169,9 @@ func malformedRequestsReceiveAnErrorAndClose(_ input: String) throws {
     let fd = try rawConnect(fixture.path)
     defer { Darwin.close(fd) }
     try writeAll(Data("{\"argv\":[\"done\"]}\n".utf8), to: fd)
-    #expect(shutdown(fd, SHUT_WR) == 0)
+    // The server may reply and close before the half-close, which then reports ENOTCONN; the reply is still buffered.
+    let closed = shutdown(fd, SHUT_WR)
+    #expect(closed == 0 || errno == ENOTCONN)
     var reader = LineReader()
     let line = try reader.next(from: fd)
     let reply = try JSONDecoder().decode(Reply.self, from: #require(line))
