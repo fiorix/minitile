@@ -45,14 +45,14 @@ For development, build from a checkout with a compatible Swift toolchain (the pa
 open build/Minitile.app
 ```
 
-The script creates `build/Minitile.app` and `build/mntl`. It signs the app using an installed Apple Development identity by default. Set `MINITILE_SIGN_IDENTITY` to another installed signing identity if needed. For an ad-hoc development build, use `MINITILE_SIGN_IDENTITY=- ./scripts/build-app.sh`; the Accessibility grant may need renewing after rebuilds.
+The script creates `build/Minitile.app`, with the `mntl` command line tool inside it, and a copy at `build/mntl`. It signs the app using an installed Apple Development identity by default. Set `MINITILE_SIGN_IDENTITY` to another installed signing identity if needed. For an ad-hoc development build, use `MINITILE_SIGN_IDENTITY=- ./scripts/build-app.sh`; the Accessibility grant may need renewing after rebuilds.
 
 ## Getting started
 
 1. In Mission Control, give every display a second desktop: click + at the top of each display. minitile keeps hidden pages on the second desktop, and macOS does not let apps create desktops, so this step is yours. Until a display has one, minitile leaves it alone, and minitile's menu bar item names the display and shows how to add the desktop.
 2. In System Settings > Desktop & Dock, keep **Displays have separate Spaces** enabled, turn off **Automatically rearrange Spaces based on most recent use**, and turn off macOS drag-to-tile options.
 3. Launch minitile and grant Accessibility permission when prompted. Allow Screen Recording for page transitions, or set `transition_ms = 0` to turn transitions off.
-4. Open a few windows. Use Control+Left/Right for pages and Control+Up/Down for workspaces. Control+Down past the last workspace opens a new one. Hold Cmd+H to see every shortcut.
+4. Open a few windows. Use Control+Left/Right for pages and Control+Up/Down for workspaces. Control+Down past the last workspace opens a new one. Press Cmd+H to see every shortcut, and Esc to close it.
 
 minitile takes over the system shortcuts listed below while active, including Mission Control's Control+Up/Down, Control+Option+Space for switching input sources, the native app switcher's Cmd+Tab, and Cmd+H, which hides apps in macOS. Apps can still be hidden from their app menu or the Dock. Mission Control remains available through its dedicated key or Dock. Quit minitile to return those keys to macOS. Windows on its stash desktop remain reachable through Mission Control after quitting.
 
