@@ -311,35 +311,44 @@
           aria-labelledby="setup-title"
         >
           <div class="setup-copy">
-            <h2 id="setup-title">Give every display a second desktop.</h2>
+            <h2 id="setup-title">Set up macOS once.</h2>
             <p>
-              minitile keeps the pages you are not looking at on a second
-              desktop, one per display. macOS does not let apps create desktops,
-              so you add them yourself, once. A display with a single desktop is
-              left untiled until it has two.
+              minitile needs two things from macOS before it can tile your
+              windows, and a third for its animations. macOS only lets you grant
+              them yourself, and you do it once.
             </p>
             <ol class="setup-steps">
               <li>
-                <strong>Open Mission Control.</strong> Press the Mission Control
-                key or F3, or open it from the Dock. While minitile runs,
-                Control+Up moves between workspaces instead.
+                <strong>Required: a second desktop on every display.</strong>
+                minitile keeps the pages you are not looking at on a second
+                desktop, one per display, and macOS does not let apps create
+                desktops. Open Mission Control (the Mission Control key, F3 or the
+                Dock) and click + at the top of each display so it has two. You
+                work on the first; minitile keeps hidden pages on the last. Without
+                a second desktop, minitile cannot tile that display, and the menu
+                bar names any display that still needs one.
               </li>
               <li>
-                <strong>Click + on every display.</strong> Each display shows its
-                own row of desktops at the top of the screen. Add one so each
-                display has two. You work on the first; minitile keeps hidden
-                pages on the last.
+                <strong>Required: Accessibility.</strong> minitile uses it to move,
+                resize and focus windows, and to hear its keyboard shortcuts and
+                trackpad swipes. It asks when it first starts: turn on Minitile in
+                System Settings &gt; Privacy &amp; Security &gt; Accessibility.
+                Without it, minitile cannot do anything.
               </li>
               <li>
-                <strong>Check Desktop &amp; Dock settings.</strong> Keep
-                "Displays have separate Spaces" on. Turn off "Automatically
-                rearrange Spaces based on most recent use" and the drag-to-tile
-                options.
+                <strong>Optional: Screen &amp; System Audio Recording.</strong>
+                This is only for the slide between pages and the bounce at the
+                edges: minitile captures the screen for the moment of the
+                animation, and nothing is saved or sent anywhere. It never records
+                audio, even though macOS names the setting for both. Without it,
+                pages simply change at once. After turning on Minitile, quit and
+                reopen it.
               </li>
               <li>
-                <strong>Allow Accessibility.</strong> minitile asks when it
-                starts. Screen Recording is optional and only used for page
-                transitions.
+                <strong>Check Desktop &amp; Dock settings.</strong> Keep "Displays
+                have separate Spaces" on; minitile needs it. Turn off
+                "Automatically rearrange Spaces based on most recent use" and the
+                drag-to-tile options, which fight with minitile.
               </li>
             </ol>
             <p class="setup-note">
