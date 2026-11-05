@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -6,9 +6,12 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { geometrySVG, LOOP_SECONDS } from "../../web/geometry.mjs";
 import { faviconSVG, lockup, lockupSVG, markSVG, palette } from "./logo.mjs";
+import { appIconSVG, dmgBackgroundSVG, dmgWindow } from "./packaging.mjs";
 
 const assets = fileURLToPath(new URL("../../web/assets/", import.meta.url));
+const packaging = fileURLToPath(new URL("../../packaging/", import.meta.url));
 const raster = process.argv.includes("--raster");
+const packages = process.argv.includes("--packaging");
 const temporary = await mkdtemp(join(tmpdir(), "minitile-brand-"));
 const svg = (width, height, content) =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${content}</svg>\n`;
@@ -48,7 +51,7 @@ const chrome = [
   join(homedir(), "Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
 ].find((path) => path && existsSync(path));
 
-function screenshot(source, target) {
+function screenshot(source, target, [width, height] = [1200, 500], scale = 1) {
   if (!chrome) throw new Error("set CHROME to a Chrome or Chromium binary");
   run(
     chrome,
@@ -59,8 +62,8 @@ function screenshot(source, target) {
       "--no-first-run",
       `--user-data-dir=${join(temporary, "chrome")}`,
       "--default-background-color=00000000",
-      "--force-device-scale-factor=1",
-      "--window-size=1200,500",
+      `--force-device-scale-factor=${scale}`,
+      `--window-size=${width},${height}`,
       `--screenshot=${target}`,
       `file://${source}`,
     ],
@@ -86,7 +89,36 @@ try {
       `<rect x=".5" y=".5" width="319" height="51" rx="9" fill="${palette.neon}" fill-opacity=".08" stroke="${palette.neon}"/><text x="160" y="31" text-anchor="middle" font-family="Helvetica Neue,Helvetica,Arial,sans-serif" font-size="14" fill="${palette.core}">Download for macOS</text>`,
     ),
   );
+  await mkdir(packaging, { recursive: true });
+  await writeFile(join(packaging, "AppIcon.svg"), appIconSVG());
+  await writeFile(join(packaging, "dmg-background.svg"), dmgBackgroundSVG());
   console.log("Generated SVG brand assets.");
+  if (packages) {
+    // iconutil's names and their pixel sizes; 16 and 32 px get their own simplified drawing.
+    const iconset = join(temporary, "AppIcon.iconset");
+    await mkdir(iconset);
+    for (const size of [16, 32, 64, 128, 256, 512, 1024]) {
+      const source = join(temporary, `icon-${size}.svg`);
+      await writeFile(source, appIconSVG(size));
+      screenshot(source, join(temporary, `icon-${size}.png`), [size, size]);
+    }
+    for (const points of [16, 32, 128, 256, 512]) {
+      await copyFile(join(temporary, `icon-${points}.png`), join(iconset, `icon_${points}x${points}.png`));
+      await copyFile(join(temporary, `icon-${points * 2}.png`), join(iconset, `icon_${points}x${points}@2x.png`));
+    }
+    run("iconutil", ["-c", "icns", "-o", join(packaging, "AppIcon.icns"), iconset]);
+    const size = [dmgWindow.width, dmgWindow.height];
+    screenshot(join(packaging, "dmg-background.svg"), join(temporary, "background.png"), size);
+    screenshot(join(packaging, "dmg-background.svg"), join(temporary, "background@2x.png"), size, 2);
+    run("tiffutil", [
+      "-cathidpicheck",
+      join(temporary, "background.png"),
+      join(temporary, "background@2x.png"),
+      "-out",
+      join(packaging, "dmg-background.tiff"),
+    ]);
+    console.log("Generated AppIcon.icns and dmg-background.tiff.");
+  }
   if (raster) {
     const fps = 8;
     const frames = [];
