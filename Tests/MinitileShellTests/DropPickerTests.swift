@@ -21,7 +21,7 @@ private func run(_ engine: inout Engine, _ text: String) -> Output {
     return output
 }
 
-private func picker(_ engine: Engine, _ window: WindowID = 1) -> DropPicker? {
+private func dropPicker(_ engine: Engine, _ window: WindowID = 1) -> DropPicker? {
     DropPicker(state: engine.savedState(), config: engine.config, window: window)
 }
 
@@ -32,8 +32,8 @@ private func global(_ picker: DropPicker, _ point: CGPoint) -> CGPoint {
 private func center(_ rect: CGRect) -> CGPoint { CGPoint(x: rect.midX, y: rect.midY) }
 
 @Test(arguments: [(2, [Variant.standard, .alternate]), (3, [.standard, .mirrored, .alternate, .stacked]), (4, [.standard])])
-func pickerOffersTheCountsLayoutsInARowAtTheBottomCentre(_ count: Int, _ variants: [Variant]) throws {
-    let picker = try #require(picker(engine(count)))
+func pickerOffersTheCountsLayoutsInARowInTheMiddle(_ count: Int, _ variants: [Variant]) throws {
+    let picker = try #require(dropPicker(engine(count)))
     #expect(picker.options.map(\.variant) == variants)
     #expect(picker.options.map(\.current) == variants.map { $0 == .standard })
     #expect(picker.pid == 101)
@@ -59,13 +59,13 @@ func pickerOffersTheCountsLayoutsInARowAtTheBottomCentre(_ count: Int, _ variant
 }
 
 @Test func pickerScalesDownToFitASmallDisplay() throws {
-    #expect(picker(engine(3))?.metrics == .picker)
+    #expect(dropPicker(engine(3))?.metrics == .picker)
     let small = DisplayInfo(id: "d", frame: Rect(x: 0, y: 0, width: 480, height: 330), visibleFrame: Rect(x: 0, y: 30, width: 480, height: 300),
                             isPrimary: true)
     var e = Engine(config: config)
     _ = e.handle(.started(saved: nil, windows: (1...3).map { WindowInfo(id: WindowID($0), pid: Int32(100 + $0), display: "d") },
                           displays: [small], focus: nil))
-    let picker = try #require(picker(e))
+    let picker = try #require(dropPicker(e))
     #expect(picker.metrics.scale < 1)
     #expect(picker.options.count == 4)
     #expect(picker.frame.minX >= small.visibleFrame.x + PanelStyle.inset)
@@ -80,29 +80,29 @@ func pickerOffersTheCountsLayoutsInARowAtTheBottomCentre(_ count: Int, _ variant
 }
 
 @Test func pickerIsOnlyForActiveTilesOnPagesOfTwoToFour() {
-    #expect(picker(engine(1)) == nil)
+    #expect(dropPicker(engine(1)) == nil)
     var five = engine(5)
-    #expect(picker(five, 5) == nil)
-    #expect(picker(five, 4) != nil)
-    #expect(picker(five, 42) == nil)
+    #expect(dropPicker(five, 5) == nil)
+    #expect(dropPicker(five, 4) != nil)
+    #expect(dropPicker(five, 42) == nil)
     var minimized = WindowInfo(id: 2, pid: 102, display: "d")
     minimized.minimized = true
     _ = five.handle(.windowUpdated(minimized))
-    #expect(picker(five, 2) == nil)
-    #expect(picker(five, 1)?.options.map(\.variant) == [.standard, .mirrored, .alternate, .stacked])
+    #expect(dropPicker(five, 2) == nil)
+    #expect(dropPicker(five, 1)?.options.map(\.variant) == [.standard, .mirrored, .alternate, .stacked])
     _ = five.handle(.windowAppeared(WindowInfo(id: 95, pid: 195, tileable: false, display: "d")))
-    #expect(picker(five, 95) == nil)
+    #expect(dropPicker(five, 95) == nil)
     run(&five, "window float 3 on")
-    #expect(picker(five, 3) == nil)
-    #expect(picker(five, 1)?.options.map(\.variant) == [.standard, .alternate])
+    #expect(dropPicker(five, 3) == nil)
+    #expect(dropPicker(five, 1)?.options.map(\.variant) == [.standard, .alternate])
     var unmanaged = display
     unmanaged.unmanagedReason = DisplayNeed.secondDesktop.reason
     _ = five.handle(.displaysChanged([unmanaged]))
-    #expect(picker(five, 1) == nil)
+    #expect(dropPicker(five, 1) == nil)
 }
 
 @Test func hitTestingFindsTheTileUnderTheCursorAndNothingOutsideTheCells() throws {
-    let picker = try #require(picker(engine(3)))
+    let picker = try #require(dropPicker(engine(3)))
     for option in picker.options {
         for (slot, tile) in option.tiles.enumerated() {
             #expect(picker.target(at: global(picker, center(tile))) == DropTarget(variant: option.variant, slot: slot))
@@ -124,7 +124,7 @@ func pickerOffersTheCountsLayoutsInARowAtTheBottomCentre(_ count: Int, _ variant
 func previewIsTheFrameWindowPlaceLaysOut(_ count: Int) throws {
     var base = engine(count)
     run(&base, "page ratio 0.6 0.7")
-    let picker = try #require(picker(base, 2))
+    let picker = try #require(dropPicker(base, 2))
     for option in picker.options {
         for slot in option.frames.indices {
             let target = DropTarget(variant: option.variant, slot: slot)
@@ -142,7 +142,7 @@ func previewIsTheFrameWindowPlaceLaysOut(_ count: Int) throws {
     run(&e, "page variant")
     _ = e.handle(.windowGone(3))
     run(&e, "page ratio 0.65")
-    let picker = try #require(picker(e))
+    let picker = try #require(dropPicker(e))
     #expect(picker.options.map(\.current) == [true, false])
     let target = DropTarget(variant: .standard, slot: 1)
     run(&e, target.command(1).joined(separator: " "))
@@ -151,11 +151,11 @@ func previewIsTheFrameWindowPlaceLaysOut(_ count: Int) throws {
 
 @Test func pickerFollowsTheDraggedWindowToItsNewPage() throws {
     var e = engine(6)
-    #expect(try #require(picker(e)).options.map(\.variant) == [.standard])
+    #expect(try #require(dropPicker(e)).options.map(\.variant) == [.standard])
     run(&e, "window nudge 1 right")
-    #expect(picker(e) == nil)
+    #expect(dropPicker(e) == nil)
     run(&e, "window nudge 1 right")
-    let moved = try #require(picker(e))
+    let moved = try #require(dropPicker(e))
     #expect(moved.options.map(\.variant) == [.standard, .mirrored, .alternate, .stacked])
     #expect(moved.options[0].frames.count == 3)
 }
@@ -176,7 +176,7 @@ func previewIsTheFrameWindowPlaceLaysOut(_ count: Int) throws {
 }
 
 @Test func dropRoutesToAPickerTileElsewhereOrNowhere() throws {
-    let picker = try #require(picker(engine(2)))
+    let picker = try #require(dropPicker(engine(2)))
     let tile = Rect(x: 6, y: 39, width: 745, height: 888)
     let moved = Rect(x: 400, y: 300, width: 745, height: 888)
     let resized = Rect(x: 6, y: 39, width: 800, height: 888)
@@ -193,7 +193,7 @@ func previewIsTheFrameWindowPlaceLaysOut(_ count: Int) throws {
 }
 
 @Test func pickerContentLeavesTilesEmptyExceptTheHoveredOne() throws {
-    let picker = try #require(picker(engine(3)))
+    let picker = try #require(dropPicker(engine(3)))
     let content = DropPickerContent(picker: picker, hovered: DropTarget(variant: .alternate, slot: 1))
     for option in picker.options {
         let miniature = content.miniature(option)
