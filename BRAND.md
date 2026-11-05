@@ -10,7 +10,7 @@ The central line is **A little order. A lot of space.** Consumer copy explains w
 
 ## Logo
 
-The mark is a three-window layout in a frame, on a 40-unit grid: a frame 34 units square at (3, 3) with corners rounded to 7 units, and inside it one wide tile over two small ones, 4 units apart, with 1.5-unit corners: the top tile at (9, 9), 22 by 9, and the lower tiles at (9, 22) and (22, 22), 9 by 9. The top tile is the highlight, a solid lit neon rectangle with the neon halo; the frame and the two lower tiles are unlit wire outlines with no fill, 1.5 units wide. It reads as an m whose top bar is lit and whose legs are not. As the menu bar item it is a template image: outlines for the frame and lower tiles, the top tile filled, and the workspace and page over it.
+The mark is a three-window layout in a frame, on a 40-unit grid: a frame 34 units square at (3, 3) with corners rounded to 7 units, and inside it one wide tile over two small ones, 4 units apart, with 1.5-unit corners: the top tile at (9, 9), 22 by 9, and the lower tiles at (9, 22) and (22, 22), 9 by 9. The top tile is the highlight, a solid lit neon rectangle with the neon halo; the frame and the two lower tiles are unlit wire outlines with no fill, 1.5 units wide. It reads as an m whose top bar is lit and whose legs are not.
 
 The wordmark is a custom monoline lowercase `minitile`, not set in a font: a 20-unit x-height, 27-unit ascenders, and one 2.2-unit stroke with round ends for stems, arches and the bowl of the e. The three i-dots are small square tiles that echo the mark's three windows; the last one is lit. The t's crossbar gets extra room before it and its foot tucks toward the next letter.
 
