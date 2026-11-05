@@ -127,6 +127,15 @@ struct KeyRouter {
     /// Held keys whose press ran a repeating binding.
     private var repeating: Set<UInt16> = []
 
+    /// Spelled out because the private state makes the memberwise initializer private before Swift 6.4.
+    init(bindings: [Chord: [String]] = [:], names: [UInt16: String] = [:], blocked: Set<NativeChord> = [],
+         dragged: WindowID? = nil) {
+        self.bindings = bindings
+        self.names = names
+        self.blocked = blocked
+        self.dragged = dragged
+    }
+
     static func modifiers(_ flags: CGEventFlags) -> Modifiers {
         var result: Modifiers = []
         if flags.contains(.maskControl) { result.insert(.ctrl) }
