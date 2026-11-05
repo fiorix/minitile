@@ -778,7 +778,7 @@ The shell uses the Swift 6 language mode. AX observer callbacks run on the main 
 - Core, IPC and the shell's pure helpers have unit tests run with `swift test`. They need no permissions and never touch windows.
 - The shell is tested live with `scripts/smoke.sh`. Runs use a temporary config with `only_apps = ["com.apple.TextEdit"]`, temporary state and socket paths, and TextEdit documents the test opens itself, so the user's windows are never moved or closed.
 - Running minitile over every app rearranges the user's desktops, so the first such run needs the user's go-ahead.
-- `dev/spikes/` holds the throwaway programs that validated the primitives, with their logs. They are reference code for SkyLight, focus, activation pre-emption and the event tap, not a base to build on. Upstream sources: yabai `src/misc/macho_dlsym.h` and `src/space_manager.c`.
+- `dev/` is internal working space and is not tracked: work orders, progress notes, and in `dev/spikes/` the throwaway programs that validated the primitives, with their logs. They are reference code for SkyLight, focus, activation pre-emption and the event tap, not a base to build on. Upstream sources: yabai `src/misc/macho_dlsym.h` and `src/space_manager.c`.
 
 `scripts/smoke.sh` modes:
 

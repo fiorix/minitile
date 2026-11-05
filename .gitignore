@@ -3,3 +3,5 @@ build/
 .swiftpm/
 *.app
 .DS_Store
+# Internal working space: work orders, notes and spikes.
+dev/
