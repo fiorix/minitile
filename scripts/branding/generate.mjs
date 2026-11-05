@@ -83,7 +83,7 @@ try {
     svg(
       320,
       52,
-      `<rect x=".5" y=".5" width="319" height="51" rx="9" fill="${palette.neon}" fill-opacity=".08" stroke="${palette.neon}"/><text x="160" y="31" text-anchor="middle" font-family="Helvetica Neue,Helvetica,Arial,sans-serif" font-size="14" fill="${palette.core}">Download for macOS - coming soon</text>`,
+      `<rect x=".5" y=".5" width="319" height="51" rx="9" fill="${palette.neon}" fill-opacity=".08" stroke="${palette.neon}"/><text x="160" y="31" text-anchor="middle" font-family="Helvetica Neue,Helvetica,Arial,sans-serif" font-size="14" fill="${palette.core}">Download for macOS</text>`,
     ),
   );
   console.log("Generated SVG brand assets.");

@@ -922,9 +922,6 @@ details[open] > summary::before {
   font-size: 15px;
   color: var(--dim);
 }
-.download-placeholder:disabled {
-  opacity: 0.85;
-}
 .download > p.release-note {
   margin: 22px 0 30px;
   font-size: 13px;
