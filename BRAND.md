@@ -16,6 +16,14 @@ The wordmark is a custom monoline lowercase `minitile`, not set in a font: a 20-
 
 In the horizontal lockup the mark's frame spans the wordmark's ascender to its baseline, 9 units before the first stem. Use the lockup on dark backgrounds only; the unlit parts are drawn for near-black.
 
+## App icon
+
+The app icon is the mark on a macOS icon tile, drawn to Apple's macOS icon grid so macOS 26 shows it as it is rather than shrinking it onto a grey tile: on a 1024 px canvas, a rounded-square tile 824 px across, inset 100 px, with corners of about 185 px and the soft drop shadow of Apple's template. The tile is void with a faint glass gradient, lighter towards the top, and a hairline wire edge. The framed mark sits centred at about 60% of the tile's width: the frame and the lower tiles in wire, the top tile lit neon with its halo, which stays inside the tile. The branding script renders it at every size `iconutil` takes (16 to 512 pt, at 1x and 2x) and packs `packaging/AppIcon.icns`.
+
+## Disk image
+
+The release disk image opens a 640 by 420 pt window on the website's palette, with no toolbar, sidebar or status bar: a void background with faint wire structure in the manner of the site's wireframes, the horizontal lockup centred near the top, `Minitile.app` on the left and the Applications link on the right as 128 pt icons, a lit neon arrow between them, and "Drag minitile to Applications" in dim text under the arrow. A line along the bottom reads "Before you start, give every display a second desktop. minitile.app". The icons' file names stay readable in light and dark appearance. The volume icon is the app icon. The background is a two-resolution TIFF (1x and 2x) at `packaging/dmg-background.tiff`, rendered by the branding script; `packaging/dmg.py` holds the `dmgbuild` settings.
+
 ## Palette and typography
 
 | Role | Value | Use |
