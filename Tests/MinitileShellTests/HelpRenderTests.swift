@@ -81,3 +81,24 @@ func saveRender(_ bitmap: NSBitmapImageRep, name: String) throws {
     #expect(bitmap.colorAt(x: 0, y: 0)?.alphaComponent == 0)
     #expect((bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2)?.alphaComponent ?? 0) > 0)
 }
+
+@Test @MainActor func helpHeaderPutsTheMarkTitleAndLinkLeftAndTheSubtitleRight() throws {
+    let view = HelpView(layout: HelpLayout(content: HelpContent(config: .default), bounds: CGSize(width: 1480, height: 913)))
+    let header = HelpHeader(width: view.bounds.width)
+    #expect(header.mark.maxX < header.title.minX && header.title.maxX < header.link.minX && header.link.maxX < header.subtitle.minX)
+    #expect(header.subtitle.maxX == view.bounds.width - HelpLayout.margin)
+    #expect(abs(header.mark.midY - header.title.midY) <= 2)
+    for rect in [header.mark, header.title, header.subtitle, header.link] {
+        #expect(rect.minY >= 0 && rect.maxY <= HelpLayout.margin + HelpLayout.titleHeight)
+        #expect(try draws(view, in: rect))
+    }
+    let bitmap = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+    view.cacheDisplay(in: view.bounds, to: bitmap)
+    try saveRender(bitmap, name: "help-header")
+    // The wide top tile of the mark is lit neon.
+    let scale = CGFloat(bitmap.pixelsWide) / view.bounds.width
+    let lit = try #require(bitmap.colorAt(x: Int((header.mark.minX + header.mark.width / 2) * scale),
+                                          y: Int((header.mark.minY + header.mark.height * 13.5 / 40) * scale))?.usingColorSpace(.sRGB))
+    #expect(lit.greenComponent > 0.8 && lit.blueComponent > 0.8 && lit.redComponent < 0.5)
+    #expect(HelpHeader.website.absoluteString == "https://minitile.app")
+}

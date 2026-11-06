@@ -168,6 +168,27 @@ enum PanelStyle {
         let text = NSAttributedString(string: name, attributes: [.font: font(size: 11 * scale, monospaced: true), .foregroundColor: ink.color])
         text.draw(at: CGPoint(x: rect.midX - text.size().width / 2, y: rect.midY - text.size().height / 2))
     }
+
+    /// The mark (BRAND.md) in `rect` of a flipped view, on its 40-unit grid: a framed three-window layout whose wide
+    /// top tile is lit neon and whose frame and lower tiles are unlit wire.
+    static func mark(in rect: CGRect) {
+        let unit = rect.width / 40
+        func tile(_ x: CGFloat, _ y: CGFloat, _ width: CGFloat, _ height: CGFloat, radius: CGFloat = 1.5) -> NSBezierPath {
+            NSBezierPath(roundedRect: CGRect(x: rect.minX + x * unit, y: rect.minY + y * unit, width: width * unit, height: height * unit),
+                         xRadius: radius * unit, yRadius: radius * unit)
+        }
+        let outline = Stroke(paint: wire.opacity(0.6), width: 1.5 * unit)
+        for path in [tile(3, 3, 34, 34, radius: 7), tile(9, 22, 9, 9), tile(22, 22, 9, 9)] { outline.draw(path) }
+        NSGraphicsContext.saveGraphicsState()
+        let halo = NSShadow()
+        halo.shadowOffset = .zero
+        halo.shadowBlurRadius = 2.2 * unit
+        halo.shadowColor = neon.opacity(0.8).color
+        halo.set()
+        neon.color.setFill()
+        tile(9, 9, 22, 9).fill()
+        NSGraphicsContext.restoreGraphicsState()
+    }
 }
 
 /// The blurred backdrop behind a panel's drawing, dark whatever the system appearance. The drawing view on top lays

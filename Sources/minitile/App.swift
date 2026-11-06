@@ -194,7 +194,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.keyboard = keyboard
         updateFrontmost()
         windowSwitcher.willShow = { [weak self] in self?.checkModalModifiers() }
-        helpPanel.clickedOutside = { [weak self] in
+        helpPanel.dismissed = { [weak self] in
             guard let self, let session = self.helpScreen.session else { return }
             self.helpScreen.close()
             self.keyboard?.close(session)

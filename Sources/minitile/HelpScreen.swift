@@ -58,7 +58,8 @@ final class HelpPanel: HelpPresenting {
     private var panel: NSPanel?
     private var mouseMonitor: Any?
     private var localMouseMonitor: Any?
-    var clickedOutside: (() -> Void)?
+    /// A click outside the panel or on its link, either of which closes the screen.
+    var dismissed: (() -> Void)?
 
     func show(_ content: HelpContent, display: DisplayID?) {
         guard let screen = NSScreen.screens.first(where: { DisplayCatalog.id(for: $0) == display }) ?? NSScreen.main ?? NSScreen.screens.first
@@ -76,12 +77,12 @@ final class HelpPanel: HelpPresenting {
         if mouseMonitor == nil {
             let mask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
             mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] _ in
-                MainActor.assumeIsolated { self?.clickedOutside?() }
+                MainActor.assumeIsolated { self?.dismissed?() }
             }
             // Global monitors exclude this app, including its menu bar and other panels.
             localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
                 MainActor.assumeIsolated {
-                    if let self, event.window !== self.panel { self.clickedOutside?() }
+                    if let self, event.window !== self.panel { self.dismissed?() }
                 }
                 return event
             }
@@ -114,8 +115,44 @@ final class HelpPanel: HelpPresenting {
         panel.animationBehavior = .none
         panel.level = Self.level
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
-        panel.setStyledContent(HelpView(layout: layout))
+        let view = HelpView(layout: layout)
+        view.openLink = { [weak self] in
+            NSWorkspace.shared.open(HelpHeader.website)
+            self?.dismissed?()
+        }
+        panel.setStyledContent(view)
         return panel
+    }
+}
+
+/// The panel's top row in flipped view coordinates: the mark, the title and the website link on the left, and the
+/// subtitle at the right end.
+struct HelpHeader: Equatable {
+    static let title = "minitile"
+    static let subtitle = "Keys and gestures"
+    static let link = "minitile.app"
+    static let website = URL(string: "https://minitile.app")!
+    static let titleSize: CGFloat = 12
+    static let textSize: CGFloat = 10
+
+    var mark: CGRect
+    var title: CGRect
+    var subtitle: CGRect
+    var link: CGRect
+
+    init(width: CGFloat) {
+        let margin = HelpLayout.margin
+        mark = CGRect(x: margin, y: margin - 6, width: 18, height: 18)
+        title = CGRect(x: mark.maxX + 7, y: margin - 4, width: Self.width(Self.title, PanelStyle.font(size: Self.titleSize, weight: .semibold)),
+                       height: 17)
+        link = CGRect(x: title.maxX + 8, y: margin - 3, width: Self.width(Self.link, PanelStyle.font(size: Self.textSize, monospaced: true)),
+                      height: 16)
+        let subtitleWidth = Self.width(Self.subtitle, PanelStyle.font(size: Self.textSize))
+        subtitle = CGRect(x: width - margin - subtitleWidth, y: margin - 3, width: subtitleWidth, height: 16)
+    }
+
+    private static func width(_ string: String, _ font: NSFont) -> CGFloat {
+        ceil((string as NSString).size(withAttributes: [.font: font]).width)
     }
 }
 
@@ -123,6 +160,14 @@ final class HelpPanel: HelpPresenting {
 final class HelpView: NSView {
     var layout: HelpLayout {
         didSet { if layout != oldValue { needsDisplay = true } }
+    }
+    var openLink: (() -> Void)?
+    private var linkHovered = false {
+        didSet {
+            guard linkHovered != oldValue else { return }
+            (linkHovered ? NSCursor.pointingHand : NSCursor.arrow).set()
+            needsDisplay = true
+        }
     }
 
     init(layout: HelpLayout) {
@@ -136,16 +181,41 @@ final class HelpView: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override func mouseDown(with event: NSEvent) {}
+
+    /// The panel never becomes key, so the area tracks the pointer whatever the active app.
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if trackingAreas.isEmpty {
+            addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                           owner: self))
+        }
+    }
+
+    override func mouseMoved(with event: NSEvent) { linkHovered = overLink(event) }
+    override func mouseEntered(with event: NSEvent) { linkHovered = overLink(event) }
+    override func mouseExited(with event: NSEvent) { linkHovered = false }
+
+    override func mouseDown(with event: NSEvent) {
+        guard overLink(event) else { return }
+        linkHovered = false
+        openLink?()
+    }
+
+    private func overLink(_ event: NSEvent) -> Bool {
+        HelpHeader(width: bounds.width).link.contains(convert(event.locationInWindow, from: nil))
+    }
+
     override func rightMouseDown(with event: NSEvent) {}
     override func otherMouseDown(with event: NSEvent) {}
 
     override func draw(_ dirtyRect: NSRect) {
-        let margin = HelpLayout.margin
+        let header = HelpHeader(width: bounds.width)
         GridPainter.background(bounds)
-        GridPainter.text("minitile", rect: NSRect(x: margin, y: margin - 4, width: 120, height: 17), size: 12, weight: .semibold)
-        GridPainter.text("Keys and gestures", rect: NSRect(x: bounds.width - margin - 160, y: margin - 3, width: 160, height: 16), size: 10,
-                         color: PanelStyle.dim, alignment: .right)
+        PanelStyle.mark(in: header.mark)
+        GridPainter.text(HelpHeader.title, rect: header.title, size: HelpHeader.titleSize, weight: .semibold)
+        GridPainter.text(HelpHeader.subtitle, rect: header.subtitle, size: HelpHeader.textSize, color: PanelStyle.dim)
+        GridPainter.text(HelpHeader.link, rect: header.link, size: HelpHeader.textSize, color: linkHovered ? PanelStyle.ink : PanelStyle.dim,
+                         monospaced: true)
         for (index, column) in layout.columns.enumerated() {
             var origin = layout.origin(column: index)
             for line in column {
