@@ -21,3 +21,13 @@ public func socketPath(environment: [String: String] = ProcessInfo.processInfo.e
     return (directory as NSString).appendingPathComponent("minitile.sock")
 }
 
+/// The version of the app bundle holding `executable`, as "0.2.1 (3)", following symlinks such as the one Homebrew
+/// links mntl through. Nil outside an app bundle.
+public func bundleVersion(executable: URL) -> String? {
+    let macOS = executable.resolvingSymlinksInPath().deletingLastPathComponent()
+    guard macOS.lastPathComponent == "MacOS",
+          let info = Bundle(url: macOS.deletingLastPathComponent().deletingLastPathComponent())?.infoDictionary,
+          let version = info["CFBundleShortVersionString"] as? String else { return nil }
+    return (info["CFBundleVersion"] as? String).map { "\(version) (\($0))" } ?? version
+}
+

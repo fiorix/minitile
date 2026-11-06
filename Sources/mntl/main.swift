@@ -2,7 +2,7 @@ import Foundation
 import Darwin
 import MinitileIPC
 
-let usage = "Usage: mntl [--json] [--socket PATH] <command...>\nRun mntl help for the command grammar."
+let usage = "Usage: mntl [--json] [--socket PATH] <command...>\n       mntl --version\nRun mntl help for the command grammar."
 
 func printReply(_ reply: Reply, json: Bool) throws {
     if json {
@@ -28,6 +28,9 @@ func run() -> Int32 {
             explicitPath = args.removeFirst()
         case "--": break
         case "--help": print(usage); return 0
+        case "--version":
+            print("mntl \(Bundle.main.executableURL.flatMap(bundleVersion) ?? "(version unknown outside the app bundle)")")
+            return 0
         default: fputs("Unknown option: \(first)\n\(usage)\n", stderr); return 1
         }
         if first == "--" { break }
