@@ -240,8 +240,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let active = snapshot.activeDisplay ?? displays.infos.first(where: \.isPrimary)?.id
         let label = started ? active.flatMap { reconciler?.scene.displays[$0]?.label } : nil
         status.update(label: label, warnings: statusWarnings,
-                      state: started ? "\(snapshot.windows.count) windows, \(displays.infos.count) displays" : "Starting")
+                      state: started ? "\(counted(snapshot.windows.count, "window")), \(counted(displays.infos.count, "display"))" : "Starting")
     }
+
+    private func counted(_ count: Int, _ noun: String) -> String { "\(count) \(noun)\(count == 1 ? "" : "s")" }
 
     /// The menu's warnings, with advice for each display setup minitile cannot make itself.
     var statusWarnings: StatusWarnings {
