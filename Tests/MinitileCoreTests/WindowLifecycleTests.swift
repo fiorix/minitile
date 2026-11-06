@@ -149,3 +149,41 @@ func hidingFocusedAppWaitsForNativeFocus(_ order: [WindowID]) {
     #expect(out.actions == [.focus(2)])
     #expect(e.savedState().focus == 2)
 }
+
+@Test func orderedOutWindowsLeaveTheirPageAndStayListed() {
+    var e = engine(4)
+    _ = e.handle(.focusChanged(2))
+    var info = window(2)
+    info.orderedOut = true
+    let out = e.handle(.windowUpdated(info))
+    #expect(grid(e) == [[[1, 3, 4]]])
+    #expect(e.savedState().focus == nil)
+    #expect(out.scene.displays["primary"]?.visible == [1, 3, 4])
+    #expect(out.scene.displays["primary"]?.stashed == [])
+    #expect(out.events.contains(Event(type: "window_moved", data: .number(2))))
+    guard case .object(let record) = command(&e, "window info 2").reply?.data else { Issue.record("Expected window object"); return }
+    #expect(record["ordered_out"] == .bool(true))
+    #expect(record["page"] == .null)
+    #expect(record["shown"] == .bool(false))
+    for verb in ["show", "focus", "hide"] {
+        #expect(e.handle(.command(["window", verb, "2"])).reply?.text == "Window 2 is ordered out by its app")
+    }
+    #expect(e.handle(.command(["window", "move", "2", "page", "next"])).reply?.ok == false)
+    #expect(e.handle(.command(["window", "close", "2"])).actions == [.close(2)])
+}
+
+@Test func orderedInWindowsArePlacedLikeNewWindows() {
+    var e = engine(4)
+    var info = window(2, frontmost: true)
+    info.orderedOut = true
+    _ = e.handle(.windowUpdated(info))
+    _ = e.handle(.windowAppeared(window(5)))
+    command(&e, "page next")
+    #expect(grid(e) == [[[1, 3, 4, 5], []]])
+    info.orderedOut = false
+    let out = e.handle(.windowUpdated(info))
+    #expect(grid(e) == [[[1, 3, 4, 5], [2]]])
+    #expect(out.scene.displays["primary"]?.visible == [2])
+    #expect(e.savedState().focus == 2)
+    #expect(out.events.contains(Event(type: "window_moved", data: .number(2))))
+}

@@ -71,6 +71,7 @@ extension AppDelegate {
                     var title: String
                     var frame: Rect
                     var spaces: [UInt64]
+                    var onScreen: Bool
                     var tileable: Bool
                     var observed: Bool
                 }
@@ -82,7 +83,7 @@ extension AppDelegate {
                     return RawWindow(id: record.id, pid: record.pid, app: record.app,
                                      bundleID: NSRunningApplication(processIdentifier: record.pid)?.bundleIdentifier,
                                      title: observed?.info.title ?? record.title, frame: observed.flatMap { AX.frame($0.element) } ?? record.frame,
-                                     spaces: displays.windowSpaces(record.id), tileable: observed?.info.tileable ?? false, observed: observed != nil)
+                                     spaces: DisplayCatalog.windowSpaces(record.id), onScreen: record.onScreen, tileable: observed?.info.tileable ?? false, observed: observed != nil)
                 }
                 data = try .encoding(rows)
             case "scene":

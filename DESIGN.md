@@ -97,11 +97,11 @@ When a key binding moves or resizes the focused window (Ctrl+Shift+arrows to nud
 - It stays while every modifier of the binding that started it is held, and goes when one is released, so holding Ctrl+Shift is holding the window. Further moves and resizes while it is held keep it on the same window.
 - It follows the window to its new tile after each move. When a move shows another page with a slide, it hides during the slide and returns on the window's new tile when the slide ends.
 - A move or resize from `mntl` or the menu, with no modifier held, shows it for about 1 s.
-- It ends early when the window closes, is minimized or hidden, or loses focus to another window, on suspension and on quit. Mouse drags never show it, including Ctrl+arrow while dragging, since the pointer already holds the window.
+- It ends early when the window closes, is minimized, hidden or ordered out, or loses focus to another window, on suspension and on quit. Mouse drags never show it, including Ctrl+arrow while dragging, since the pointer already holds the window.
 
 Commands: `window nudge [ID] left|right`, `window move [ID] left|right|up|down`, `window move [ID] workspace prev|next` and `window resize [ID] left|right|up|down` grab; other moves (`window move ... page|display`, `swap`, `place`) and resizes by share or size do not. A grabbing command acts on its window ID, or on the window focused before it ran. One that fails leaves the grab as it is. One that succeeds without changing the model (a nudge toward the edge from the first or last page or a carry above the first workspace with no display on that side, a resize with no cut to move or already at its limit) starts no grab and leaves a grab of another window alone; on the grabbed window it counts like any other grabbing command. Commands that do not grab leave the grab alone, so after Ctrl+Option+Space the outline follows the held window to its new tile. A grabbing command on the window being dragged never grabs, and a drag that begins ends the grab.
 
-Lifetime: the keyboard tap's router opens a grab session when a grabbing binding with modifiers fires and remembers all of its modifiers, Shift included; a flags-changed event without one of them ends the session. Further grabbing presses with the same modifiers, and the key repeats of a directional resize, continue the session. A binding's command carries its session to the main thread, and a release ends the grab only if the grab still belongs to that session. Every second the shell rereads the modifier state (`CGEventSource.flagsState`) and ends a held grab whose session the router no longer holds, so a release the tap missed still ends it. A grabbing binding without modifiers, `mntl` and the menu start a timed grab, which ends 1 s after its last grabbing command; such a command on a window a binding holds leaves it held. A grab also ends when its window leaves the model, is minimized, app-hidden or explicitly hidden, or when the model's focus moves from what it was at the last grabbing command to a window other than the grabbed one, or to none. A grab of a window that did not have focus, as `mntl window resize ID left` makes, lasts while focus stays put or moves to the grabbed window. The window switcher does not end a grab, though committing it usually moves focus, which does.
+Lifetime: the keyboard tap's router opens a grab session when a grabbing binding with modifiers fires and remembers all of its modifiers, Shift included; a flags-changed event without one of them ends the session. Further grabbing presses with the same modifiers, and the key repeats of a directional resize, continue the session. A binding's command carries its session to the main thread, and a release ends the grab only if the grab still belongs to that session. Every second the shell rereads the modifier state (`CGEventSource.flagsState`) and ends a held grab whose session the router no longer holds, so a release the tap missed still ends it. A grabbing binding without modifiers, `mntl` and the menu start a timed grab, which ends 1 s after its last grabbing command; such a command on a window a binding holds leaves it held. A grab also ends when its window leaves the model, is minimized, app-hidden, explicitly hidden or ordered out, or when the model's focus moves from what it was at the last grabbing command to a window other than the grabbed one, or to none. A grab of a window that did not have focus, as `mntl window resize ID left` makes, lasts while focus stays put or moves to the grabbed window. The window switcher does not end a grab, though committing it usually moves focus, which does.
 
 Placement: the outline goes on the window's tile in the scene the reconciler last applied, so during a held reconcile it stays where the window still is; a floating window uses its frame in the model, the latest observed or explicitly resized one. It shows only while the window is on its display's visible desktop with a tile or floating frame there. The line is 2 pt wide and lies just outside the tile, from the tile's edge into the gap between tiles (half of the default 8 pt gap), with corners rounded to 12 pt at the tile's edge so the line stays concentric with the tile's corner; the panel extends the halo's 6 pt past the line, so the halo is not clipped. It hides while transitions cover its display: from a command whose slide captures that display until the display's overlay goes away, and while a bounce runs there. Transitions report each overlay that goes away, and the outline then returns on the window's current tile. The panel is borderless, non-activating and click-through, cannot become key or main, and joins all Spaces. Its level is two below `.floating`, under the page-transition overlays (one below) and the drop picker's preview, so an overlay covers it even before it hides; transition captures leave it out with the rest of minitile.
 
@@ -141,7 +141,7 @@ Untested in minitile: the panel on screen and its columns, swallowing Cmd+H and 
 ### Navigation and focus
 
 - Showing a page focuses the window that last had focus on it, or its first window. An empty page focuses nothing.
-- When the focused window closes or is minimized, or its app is hidden, minitile does not focus another window. macOS picks the next one, and minitile follows it.
+- When the focused window closes, is minimized or ordered out, or its app is hidden, minitile does not focus another window. macOS picks the next one, and minitile follows it.
 - Ctrl+Up/Down (`workspace next|prev`) shows the page at the same position in the workspace above or below. If that workspace ends exactly one page short of the position, an empty page opens there, as Ctrl+Right from its last page would; if it is shorter still, its last page is shown. `workspace show` by index shows the page last viewed in that workspace.
 - Ctrl+Right on the last page opens an empty page, and Ctrl+Down on the last workspace opens an empty workspace. Neither opens a second empty one next to an empty one.
 - Past the edge of a display's grid, Ctrl+arrows cross to the display on that side: Ctrl+Left from the first page, Ctrl+Up from the first workspace, Ctrl+Right from an empty last page and Ctrl+Down from an empty last workspace. Where no managed display lies on that side, they do nothing.
@@ -178,6 +178,9 @@ The mechanism and its measurements are under "Transition mechanism".
 - A minimized window keeps its slot, and its page re-tiles without it. When it is unminimized, it returns to its slot and its page is shown.
 - Windows of a hidden app (hidden through its app menu or the Dock, since Cmd+H shows the help screen) keep their slots, and their pages re-tile without them until the app is unhidden.
 - `mntl window hide` takes a window off its page, freeing the slot, and keeps it on the stash. `mntl window show` places it like a new window on the current workspace and focuses it.
+- A window its app takes off screen without closing it (ordered out, as `orderOut:` does) leaves its page, freeing the slot. `mntl` still lists it, with `ordered_out` true and no page; `window info` and `window close` work on it and other window commands fail. When the app shows it again, it is placed like a new window on its display's current workspace.
+
+Untested in minitile: `window close` on an ordered-out window, native window tabs, and panels that hide while their app is in the background.
 
 ### Layout
 
@@ -334,8 +337,8 @@ Commands are noun then verb. Windows are addressed by window ID and default to t
 | `mntl help` | The command grammar. |
 | `mntl state` | Dump the whole model: displays, workspaces, pages, windows and focus. |
 | `mntl watch` | Stream events as JSON lines: focus, page shown, window added, removed or moved, display change, config reload. |
-| `mntl window list` | List windows with ID, app, title, display, workspace, page, slot and floating state. |
-| `mntl window info [id]` | One window in full: where it is (display, workspace, page, slot), shown or hidden, floating, focused, app name, bundle ID and pid, title, frame. |
+| `mntl window list` | List windows with ID, app, title, display, workspace, page, slot, floating and ordered-out state. |
+| `mntl window info [id]` | One window in full: where it is (display, workspace, page, slot), shown or hidden, floating, focused, ordered out, app name, bundle ID and pid, title, frame. |
 | `mntl window show [id]` | Show the page holding the window and focus it. A hidden window joins the current workspace. |
 | `mntl window hide [id]` | Take the window off its page and keep it on the stash until shown. |
 | `mntl window move [id] <target>` | Move the window to a direction, page, workspace or display. |
@@ -399,7 +402,7 @@ Every response has `ok`, `text` and `data`. Errors and successful mutations use 
 | Command | Data |
 |---|---|
 | `help` | Grammar string. |
-| `window list`, `window info` | Array of window objects, or one window object. Fields: `id`, `pid`, `bundle_id`, `app`, `title`, `frame`, `display`, `workspace`, `page`, `slot`, `floating`, `hidden`, `focused`, `shown`, `minimized`, `app_hidden`, `tileable`. `frame` is the latest observed or explicitly resized frame. `hidden` means explicitly hidden by mntl; `shown` also excludes minimized/app-hidden windows and pages not being viewed. |
+| `window list`, `window info` | Array of window objects, or one window object. Fields: `id`, `pid`, `bundle_id`, `app`, `title`, `frame`, `display`, `workspace`, `page`, `slot`, `floating`, `hidden`, `focused`, `shown`, `minimized`, `app_hidden`, `ordered_out`, `tileable`. `frame` is the latest observed or explicitly resized frame. `hidden` means explicitly hidden by mntl; `ordered_out` means its app took it off screen without closing it; `shown` also excludes minimized/app-hidden windows and pages not being viewed. |
 | `page list`, `page info` | Array of page objects, or one page object. Fields: `id` (persistent identity), `index`, `display`, `workspace`, `shown`, `variant` (`standard`, `alternate`, `mirrored` or `stacked`: the page's own variant, kept across count changes even where its count lays it out as `standard`), `r1`, `r2`, `windows` (all assigned IDs in order), `tiled` (including reserved minimized/app-hidden slots), `floating`, `last_focus`. |
 | `workspace list`, `workspace info` | Array of workspace objects, or one workspace object. Fields: `id` (persistent identity), `index`, `display` (current host), `home`, `shown`, `page` (last-viewed page index), `pages` (page objects). |
 | `display list`, `display info` | Array of display objects, or one display object. Fields: `id` (UUID), `frame`, `visible_frame`, `primary`, `unmanaged_reason`, `visible_space`, `stash_space`, `workspace` (current index), `workspaces` (workspace objects), `home_workspaces`, `merged_workspaces` (workspace index arrays). |
@@ -579,7 +582,8 @@ struct WindowInfo {                // filled in by the shell
     var tileable: Bool             // standard window by the rules in "Floating windows"
     var minimized: Bool
     var appHidden: Bool
-    var fromFrontmostApp: Bool     // at the moment it appeared
+    var orderedOut: Bool           // off screen by its app's doing; not saved
+    var fromFrontmostApp: Bool     // when it appeared or was ordered back in
     var display: DisplayID?        // where it stands now, for adoption
     var onStash: Bool              // for adoption
 }
@@ -597,7 +601,7 @@ enum Input {
     case configLoaded(Config)
     case displaysChanged([DisplayInfo])        // debounced and fingerprinted by the shell
     case windowAppeared(WindowInfo)
-    case windowUpdated(WindowInfo)             // title, frame, minimized or app-hidden changed
+    case windowUpdated(WindowInfo)             // title, frame, minimized, app-hidden or ordered-out changed
     case windowGone(WindowID)
     case focusChanged(WindowID?)               // the shell drops echoes of its own focus actions
     case appActivated(pid: Int32)              // the pre-emption fast path
@@ -640,7 +644,7 @@ The shell also:
 - bounces back from the stash (see "Rules minitile must follow"), which needs no core input;
 - answers `debug`, `switcher` and `help show` commands itself and passes every other command to the core as `.command(argv)`.
 
-Scene visible/stashed lists express desktop ownership, including minimized and app-hidden windows. Frame targets cover active tiled windows on both shown and stashed pages; minimized, app-hidden, floating and explicitly hidden windows have no tiled frame target. `Action.setFrame` is a one-shot floating resize using the normal AX frame-write safeguards. `Action.openConfig` opens the config file. Both run before focus actions. IPC handlers supplied on `.main` use `MainActor.assumeIsolated` to access the shell's main-actor state.
+Scene visible/stashed lists express desktop ownership, including minimized and app-hidden windows. Frame targets cover active tiled windows on both shown and stashed pages; minimized, app-hidden, floating and explicitly hidden windows have no tiled frame target. Ordered-out windows are in neither list, so minitile leaves them where their app put them. `Action.setFrame` is a one-shot floating resize using the normal AX frame-write safeguards. `Action.openConfig` opens the config file. Both run before focus actions. IPC handlers supplied on `.main` use `MainActor.assumeIsolated` to access the shell's main-actor state.
 
 ## State and lifecycle
 
@@ -730,7 +734,7 @@ Discovery:
 - Some apps (Teams, Mail) reuse window IDs on close and reopen.
 - While the session is locked or the displays sleep, the on-screen window list empties. Freeze lifecycle changes until the interruption ends.
 
-The shell confirms disappearance after three WindowServer snapshots no longer contain the same window ID and pid. A snapshot counts a miss only for a window that was already known when it was taken. Event-triggered rechecks share one pending sequence at 150, 400 and 900 ms, scoped to affected pids; later notifications extend the affected pid's confirmations without duplicating timers. Focus and destroy rechecks read WindowServer presence only, while creation rechecks inspect the supplied new-window elements. A scan every three seconds catches missed notifications and retries incomplete observer registrations; it runs off the main thread (see Responsiveness). An app is recorded as observed only after each app-level registration succeeds or reports the notification unsupported; unsupported notifications are not retried, and other failed app or window registrations are retried. An empty or failed WindowServer snapshot is unknown. Background agents with prohibited activation policy are excluded from AX observation. Sleep, session inactivity, lock and pending display reconfiguration suspend lifecycle changes.
+The shell confirms disappearance after three WindowServer snapshots no longer contain the same window ID and pid. A snapshot counts a miss only for a window that was already known when it was taken. Event-triggered rechecks share one pending sequence at 150, 400 and 900 ms, scoped to affected pids; later notifications extend the affected pid's confirmations without duplicating timers. Focus and destroy rechecks read WindowServer presence only, while creation rechecks inspect the supplied new-window elements. A scan every three seconds catches missed notifications and retries incomplete observer registrations; it runs off the main thread (see Responsiveness). An app is recorded as observed only after each app-level registration succeeds or reports the notification unsupported; unsupported notifications are not retried, and other failed app or window registrations are retried. An empty or failed WindowServer snapshot is unknown. A window counts as ordered out after three snapshots in a row show it off screen (no `kCGWindowIsOnscreen`) on a desktop its display is showing, unless it is minimized or app-hidden, and back on the first snapshot showing it on screen. Stashed windows are off screen too, so the desktops of off-screen windows are read right after each snapshot, on its thread. `AXWindows` omits ordered-out windows, so startup does not adopt them. Background agents with prohibited activation policy are excluded from AX observation. Sleep, session inactivity, lock and pending display reconfiguration suspend lifecycle changes.
 
 Responsiveness:
 
@@ -766,7 +770,7 @@ Focus and closing:
 - Logging uses unified logging with subsystem `minitile`.
 - Threads:
   - the main thread runs the `NSApplication` loop, AX observer registrations, writes, focus calls and notification reads, the core and the reconciler;
-  - discovery takes its WindowServer snapshots and makes its scan and recheck AX reads on a concurrent background queue (`minitile.discovery`), one task per app, and hands the results to the main thread;
+  - discovery takes its WindowServer snapshots, reads the desktops of known off-screen windows right after each one, and makes its scan and recheck AX reads on a concurrent background queue (`minitile.discovery`), one task per app, and hands the results to the main thread;
   - the keyboard event tap runs on its own thread and hands commands, window switcher and help screen keys and grab releases to the main thread;
   - the trackpad swipe tap runs on its own thread and does the same;
   - the socket server reads on a background queue and does the same.
@@ -788,7 +792,7 @@ The shell uses the Swift 6 language mode. AX observer callbacks run on the main 
 
 `scripts/smoke.sh` modes:
 
-- default: drives minitile through `mntl`, compares the requested scene with raw WindowServer spaces and AX frames (20 pt tolerance), and checks invalid-config retention and restart persistence;
+- default: drives minitile through `mntl`, compares the requested scene with raw WindowServer spaces and AX frames (20 pt tolerance), and checks a document TextEdit orders out and back in, invalid-config retention and restart persistence;
 - `--interactive`: pauses for physical keys, mouse and trackpad input, with key tracing (`MINITILE_TRACE_KEYS=1` writes `minitile: key` JSON records to stderr for Ctrl+arrow events only);
 - `--displays`: starts with the external monitor unplugged, then checks display independence, cross-display activation, and unplug and reconnect restoring the original grids;
 - `--activation`: measures ten isolated TextEdit activation cycles after focus-notification bursts, including native desktop assertions;

@@ -450,6 +450,11 @@ slot_c=$(jq -r ".windows[] | select(.id == $c) | .slot" "$report/state.json")
 wait_state "any(.windows[]; .id == $a and .slot == $slot_c) and any(.windows[]; .id == $c and .slot == $slot_a)"
 "$mntl" page variant
 "$mntl" page ratio 0.4 0.7
+title_c=$(jq -r ".windows[] | select(.id == $c) | .title" "$report/state.json")
+osascript -e "tell application \"TextEdit\" to set visible of (first window whose name is \"$title_c\") to false"
+wait_state ".windows[] | select(.id == $c) | .ordered_out and .page == null and (.shown | not)"
+osascript -e "tell application \"TextEdit\" to set visible of (first window whose name is \"$title_c\") to true"
+wait_state ".windows[] | select(.id == $c) | (.ordered_out | not) and .page != null and .shown"
 
 printf 'padding = "invalid"\n' > "$MINITILE_CONFIG"
 if "$mntl" config reload; then echo "Invalid config was accepted" >&2; exit 1; fi

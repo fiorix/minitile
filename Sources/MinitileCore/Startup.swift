@@ -56,6 +56,7 @@ extension Engine {
                 output.events.append(Event(type: "window_added", data: .number(Double(info.id))))
             }
         }
+        for (id, window) in state.windows where window.info.orderedOut { removeFromPage(id) }
         if let focused, let at = location(focused) {
             show(at, focusWindow: false, output: &output)
             focus(focused, action: false, output: &output)

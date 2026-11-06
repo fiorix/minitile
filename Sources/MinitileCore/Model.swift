@@ -61,7 +61,7 @@ extension Engine {
     }
     func canFocus(_ id: WindowID) -> Bool {
         guard let window = state.windows[id] else { return false }
-        return !window.hidden && !window.info.minimized && !window.info.appHidden
+        return !window.hidden && !window.info.minimized && !window.info.appHidden && !window.info.orderedOut
     }
     func tiled(_ page: PageState, activeOnly: Bool = false) -> [WindowID] {
         page.windows.filter { id in
@@ -134,9 +134,9 @@ extension Engine {
               state.displays[d].info.unmanagedReason == nil,
               let start = currentLocation(display: d) else { return }
         state.windows[info.id] = WindowState(info: info, display: state.displays[d].info.id, floating: floating(info))
-        let at = place(info.id, at: start)
+        let at = info.orderedOut ? nil : place(info.id, at: start)
         output.events.append(Event(type: "window_added", data: .number(Double(info.id))))
-        if info.fromFrontmostApp {
+        if let at, info.fromFrontmostApp {
             show(at, focusWindow: false, output: &output)
             focus(info.id, action: false, output: &output)
         }
@@ -154,7 +154,7 @@ extension Engine {
 
     mutating func appActivated(_ pid: Int32, output: inout Output) {
         let positions = locations()
-        let candidates = state.windows.values.filter { $0.info.pid == pid && !$0.hidden && !$0.info.minimized }
+        let candidates = state.windows.values.filter { $0.info.pid == pid && !$0.hidden && !$0.info.minimized && !$0.info.orderedOut }
         if candidates.contains(where: { positions[$0.info.id].map(isShown) == true }) { return }
         let best = candidates.min {
             if $0.lastFocused != $1.lastFocused { return $0.lastFocused > $1.lastFocused }

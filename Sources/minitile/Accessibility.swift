@@ -108,6 +108,8 @@ struct CGWindowRecord: Codable, Sendable {
     var frame: Rect
     var layer: Int
     var alpha: Double
+    /// Ordered in on the desktop its display shows. Windows on other desktops, including the stash, are off screen.
+    var onScreen = true
 
     var real: Bool { layer == 0 && alpha > 0.01 }
 
@@ -124,7 +126,8 @@ struct CGWindowRecord: Codable, Sendable {
                 title: row[kCGWindowName as String] as? String ?? "",
                 frame: Rect(x: frame.minX, y: frame.minY, width: frame.width, height: frame.height),
                 layer: (row[kCGWindowLayer as String] as? NSNumber)?.intValue ?? -1,
-                alpha: (row[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 0)
+                alpha: (row[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 0,
+                onScreen: row[kCGWindowIsOnscreen as String] as? Bool ?? false)
         }
         return result
     }

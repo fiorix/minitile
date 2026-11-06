@@ -23,11 +23,13 @@ private func checkInvariants(_ e: Engine, _ out: Output, step: Int) {
         }
     }
     #expect(Set(assigned).count == assigned.count)
-    #expect(Set(assigned) == Set(state.windows.filter { !$0.value.hidden }.keys))
+    #expect(Set(assigned) == Set(state.windows.filter { !$0.value.hidden && !$0.value.info.orderedOut }.keys))
     let placed = out.scene.displays.values.flatMap { $0.visible + $0.stashed }
     #expect(Set(placed).count == placed.count)
     let managed = Set(state.displays.filter { $0.info.unmanagedReason == nil }.map { $0.info.id })
-    #expect(Set(placed) == Set(state.windows.filter { managed.contains($0.value.display) }.keys))
+    #expect(Set(placed) == Set(state.windows.filter {
+        managed.contains($0.value.display) && ($0.value.hidden || !$0.value.info.orderedOut)
+    }.keys))
     for (id, frame) in out.scene.displays.values.flatMap({ $0.frames }) {
         #expect(state.windows[id]?.floating == false)
         #expect(frame.width >= 0 && frame.height >= 0)
@@ -55,7 +57,10 @@ private func checkInvariants(_ e: Engine, _ out: Output, step: Int) {
         case 11: input = .displaysChanged([testDisplay])
         case 12: input = .displaysChanged([testDisplay, secondDisplay])
         case 13: input = .command(["page", "ratio", "0.8", "0.2"])
-        default: input = .windowUpdated(window(id))
+        default:
+            var info = window(id, frontmost: random & 1 == 0)
+            info.orderedOut = (random >> 8) % 3 != 0
+            input = .windowUpdated(info)
         }
         let out = e.handle(input)
         checkInvariants(e, out, step: step)

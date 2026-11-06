@@ -146,7 +146,7 @@ private extension SavedState {
     #expect(lifetime.grab == GrabLifetime.Grab(window: 2, session: 2, until: nil, focus: 2))
 }
 
-@Test(arguments: ["gone", "minimized", "appHidden", "hidden", "focus", "unfocused"])
+@Test(arguments: ["gone", "minimized", "appHidden", "hidden", "orderedOut", "focus", "unfocused"])
 func grabEndsWhenItsWindowGoesOrLosesFocus(_ change: String) {
     var state = SavedState.focused(1, windows: [1, 2])
     var lifetime = GrabLifetime()
@@ -156,6 +156,7 @@ func grabEndsWhenItsWindowGoesOrLosesFocus(_ change: String) {
     case "minimized": state.windows[1]?.info.minimized = true
     case "appHidden": state.windows[1]?.info.appHidden = true
     case "hidden": state.windows[1]?.hidden = true
+    case "orderedOut": state.windows[1]?.info.orderedOut = true
     case "focus": state.focus = 2
     default: state.focus = nil
     }

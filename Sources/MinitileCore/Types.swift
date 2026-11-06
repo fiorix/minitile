@@ -44,18 +44,25 @@ public struct WindowInfo: Codable, Sendable, Equatable {
     public var tileable: Bool
     public var minimized: Bool
     public var appHidden: Bool
+    /// The app took the window off screen without closing it, as `orderOut:` does. Not saved, since startup takes fresh
+    /// observations.
+    public var orderedOut = false
     public var fromFrontmostApp: Bool
     public var display: DisplayID?
     public var onStash: Bool
 
     public init(id: WindowID, pid: Int32, bundleID: String? = nil, appName: String = "", title: String = "",
                 frame: Rect = Rect(x: 0, y: 0, width: 0, height: 0), tileable: Bool = true,
-                minimized: Bool = false, appHidden: Bool = false, fromFrontmostApp: Bool = false,
+                minimized: Bool = false, appHidden: Bool = false, orderedOut: Bool = false, fromFrontmostApp: Bool = false,
                 display: DisplayID? = nil, onStash: Bool = false) {
         self.id = id; self.pid = pid; self.bundleID = bundleID; self.appName = appName
         self.title = title; self.frame = frame; self.tileable = tileable; self.minimized = minimized
-        self.appHidden = appHidden; self.fromFrontmostApp = fromFrontmostApp
+        self.appHidden = appHidden; self.orderedOut = orderedOut; self.fromFrontmostApp = fromFrontmostApp
         self.display = display; self.onStash = onStash
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, pid, bundleID, appName, title, frame, tileable, minimized, appHidden, fromFrontmostApp, display, onStash
     }
 }
 

@@ -188,3 +188,43 @@ private func snapshot(_ records: CGWindowRecord...) -> [WindowID: CGWindowRecord
     #expect(WindowAttributes.popup(subrole: "AXDialog", closeButton: false) == false)
     #expect(WindowAttributes.popup(subrole: nil, closeButton: false) == nil)
 }
+
+private func known(_ id: WindowID, pid: Int32 = 10, added: Int = 0, orderedOut: Bool = false) -> OrderedOutChecks.Known {
+    OrderedOutChecks.Known(info: WindowInfo(id: id, pid: pid, orderedOut: orderedOut), added: added)
+}
+
+private func offScreen(_ id: WindowID, pid: Int32 = 10) -> CGWindowRecord {
+    var result = record(id, pid: pid)
+    result.onScreen = false
+    return result
+}
+
+@Test func orderedOutAfterThreeOffScreenSightingsInARowAndBackWhenSeen() {
+    var checks = OrderedOutChecks()
+    let windows = [known(1), known(2)]
+    let both = snapshot(offScreen(1), offScreen(2))
+    for _ in 0..<2 { #expect(checks.check(windows, pids: [10], snapshot: both, offScreen: [1, 2], taken: 5).isEmpty) }
+    // A sighting that is not off screen on a shown desktop, like a stashed window's, breaks the run.
+    #expect(checks.check(windows, pids: [10], snapshot: both, offScreen: [1], taken: 5) == [1: true])
+    #expect(checks.counts.isEmpty)
+    let flagged = [known(1, orderedOut: true), known(2)]
+    #expect(checks.check(flagged, pids: [10], snapshot: both, offScreen: [1, 2], taken: 5).isEmpty)
+    #expect(checks.counts == [2: 1])
+    let seen = snapshot(record(1, pid: 10), record(2, pid: 10))
+    #expect(checks.check(flagged, pids: [10], snapshot: seen, offScreen: [], taken: 5) == [1: false])
+    #expect(checks.counts.isEmpty)
+}
+
+@Test func orderedOutIgnoresWindowsThatTellNothing() {
+    var checks = OrderedOutChecks()
+    var minimized = known(1)
+    minimized.info.minimized = true
+    var appHidden = known(2)
+    appHidden.info.appHidden = true
+    let windows = [minimized, appHidden, known(3, added: 9), known(4, pid: 20), known(5)]
+    let records = snapshot(offScreen(1), offScreen(2), offScreen(3), offScreen(4), offScreen(5, pid: 11))
+    for _ in 0..<3 {
+        #expect(checks.check(windows, pids: [10], snapshot: records, offScreen: [1, 2, 3, 4, 5], taken: 5).isEmpty)
+    }
+    #expect(checks.counts.isEmpty)
+}

@@ -60,7 +60,7 @@ extension Engine {
         state.displays = updated
         for (id, at) in locations() { state.windows[id]?.display = updated[at.display].info.id }
         for id in state.windows.keys {
-            guard let window = state.windows[id], window.hidden else { continue }
+            guard let window = state.windows[id], window.hidden || window.info.orderedOut else { continue }
             if let home = window.hiddenHome, destinations[home] != nil { state.windows[id]?.display = home }
             else if let host = hostChanges[window.display] { state.windows[id]?.display = host }
         }

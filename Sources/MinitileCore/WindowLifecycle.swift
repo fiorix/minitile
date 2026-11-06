@@ -17,12 +17,30 @@ extension Engine {
         }
         guard allows(info) else { gone(info.id, output: &output); return }
         state.windows[info.id]?.info = info
-        let lostFocus = state.focus == info.id && (info.minimized || info.appHidden)
+        let lostFocus = state.focus == info.id && (info.minimized || info.appHidden || info.orderedOut)
         if lostFocus { focus(nil, action: false, output: &output) }
+        if info.orderedOut && location(info.id) != nil {
+            removeFromPage(info.id)
+            output.events.append(Event(type: "window_moved", data: .number(Double(info.id))))
+        }
         updateFloating(info.id, value: floating(info, override: old.floatingOverride), output: &output)
+        if old.info.orderedOut && !info.orderedOut { orderedIn(info.id, output: &output) }
         if !lostFocus && old.info.minimized && !info.minimized, let at = location(info.id) {
             show(at, focusWindow: false, output: &output)
             focus(info.id, action: true, output: &output)
+        }
+    }
+
+    /// A window its app shows again is placed like a new one, on its display's current page.
+    mutating func orderedIn(_ id: WindowID, output: inout Output) {
+        guard let window = state.windows[id], !window.hidden, location(id) == nil else { return }
+        let own = displayIndex(window.display).flatMap { state.displays[$0].info.unmanagedReason == nil ? $0 : nil }
+        guard let d = own ?? currentDisplay(), let start = currentLocation(display: d) else { return }
+        let at = place(id, at: start)
+        output.events.append(Event(type: "window_moved", data: .number(Double(id))))
+        if window.info.fromFrontmostApp {
+            show(at, focusWindow: false, output: &output)
+            focus(id, action: false, output: &output)
         }
     }
 

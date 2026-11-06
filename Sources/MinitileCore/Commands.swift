@@ -135,7 +135,7 @@ extension Engine {
         if verb == "list", supplied.isEmpty {
             let positions = locations()
             return listReply(state.windows.keys.sorted().map { windowRecord($0, positions: positions) },
-                             columns: ["id", "app", "title", "display", "workspace", "page", "slot", "floating"])
+                             columns: ["id", "app", "title", "display", "workspace", "page", "slot", "floating", "ordered_out"])
         }
         if verb == "focus", supplied.count == 1, ["left", "right", "up", "down", "next", "prev"].contains(supplied[0]) {
             if supplied[0] == "next" || supplied[0] == "prev" { try cycleFocus(supplied[0] == "next" ? 1 : -1, output: &output) }
@@ -148,7 +148,10 @@ extension Engine {
         if args.count > operands, let first = args.first, let explicit = WindowID(first) { id = explicit; args.removeFirst() }
         else if let focused = state.focus { id = focused }
         else { throw CommandError("Expected a window ID; no window is focused") }
-        guard state.windows[id] != nil else { throw CommandError("Unknown window ID \(id)") }
+        guard let window = state.windows[id] else { throw CommandError("Unknown window ID \(id)") }
+        if window.info.orderedOut && !["info", "close"].contains(verb) {
+            throw CommandError("Window \(id) is ordered out by its app")
+        }
         switch verb {
         case "info", "show", "focus", "hide", "close":
             guard args.isEmpty else { throw CommandError("Expected window \(verb) [ID]") }

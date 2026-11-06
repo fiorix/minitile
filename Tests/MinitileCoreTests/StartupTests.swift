@@ -93,3 +93,16 @@ import Testing
     let saved = try JSONDecoder().decode(SavedState.self, from: Data("{}".utf8))
     #expect(saved == SavedState())
 }
+
+@Test func orderedOutWindowsStayOffTheirPagesAtStartup() {
+    let old = engine(3)
+    var restored = window(2)
+    restored.orderedOut = true
+    var unknown = window(4)
+    unknown.orderedOut = true
+    var e = Engine()
+    _ = e.handle(.started(saved: old.savedState(), windows: [window(1), restored, window(3), unknown], displays: [testDisplay], focus: nil))
+    #expect(grid(e) == [[[1, 3]]])
+    #expect(e.savedState().windows[2]?.info.orderedOut == true)
+    #expect(e.savedState().windows[4]?.info.orderedOut == true)
+}

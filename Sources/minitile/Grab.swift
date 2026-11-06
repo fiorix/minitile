@@ -76,12 +76,13 @@ struct GrabLifetime: Equatable {
 
     mutating func end() { grab = nil }
 
-    /// Ends a timed grab that is due, and any grab whose window closed, was minimized or hidden, or lost focus to
-    /// another window.
+    /// Ends a timed grab that is due, and any grab whose window closed, was minimized, hidden or ordered out, or lost
+    /// focus to another window.
     mutating func check(_ state: SavedState, now: TimeInterval) {
         guard let grab else { return }
         if let until = grab.until, now >= until { self.grab = nil; return }
-        guard let window = state.windows[grab.window], !window.hidden, !window.info.minimized, !window.info.appHidden else {
+        guard let window = state.windows[grab.window], !window.hidden, !window.info.minimized, !window.info.appHidden,
+              !window.info.orderedOut else {
             self.grab = nil; return
         }
         if state.focus == grab.window { self.grab?.focus = grab.window }

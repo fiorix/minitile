@@ -142,7 +142,7 @@ final class DisplayCatalog {
         }
     }
 
-    func windowSpaces(_ id: WindowID) -> [UInt64] {
+    nonisolated static func windowSpaces(_ id: WindowID) -> [UInt64] {
         var id = id
         return (csl_copy_window_spaces(&id, 1) as? [NSNumber] ?? []).map(\.uint64Value)
     }

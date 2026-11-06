@@ -52,6 +52,7 @@ final class Discovery {
     private(set) var windows: [WindowID: Window] = [:]
     private(set) var applications: [Int32: Application] = [:]
     private var misses = PresenceMisses()
+    private var orderedOutChecks = OrderedOutChecks()
     private var rechecks = PresenceRechecks()
     private var recheckWork: DispatchWorkItem?
     /// A recheck pass is waiting for its snapshot; the next pass is scheduled once it arrives.
@@ -152,22 +153,25 @@ final class Discovery {
         guard !frozen else { return }
         let pass = pids == nil ? passes.begin(at: ProcessInfo.processInfo.systemUptime) : nil
         let ticket = ledger.beginSnapshot()
+        let probe = pids == nil ? offScreenProbe(nil) : nil
         background.async { [weak self] in
             let cg = CGWindowRecord.snapshot()
+            let offScreen = cg.flatMap { probe?.run($0) } ?? []
             DispatchQueue.main.async { [weak self] in
-                MainActor.assumeIsolated { self?.scanned(cg, pids: pids, pass: pass, ticket: ticket) }
+                MainActor.assumeIsolated { self?.scanned(cg, offScreen: offScreen, pids: pids, pass: pass, ticket: ticket) }
             }
         }
     }
 
-    private func scanned(_ cg: [WindowID: CGWindowRecord]?, pids: Set<Int32>?, pass: Int?, ticket: Ticket) {
+    private func scanned(_ cg: [WindowID: CGWindowRecord]?, offScreen: Set<WindowID>, pids: Set<Int32>?, pass: Int?,
+                         ticket: Ticket) {
         // The reads share the snapshot's ticket, so they begin before it ends.
         defer { ledger.endSnapshot() }
         guard ledger.accepts(ticket, frozen: frozen), let cg else {
             if let pass { passes.cancel(pass) }
             return
         }
-        if pids == nil { checkPresence(cg, pids: Set(windows.values.map { $0.info.pid }), taken: ticket.stamp) }
+        if pids == nil { checkPresence(cg, offScreen: offScreen, pids: Set(windows.values.map { $0.info.pid }), taken: ticket.stamp) }
         let apps = pids.map { $0.compactMap { NSRunningApplication(processIdentifier: $0) } } ?? NSWorkspace.shared.runningApplications
         let started = selection(apps, cg: cg, reading: ledger.reading).filter { startRead($0, cg: cg, ticket: ticket, pass: pass) }
         if let pass { passes.reading(pass, reads: started.count, at: ProcessInfo.processInfo.systemUptime) }
@@ -176,6 +180,7 @@ final class Discovery {
     /// Startup and adoption need every readable handle before they go on, so they scan on the main thread.
     func scanNow() {
         guard !frozen, let cg = CGWindowRecord.snapshot() else { return }
+        let offScreen = offScreenProbe(nil).run(cg)
         let start = ProcessInfo.processInfo.systemUptime
         let taken = ledger.stamp
         for app in selection(NSWorkspace.shared.runningApplications, cg: cg, reading: []) {
@@ -185,7 +190,7 @@ final class Discovery {
             apply(read, records: request.records, ticket: ticket)
             ledger.record(read.pid, answered: read.answered)
         }
-        checkPresence(cg, pids: Set(windows.values.map { $0.info.pid }), taken: taken)
+        checkPresence(cg, offScreen: offScreen, pids: Set(windows.values.map { $0.info.pid }), taken: taken)
         passes.add(milliseconds: (ProcessInfo.processInfo.systemUptime - start) * 1000)
     }
 
@@ -245,9 +250,30 @@ final class Discovery {
         }
     }
 
-    private func checkPresence(_ cg: [WindowID: CGWindowRecord], pids: Set<Int32>, taken: Int) {
+    /// The known windows of `pids`, or all of them, and each managed display's visible desktop.
+    private func offScreenProbe(_ pids: Set<Int32>?) -> OffScreenProbe {
+        OffScreenProbe(windows: windows.filter { pids?.contains($0.value.info.pid) ?? true }.map(\.key),
+                       desktops: displays.displays.compactMap { display in
+                           guard display.info.unmanagedReason == nil, let space = display.info.visibleSpace else { return nil }
+                           return (display.identifier, space)
+                       })
+    }
+
+    private func checkPresence(_ cg: [WindowID: CGWindowRecord], offScreen: Set<WindowID>, pids: Set<Int32>, taken: Int) {
         let known = windows.map { PresenceMisses.Known(id: $0.key, pid: $0.value.info.pid, added: $0.value.added) }
         for id in misses.check(known, pids: pids, snapshot: cg, taken: taken) { remove(id) }
+        checkOrderedOut(cg, offScreen: offScreen, pids: pids, taken: taken)
+    }
+
+    private func checkOrderedOut(_ cg: [WindowID: CGWindowRecord], offScreen: Set<WindowID>, pids: Set<Int32>, taken: Int) {
+        let known = windows.values.map { OrderedOutChecks.Known(info: $0.info, added: $0.added) }
+        for (id, value) in orderedOutChecks.check(known, pids: pids, snapshot: cg, offScreen: offScreen, taken: taken) {
+            guard var info = windows[id]?.info else { continue }
+            info.orderedOut = value
+            if !value { info.fromFrontmostApp = NSRunningApplication(processIdentifier: info.pid)?.isActive == true }
+            windows[id]?.info = info
+            input?(.windowUpdated(info))
+        }
     }
 
     private func discover(_ read: WindowRead, app: NSRunningApplication, record: CGWindowRecord?, register: Bool) {
@@ -258,7 +284,7 @@ final class Discovery {
             if previous.info.pid == app.processIdentifier && CFEqual(previous.element, element) { return }
             remove(id)
         }
-        let spaces = displays.windowSpaces(id)
+        let spaces = DisplayCatalog.windowSpaces(id)
         guard let display = adoption[id]?.display ?? displays.owner(spaces: spaces),
               let frame = read.attributes.frame else { return }
         var info = WindowInfo(id: id, pid: app.processIdentifier, bundleID: app.bundleIdentifier,
@@ -333,6 +359,7 @@ final class Discovery {
             }
         }
         misses.forget(id)
+        orderedOutChecks.forget(id)
         input?(.windowGone(id))
     }
 
@@ -367,15 +394,17 @@ final class Discovery {
         recheckPasses += 1
         rechecking = true
         let ticket = ledger.beginSnapshot()
+        let probe = offScreenProbe(pids)
         background.async { [weak self] in
             let cg = CGWindowRecord.snapshot()
+            let offScreen = cg.map(probe.run) ?? []
             DispatchQueue.main.async { [weak self] in
-                MainActor.assumeIsolated { self?.rechecked(cg, pids: pids, ticket: ticket) }
+                MainActor.assumeIsolated { self?.rechecked(cg, offScreen: offScreen, pids: pids, ticket: ticket) }
             }
         }
     }
 
-    private func rechecked(_ cg: [WindowID: CGWindowRecord]?, pids: Set<Int32>, ticket: Ticket) {
+    private func rechecked(_ cg: [WindowID: CGWindowRecord]?, offScreen: Set<WindowID>, pids: Set<Int32>, ticket: Ticket) {
         // The candidate reads share the snapshot's ticket, so they begin before it ends.
         defer { ledger.endSnapshot() }
         rechecking = false
@@ -385,7 +414,7 @@ final class Discovery {
             return
         }
         if ledger.accepts(ticket, frozen: frozen), let cg {
-            checkPresence(cg, pids: pids, taken: ticket.stamp)
+            checkPresence(cg, offScreen: offScreen, pids: pids, taken: ticket.stamp)
             // Only new-window elements need AX reads; focus/destroy bursts use CG presence alone. An app whose read
             // is running keeps its candidates for the next pass.
             for pid in pids {
@@ -440,7 +469,7 @@ final class Discovery {
             guard let stash = display.info.stashSpace, let visible = display.info.visibleSpace else { continue }
             let records = cg.values.filter {
                 windows[$0.id] == nil && $0.real && allowed.contains($0.pid) && smokeScope.allowsStash(id: $0.id, pid: $0.pid)
-                    && displays.windowSpaces($0.id).contains(stash)
+                    && DisplayCatalog.windowSpaces($0.id).contains(stash)
             }
             let ids = records.map(\.id).sorted()
             guard !ids.isEmpty, csl_move_windows(ids, ids.count, visible) else { continue }

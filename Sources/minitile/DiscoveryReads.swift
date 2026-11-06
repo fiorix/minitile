@@ -1,5 +1,6 @@
 import AppKit
 @preconcurrency import ApplicationServices
+import CSkyLight
 import MinitileCore
 
 /// Carries an AX element to a background read and back. AX client calls work from any thread.
@@ -157,6 +158,23 @@ struct ScanPasses {
     private mutating func finish(_ pass: Int, at time: TimeInterval) {
         guard let entry = running.removeValue(forKey: pass) else { return }
         add(milliseconds: (time - entry.start) * 1000)
+    }
+}
+
+/// Finds the windows a snapshot shows off screen on a desktop their display is showing, as an app's `orderOut:` leaves
+/// them. It runs right after the snapshot on the same thread, so a page change rarely falls between the two.
+struct OffScreenProbe: Sendable {
+    var windows: [WindowID]
+    /// Each managed display's identifier and visible desktop.
+    var desktops: [(display: String, space: UInt64)]
+
+    func run(_ snapshot: [WindowID: CGWindowRecord]) -> Set<WindowID> {
+        let shown = Set(desktops.compactMap { csl_current_space($0.display as CFString) == $0.space ? $0.space : nil })
+        guard !shown.isEmpty else { return [] }
+        return Set(windows.filter { id in
+            guard let record = snapshot[id], !record.onScreen else { return false }
+            return DisplayCatalog.windowSpaces(id).contains(where: shown.contains)
+        })
     }
 }
 

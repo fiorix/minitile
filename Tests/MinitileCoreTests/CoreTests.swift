@@ -12,6 +12,14 @@ import Testing
     #expect(try JSONDecoder().decode(SavedState.self, from: data) == state)
 }
 
+@Test func savedWindowsLeaveOutTheOrderedOutObservation() throws {
+    var info = WindowInfo(id: 42, pid: 7)
+    info.orderedOut = true
+    let data = try JSONEncoder().encode(info)
+    #expect(!String(decoding: data, as: UTF8.self).contains("orderedOut"))
+    #expect(try JSONDecoder().decode(WindowInfo.self, from: data).orderedOut == false)
+}
+
 @Test func defaultBindingsUseCommandArguments() {
     #expect(Config.default.bindings[Chord(modifiers: [.ctrl, .shift], key: "down")] == ["window", "move", "workspace", "next"])
     #expect(Config.default.bindings[Chord(modifiers: .cmd, key: "`")] == ["window", "focus", "next"])

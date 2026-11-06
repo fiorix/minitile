@@ -133,7 +133,7 @@ final class Reconciler {
         if invalidateFrames { frames.removeAll() }
         spaces = [:]
         for id in discovery.windows.keys {
-            let current = displays.windowSpaces(id)
+            let current = DisplayCatalog.windowSpaces(id)
             if current.count == 1 { spaces[id] = current[0] }
         }
     }
@@ -194,7 +194,7 @@ final class Reconciler {
             guard let self, !self.discovery.frozen else { return }
             let failed = identities.compactMap { id, pid -> WindowID? in
                 guard self.discovery.windows[id]?.info.pid == pid, self.spaces[id] == move.space else { return nil }
-                let actual = self.displays.windowSpaces(id)
+                let actual = DisplayCatalog.windowSpaces(id)
                 return !actual.isEmpty && !actual.contains(move.space) ? id : nil
             }
             if !failed.isEmpty {
