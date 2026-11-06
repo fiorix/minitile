@@ -69,12 +69,12 @@ func physicalSharesSetTheTileExtentOnEachSplitAxis(_ kind: LayoutKind) {
     }
 }
 
-@Test func singleShareFollowsTheSplitAxisOfMirroredAndStackedLayouts() {
-    var mirrored = layoutEngine(LayoutKind(count: 3, variant: .mirrored, portrait: false))
-    command(&mirrored, "window resize 1 0.6")
-    #expect(tileFrames(mirrored)[1] == Rect(x: 520, y: 80, width: 600, height: 800))
-    command(&mirrored, "window resize 3 0.3")
-    #expect(tileFrames(mirrored)[3] == Rect(x: 120, y: 480, width: 300, height: 400))
+@Test func singleShareFollowsTheSplitAxisOfEachThreeWindowLayout() {
+    var tall = layoutEngine(LayoutKind(count: 3, variant: .twoByOneTall, portrait: false))
+    command(&tall, "window resize 1 0.6")
+    #expect(tileFrames(tall)[1] == Rect(x: 520, y: 80, width: 600, height: 800))
+    command(&tall, "window resize 3 0.3")
+    #expect(tileFrames(tall)[3] == Rect(x: 120, y: 480, width: 300, height: 400))
     var stacked = layoutEngine(LayoutKind(count: 3, variant: .stacked, portrait: false))
     command(&stacked, "window resize 2 0.4")
     #expect(tileFrames(stacked)[2] == Rect(x: 120, y: 293, width: 1000, height: 320))
@@ -82,6 +82,17 @@ func physicalSharesSetTheTileExtentOnEachSplitAxis(_ kind: LayoutKind) {
     var portrait = layoutEngine(LayoutKind(count: 3, variant: .stacked, portrait: true))
     command(&portrait, "window resize 1 0.4")
     #expect(tileFrames(portrait)[1] == Rect(x: -800, y: 200, width: 320, height: 1000))
+    var top = layoutEngine(LayoutKind(count: 3, variant: .oneByTwoWide, portrait: false))
+    command(&top, "window resize 1 0.6")
+    #expect(tileFrames(top)[1] == Rect(x: 120, y: 80, width: 1000, height: 480))
+    command(&top, "window resize 3 0.3")
+    #expect(tileFrames(top)[3] == Rect(x: 620, y: 640, width: 500, height: 240))
+    var bottom = layoutEngine(LayoutKind(count: 3, variant: .twoByOneWide, portrait: false))
+    command(&bottom, "window resize 1 0.6")
+    #expect(tileFrames(bottom)[1] == Rect(x: 120, y: 400, width: 1000, height: 480))
+    var left = layoutEngine(LayoutKind(count: 3, variant: .oneByTwoWide, portrait: true))
+    command(&left, "window resize 1 0.4")
+    #expect(tileFrames(left)[1] == Rect(x: -800, y: 200, width: 320, height: 1000))
 }
 
 @Test(arguments: layoutKinds)

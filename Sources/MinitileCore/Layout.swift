@@ -22,7 +22,7 @@ public enum Layout {
     }
 
     /// The single description of every layout, by slot. Frames, edge drags and resizes all read their cuts from it.
-    /// Variants a count does not define use its `standard` layout.
+    /// Variants a count does not define use its first layout.
     static func tiles(count: Int, variant: Variant) -> [Tile] {
         func tile(_ long: (Int?, Int?), _ short: (Int?, Int?)) -> Tile {
             Tile(long: Span(start: long.0, end: long.1), short: Span(start: short.0, end: short.1))
@@ -33,7 +33,9 @@ public enum Layout {
         case (2, .alternate): return [tile(all, (nil, 0)), tile(all, (0, nil))]
         case (2, _): return [tile((nil, 0), all), tile((0, nil), all)]
         case (3, .alternate): return [tile((nil, 0), all), tile((0, 1), all), tile((1, nil), all)]
-        case (3, .mirrored): return [tile((0, nil), all), tile((nil, 0), (nil, 1)), tile((nil, 0), (1, nil))]
+        case (3, .twoByOneTall): return [tile((0, nil), all), tile((nil, 0), (nil, 1)), tile((nil, 0), (1, nil))]
+        case (3, .oneByTwoWide): return [tile(all, (nil, 0)), tile((nil, 1), (0, nil)), tile((1, nil), (0, nil))]
+        case (3, .twoByOneWide): return [tile(all, (0, nil)), tile((nil, 1), (nil, 0)), tile((1, nil), (nil, 0))]
         case (3, .stacked): return [tile(all, (nil, 0)), tile(all, (0, 1)), tile(all, (1, nil))]
         case (3, _): return [tile((nil, 0), all), tile((0, nil), (nil, 1)), tile((0, nil), (1, nil))]
         case (4, _): return [tile((nil, 0), (nil, 1)), tile((0, nil), (nil, 1)), tile((nil, 0), (1, nil)), tile((0, nil), (1, nil))]
@@ -46,14 +48,15 @@ public enum Layout {
         switch count {
         case 1, 4: [.standard]
         case 2: [.standard, .alternate]
-        case 3: [.standard, .mirrored, .alternate, .stacked]
+        case 3: [.oneByTwoTall, .twoByOneTall, .oneByTwoWide, .twoByOneWide, .alternate, .stacked]
         default: []
         }
     }
 
-    /// The layout a count uses for `variant`: its own where the count defines it, otherwise `standard`.
+    /// The layout a count uses for `variant`: its own where the count defines it, otherwise the count's first.
     public static func effective(_ variant: Variant, count: Int) -> Variant {
-        variants(count: count).contains(variant) ? variant : .standard
+        let order = variants(count: count)
+        return order.contains(variant) ? variant : order.first ?? .standard
     }
 
     /// The variant after `variant` in its count's cycling order, or nil when the count has one layout.

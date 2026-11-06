@@ -7,14 +7,14 @@ private func currentPage(_ e: Engine) -> PageState { e.page(e.currentLocation(di
     #expect(Layout.variants(count: 0) == [])
     #expect(Layout.variants(count: 1) == [.standard])
     #expect(Layout.variants(count: 2) == [.standard, .alternate])
-    #expect(Layout.variants(count: 3) == [.standard, .mirrored, .alternate, .stacked])
+    #expect(Layout.variants(count: 3) == [.oneByTwoTall, .twoByOneTall, .oneByTwoWide, .twoByOneWide, .alternate, .stacked])
     #expect(Layout.variants(count: 4) == [.standard])
     #expect(Layout.variants(count: 5) == [])
     for count in 0...5 {
         let order = Layout.variants(count: count)
         for variant in Variant.allCases {
             let effective = Layout.effective(variant, count: count)
-            #expect(effective == (order.contains(variant) ? variant : .standard))
+            #expect(effective == (order.contains(variant) ? variant : order.first ?? .standard))
             let index = order.firstIndex(of: effective)
             #expect(Layout.next(variant, count: count) == (order.count > 1 ? order[(index! + 1) % order.count] : nil))
         }
@@ -31,8 +31,9 @@ func placeMovesWindowAndKeepsOthersInOrder(_ id: WindowID, _ slot: Int, _ expect
 @Test func placeChangingVariantResetsRatiosAndSlotOnlyKeepsThem() {
     var e = engine(3)
     command(&e, "page ratio 0.6 0.7")
+    // `standard` places in the count's first layout, which keeps the page's ratios.
     command(&e, "window place 3 standard 0")
-    #expect(currentPage(e).variant == .standard)
+    #expect(currentPage(e).variant == .oneByTwoTall)
     #expect((currentPage(e).r1, currentPage(e).r2) == (0.6, 0.7))
     command(&e, "window place 1 stacked 2")
     #expect(grid(e) == [[[3, 2, 1]]])
@@ -41,12 +42,15 @@ func placeMovesWindowAndKeepsOthersInOrder(_ id: WindowID, _ slot: Int, _ expect
     let frames = e.makeScene().displays["primary"]!.frames
     let expected = Layout.frames(frame: testDisplay.visibleFrame, count: 3, variant: .stacked)
     #expect([frames[3]!, frames[2]!, frames[1]!] == expected)
+    command(&e, "window place 2 1x2-wide 0")
+    #expect(grid(e) == [[[2, 3, 1]]])
+    #expect(currentPage(e).variant == .oneByTwoWide)
 }
 
 @Test func placeKeepsRatiosWhenTheCountAlreadyLaysOutThatVariant() {
     var e = engine(3)
     command(&e, "page variant")
-    #expect(currentPage(e).variant == .mirrored)
+    #expect(currentPage(e).variant == .twoByOneTall)
     _ = e.handle(.windowGone(3))
     command(&e, "page ratio 0.6")
     command(&e, "window place 1 standard 1")
@@ -56,11 +60,11 @@ func placeMovesWindowAndKeepsOthersInOrder(_ id: WindowID, _ slot: Int, _ expect
 }
 
 @Test(arguments: [
-    (2, "window place 1 mirrored 0"), (2, "window place 1 stacked 1"), (2, "window place 1 standard 2"),
+    (2, "window place 1 2x1-tall 0"), (2, "window place 1 stacked 1"), (2, "window place 1 standard 2"),
     (2, "window place 1 alternate -1"), (2, "window place 1 wat 0"), (2, "window place 1 standard x"),
     (2, "window place 1 standard"), (2, "window place 1 standard 0 extra"), (2, "window place 99 standard 0"),
     (4, "window place 1 alternate 0"), (4, "window place 1 standard 4"), (1, "window place 1 alternate 0"),
-    (1, "window place 1 standard 1"),
+    (1, "window place 1 standard 1"), (2, "window place 1 1x2-wide 0"), (4, "window place 1 2x1-wide 0"),
 ])
 func placeRejectsLayoutsAndSlotsTheCountLacks(_ count: Int, _ text: String) {
     var e = engine(count)
@@ -81,7 +85,7 @@ func placeRejectsLayoutsAndSlotsTheCountLacks(_ count: Int, _ text: String) {
     minimized.minimized = true
     _ = e.handle(.windowUpdated(minimized))
     #expect(grid(e) == [[[1, 2, 3, 9]]])
-    for text in ["window place 9 standard 0", "window place 2 standard 0", "window place 1 mirrored 0", "window place 1 standard 2"] {
+    for text in ["window place 9 standard 0", "window place 2 standard 0", "window place 1 2x1-tall 0", "window place 1 standard 2"] {
         #expect(e.handle(.command(text.split(separator: " ").map(String.init))).reply?.ok == false)
     }
     command(&e, "window place 3 alternate 0")
@@ -90,7 +94,7 @@ func placeRejectsLayoutsAndSlotsTheCountLacks(_ count: Int, _ text: String) {
     #expect(grid(e) == [[[1, 3, 2, 9]]])
     #expect(currentPage(e).variant == .standard)
     _ = e.handle(.windowUpdated(window(2)))
-    command(&e, "window place 2 mirrored 0")
+    command(&e, "window place 2 2x1-tall 0")
     #expect(grid(e) == [[[2, 1, 3, 9]]])
     _ = e.handle(.windowAppeared(window(5)))
     let frames = e.makeScene().displays["primary"]!.frames
@@ -99,7 +103,7 @@ func placeRejectsLayoutsAndSlotsTheCountLacks(_ count: Int, _ text: String) {
     minimized.minimized = true
     _ = e.handle(.windowUpdated(minimized))
     command(&e, "page ratio 0.6 0.7")
-    command(&e, "window place 5 mirrored 1")
+    command(&e, "window place 5 2x1-tall 1")
     #expect(grid(e) == [[[2, 1, 5, 3, 9]]])
     #expect((currentPage(e).r1, currentPage(e).r2) == (0.6, 0.7))
 }
@@ -131,5 +135,5 @@ func placeRejectsLayoutsAndSlotsTheCountLacks(_ count: Int, _ text: String) {
     #expect([scene.frames[6]!, scene.frames[5]!] == Layout.frames(frame: testDisplay.visibleFrame, count: 2, variant: .alternate))
     command(&e, "window place standard 1")
     #expect(grid(e) == [[[1, 2, 3, 4], [5, 6]]])
-    #expect(Engine.help.contains("window place [ID] standard|alternate|mirrored|stacked SLOT"))
+    #expect(Engine.help.contains("window place [ID] standard|alternate|stacked|1x2-tall|2x1-tall|1x2-wide|2x1-wide SLOT"))
 }

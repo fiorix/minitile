@@ -146,11 +146,13 @@ extension Engine {
         try swap(id, active[((index + step) % active.count + active.count) % active.count], output: &output)
     }
 
-    /// Sets the page's variant and puts the window in that tile of the layout. Slots count the page's active tiles; the
-    /// other active tiles keep their order, and reserved and floating windows keep their places in the page's list.
-    mutating func place(_ id: WindowID, variant: Variant, slot: Int, output: inout Output) throws {
+    /// Sets the page's variant and puts the window in that tile of the layout. `standard` stands for the count's first
+    /// layout. Slots count the page's active tiles; the other active tiles keep their order, and reserved and floating
+    /// windows keep their places in the page's list.
+    mutating func place(_ id: WindowID, variant requested: Variant, slot: Int, output: inout Output) throws {
         guard let (at, _) = activeTile(id) else { throw CommandError("Window has no active tile") }
         let active = tiled(page(at), activeOnly: true)
+        let variant = requested == .standard ? Layout.effective(.standard, count: active.count) : requested
         guard Layout.variants(count: active.count).contains(variant) else {
             throw CommandError("\(variant.rawValue) is not a layout for \(active.count) windows")
         }

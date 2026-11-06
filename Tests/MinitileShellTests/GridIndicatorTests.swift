@@ -97,7 +97,7 @@ func miniaturesMirrorTheCoreLayoutOnShownAndStashedPages(portrait: Bool) {
     _ = engine.handle(.windowUpdated(info(2, minimized: true)))
     _ = engine.handle(.windowUpdated(info(7, appHidden: true)))
     // Three active tiles on the shown page: every three-window variant, each at moved ratios.
-    for variant in [Variant.mirrored, .alternate, .stacked, .standard] {
+    for variant in [Variant.twoByOneTall, .oneByTwoWide, .twoByOneWide, .alternate, .stacked, .oneByTwoTall] {
         _ = engine.handle(.command(["page", "variant"]))
         let output = engine.handle(.command(["page", "ratio", "0.3", "0.6"]))
         let state = engine.savedState()

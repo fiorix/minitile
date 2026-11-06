@@ -152,8 +152,7 @@ func loneWindowAtWorkspaceEndEmitsNothing(_ direction: String) {
 
 @Test func middleSliceResizeUsesItsShareAndKeepsOtherCut() {
     var e = engine(3)
-    command(&e, "page variant")
-    command(&e, "page variant")
+    command(&e, "window place 1 alternate 0")
     command(&e, "window resize 2 0.2")
     let page = e.page(e.currentLocation(display: 0)!)
     #expect(abs(page.r2 - 2.0 / 3) < 0.00001)
@@ -164,8 +163,7 @@ func loneWindowAtWorkspaceEndEmitsNothing(_ direction: String) {
 
 @Test func singleSliceEdgeClampsWithoutMovingOtherCut() {
     var e = engine(3, config: Config(gaps: 0, padding: 0))
-    command(&e, "page variant")
-    command(&e, "page variant")
+    command(&e, "window place 1 alternate 0")
     var frame = e.makeScene().displays["primary"]!.frames[1]!
     frame.width = 900
     _ = e.handle(.dragEnded(1, frame: frame, cursor: frame.center))

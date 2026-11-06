@@ -106,7 +106,7 @@ Configuration reloads automatically when the file changes. `mntl config open` op
 
 - Drag a tiled window's inner edge to resize its shared divider. Drag a corner to adjust both dividers.
 - Drop a window onto another tile on the same page to swap their positions.
-- While dragging, use the layout picker at the bottom of the display: hover a tile to preview placement, then drop onto it to select that layout and position.
+- While dragging, use the layout picker in the middle of the display: hover a tile to preview placement, then drop onto it to select that layout and position.
 - Press Control+arrows while dragging to nudge the window between pages or carry it between workspaces. Release the mouse to finish the move.
 - Use the configured three- or four-finger desktop gesture to navigate: horizontal swipes for pages and vertical swipes for workspaces. Set `trackpad_swipes = false` to leave these gestures with macOS.
 

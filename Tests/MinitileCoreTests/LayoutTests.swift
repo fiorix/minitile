@@ -16,8 +16,10 @@ private let layouts: [LayoutCase] = [
     LayoutCase(count: 3, variant: .alternate, expected: [Rect(x: 130, y: 90, width: 322, height: 780), Rect(x: 462, y: 90, width: 316, height: 780), Rect(x: 788, y: 90, width: 322, height: 780)]),
     LayoutCase(count: 4, variant: .standard, expected: [Rect(x: 130, y: 90, width: 485, height: 385), Rect(x: 625, y: 90, width: 485, height: 385), Rect(x: 130, y: 485, width: 485, height: 385), Rect(x: 625, y: 485, width: 485, height: 385)]),
     LayoutCase(count: 4, variant: .alternate, expected: [Rect(x: 130, y: 90, width: 485, height: 385), Rect(x: 625, y: 90, width: 485, height: 385), Rect(x: 130, y: 485, width: 485, height: 385), Rect(x: 625, y: 485, width: 485, height: 385)]),
-    LayoutCase(count: 3, variant: .mirrored, expected: [Rect(x: 625, y: 90, width: 485, height: 780), Rect(x: 130, y: 90, width: 485, height: 385), Rect(x: 130, y: 485, width: 485, height: 385)]),
+    LayoutCase(count: 3, variant: .twoByOneTall, expected: [Rect(x: 625, y: 90, width: 485, height: 780), Rect(x: 130, y: 90, width: 485, height: 385), Rect(x: 130, y: 485, width: 485, height: 385)]),
     LayoutCase(count: 3, variant: .stacked, expected: [Rect(x: 130, y: 90, width: 980, height: 255), Rect(x: 130, y: 355, width: 980, height: 250), Rect(x: 130, y: 615, width: 980, height: 255)]),
+    LayoutCase(count: 3, variant: .oneByTwoWide, expected: [Rect(x: 130, y: 90, width: 980, height: 385), Rect(x: 130, y: 485, width: 485, height: 385), Rect(x: 625, y: 485, width: 485, height: 385)]),
+    LayoutCase(count: 3, variant: .twoByOneWide, expected: [Rect(x: 130, y: 485, width: 980, height: 385), Rect(x: 130, y: 90, width: 485, height: 385), Rect(x: 625, y: 90, width: 485, height: 385)]),
 ]
 
 @Test(arguments: layouts, [false, true])
@@ -33,8 +35,7 @@ private func exactFrames(_ item: LayoutCase, portrait: Bool) {
     command(&e, "page ratio -1 2")
     #expect(e.page(e.currentLocation(display: 0)!).r1 == 0.2)
     #expect(e.page(e.currentLocation(display: 0)!).r2 == 0.8)
-    command(&e, "page variant")
-    command(&e, "page variant")
+    while e.page(e.currentLocation(display: 0)!).variant != .alternate { command(&e, "page variant") }
     #expect(e.page(e.currentLocation(display: 0)!).r1 == 1.0 / 3)
     #expect(e.page(e.currentLocation(display: 0)!).r2 == 2.0 / 3)
     command(&e, "page ratio 0.8 0.2")
@@ -68,22 +69,24 @@ func variantsUndefinedForACountUseItsStandardLayout(portrait: Bool) {
     let frame = Rect(x: 120, y: 80, width: portrait ? 800 : 1000, height: portrait ? 1000 : 800)
     for count in [1, 2, 4] {
         let standard = Layout.frames(frame: frame, count: count, variant: .standard)
-        for variant in [Variant.mirrored, .stacked] {
+        for variant in [Variant.twoByOneTall, .stacked, .oneByTwoWide, .twoByOneWide] {
             #expect(Layout.frames(frame: frame, count: count, variant: variant) == standard)
             #expect(Layout.defaults(count: count, variant: variant) == (0.5, 0.5))
         }
     }
-    #expect(Layout.defaults(count: 3, variant: .mirrored) == (0.5, 0.5))
+    #expect(Layout.defaults(count: 3, variant: .twoByOneTall) == (0.5, 0.5))
+    #expect(Layout.defaults(count: 3, variant: .oneByTwoWide) == (0.5, 0.5))
     #expect(Layout.defaults(count: 3, variant: .stacked) == (1.0 / 3, 2.0 / 3))
     let spaced = Layout.ratios(0.5, 0.55, count: 3, variant: .stacked)
     #expect(abs(spaced.0 - 0.5) < 0.00001 && abs(spaced.1 - 0.7) < 0.00001)
-    #expect(Layout.ratios(0.5, 0.55, count: 3, variant: .mirrored) == (0.5, 0.55))
+    #expect(Layout.ratios(0.5, 0.55, count: 3, variant: .twoByOneTall) == (0.5, 0.55))
+    #expect(Layout.ratios(0.5, 0.55, count: 3, variant: .twoByOneWide) == (0.5, 0.55))
 }
 
 @Test func variantCyclesThroughItsCountsLayoutsAndResetsRatios() {
     func cycle(_ count: Int) -> [Variant] {
         var e = engine(count)
-        return (0..<4).map { _ in
+        return (0..<6).map { _ in
             command(&e, "page ratio 0.6 0.75")
             command(&e, "page variant")
             let page = e.page(e.currentLocation(display: 0)!)
@@ -91,8 +94,8 @@ func variantsUndefinedForACountUseItsStandardLayout(portrait: Bool) {
             return page.variant
         }
     }
-    #expect(cycle(3) == [.mirrored, .alternate, .stacked, .standard])
-    #expect(cycle(2) == [.alternate, .standard, .alternate, .standard])
+    #expect(cycle(3) == [.twoByOneTall, .oneByTwoWide, .twoByOneWide, .alternate, .stacked, .oneByTwoTall])
+    #expect(cycle(2) == [.alternate, .standard, .alternate, .standard, .alternate, .standard])
     for count in [1, 4] {
         var e = engine(count)
         let before = e.savedState()
@@ -102,7 +105,7 @@ func variantsUndefinedForACountUseItsStandardLayout(portrait: Bool) {
     }
 }
 
-@Test(arguments: [Variant.mirrored, .stacked])
+@Test(arguments: [Variant.twoByOneTall, .stacked, .oneByTwoWide, .twoByOneWide])
 func pageKeepsItsVariantAcrossCountChangesAndCyclesOnFromStandard(_ variant: Variant) {
     var e = engine(3)
     while e.page(e.currentLocation(display: 0)!).variant != variant { command(&e, "page variant") }
@@ -123,8 +126,11 @@ func pageKeepsItsVariantAcrossCountChangesAndCyclesOnFromStandard(_ variant: Var
 }
 
 @Test func savedVariantsDecodeByName() throws {
-    let names = ["standard", "alternate", "mirrored", "stacked"]
+    let names = ["standard", "alternate", "stacked", "1x2-tall", "2x1-tall", "1x2-wide", "2x1-wide"]
     let data = try JSONEncoder().encode(names)
     #expect(try JSONDecoder().decode([Variant].self, from: data) == Variant.allCases)
     #expect(Variant.allCases.map(\.rawValue) == names)
+    #expect(try JSONEncoder().encode(Variant.allCases) == data)
+    #expect(try JSONDecoder().decode([Variant].self, from: Data(#"["mirrored"]"#.utf8)) == [.twoByOneTall])
+    #expect(throws: DecodingError.self) { try JSONDecoder().decode([Variant].self, from: Data(#"["sideways"]"#.utf8)) }
 }

@@ -31,24 +31,25 @@ private func global(_ picker: DropPicker, _ point: CGPoint) -> CGPoint {
 
 private func center(_ rect: CGRect) -> CGPoint { CGPoint(x: rect.midX, y: rect.midY) }
 
-@Test(arguments: [(2, [Variant.standard, .alternate]), (3, [.standard, .mirrored, .alternate, .stacked]), (4, [.standard])])
+@Test(arguments: [(2, [Variant.standard, .alternate]), (3, [.oneByTwoTall, .twoByOneTall, .oneByTwoWide, .twoByOneWide, .alternate, .stacked]), (4, [.standard])])
 func pickerOffersTheCountsLayoutsInARowInTheMiddle(_ count: Int, _ variants: [Variant]) throws {
     let picker = try #require(dropPicker(engine(count)))
     #expect(picker.options.map(\.variant) == variants)
-    #expect(picker.options.map(\.current) == variants.map { $0 == .standard })
+    #expect(picker.options.map(\.current) == variants.map { $0 == variants[0] })
     #expect(picker.pid == 101)
     #expect(picker.display == "d")
-    // The switcher's cell size, unscaled on this display, in the middle of the usable area.
-    #expect(picker.metrics == .picker)
+    // The switcher's cell size in the middle of the usable area, scaled down on this display only for the six layouts
+    // of three windows.
+    #expect((picker.metrics == .picker) == (count != 3))
     #expect(GridMetrics.picker.scale == 2)
     #expect(GridMetrics.picker.cellArea == GridMetrics.switcher.cellArea)
-    let cell = GridIndicatorGeometry.cellSize(area: display.visibleFrame, metrics: .picker)
-    let margin = DropPicker.margin * GridMetrics.picker.scale
+    let cell = GridIndicatorGeometry.cellSize(area: display.visibleFrame, metrics: picker.metrics)
+    let margin = DropPicker.margin * picker.metrics.scale
     for (index, option) in picker.options.enumerated() {
         #expect(option.frames.count == count)
         #expect(option.tiles.count == count)
         #expect(option.cell.size == cell)
-        #expect(option.cell.minX == margin + CGFloat(index) * (cell.width + GridMetrics.picker.spacing))
+        #expect(option.cell.minX == margin + CGFloat(index) * (cell.width + picker.metrics.spacing))
         #expect(option.cell.minY == margin)
         for tile in option.tiles { #expect(option.cell.contains(center(tile))) }
     }
@@ -59,7 +60,7 @@ func pickerOffersTheCountsLayoutsInARowInTheMiddle(_ count: Int, _ variants: [Va
 }
 
 @Test func pickerScalesDownToFitASmallDisplay() throws {
-    #expect(dropPicker(engine(3))?.metrics == .picker)
+    #expect(dropPicker(engine(2))?.metrics == .picker)
     let small = DisplayInfo(id: "d", frame: Rect(x: 0, y: 0, width: 480, height: 330), visibleFrame: Rect(x: 0, y: 30, width: 480, height: 300),
                             isPrimary: true)
     var e = Engine(config: config)
@@ -67,7 +68,7 @@ func pickerOffersTheCountsLayoutsInARowInTheMiddle(_ count: Int, _ variants: [Va
                           displays: [small], focus: nil))
     let picker = try #require(dropPicker(e))
     #expect(picker.metrics.scale < 1)
-    #expect(picker.options.count == 4)
+    #expect(picker.options.count == 6)
     #expect(picker.frame.minX >= small.visibleFrame.x + PanelStyle.inset)
     #expect(picker.frame.maxX <= small.visibleFrame.maxX - PanelStyle.inset)
     let last = try #require(picker.options.last)
@@ -89,7 +90,7 @@ func pickerOffersTheCountsLayoutsInARowInTheMiddle(_ count: Int, _ variants: [Va
     minimized.minimized = true
     _ = five.handle(.windowUpdated(minimized))
     #expect(dropPicker(five, 2) == nil)
-    #expect(dropPicker(five, 1)?.options.map(\.variant) == [.standard, .mirrored, .alternate, .stacked])
+    #expect(dropPicker(five, 1)?.options.map(\.variant) == [.oneByTwoTall, .twoByOneTall, .oneByTwoWide, .twoByOneWide, .alternate, .stacked])
     _ = five.handle(.windowAppeared(WindowInfo(id: 95, pid: 195, tileable: false, display: "d")))
     #expect(dropPicker(five, 95) == nil)
     run(&five, "window float 3 on")
@@ -110,8 +111,8 @@ func pickerOffersTheCountsLayoutsInARowInTheMiddle(_ count: Int, _ variants: [Va
     }
     let first = picker.options[0], second = picker.options[1]
     // The gap between the large tile and the pair, and the cell's rim, still pick the nearest tile.
-    #expect(picker.target(at: global(picker, CGPoint(x: (first.tiles[0].maxX + first.tiles[1].minX) / 2, y: first.tiles[0].midY)))?.variant == .standard)
-    #expect(picker.target(at: global(picker, CGPoint(x: first.cell.minX + 0.5, y: first.cell.midY))) == DropTarget(variant: .standard, slot: 0))
+    #expect(picker.target(at: global(picker, CGPoint(x: (first.tiles[0].maxX + first.tiles[1].minX) / 2, y: first.tiles[0].midY)))?.variant == .oneByTwoTall)
+    #expect(picker.target(at: global(picker, CGPoint(x: first.cell.minX + 0.5, y: first.cell.midY))) == DropTarget(variant: .oneByTwoTall, slot: 0))
     let between = CGPoint(x: (first.cell.maxX + second.cell.minX) / 2, y: first.cell.midY)
     for point in [between, CGPoint(x: 2, y: 2), CGPoint(x: first.cell.midX, y: first.cell.maxY + 2)] {
         #expect(picker.target(at: global(picker, point)) == nil)
@@ -134,7 +135,7 @@ func previewIsTheFrameWindowPlaceLaysOut(_ count: Int) throws {
         }
     }
     #expect(picker.preview(DropTarget(variant: .standard, slot: count)) == nil)
-    #expect(picker.preview(DropTarget(variant: .stacked, slot: 0)) == (count == 3 ? picker.options[3].frames[0] : nil))
+    #expect(picker.preview(DropTarget(variant: .stacked, slot: 0)) == (count == 3 ? picker.options[5].frames[0] : nil))
 }
 
 @Test func pickerKeepsRatiosForTheLayoutACountUsesForAnUndefinedVariant() throws {
@@ -156,7 +157,7 @@ func previewIsTheFrameWindowPlaceLaysOut(_ count: Int) throws {
     #expect(dropPicker(e) == nil)
     run(&e, "window nudge 1 right")
     let moved = try #require(dropPicker(e))
-    #expect(moved.options.map(\.variant) == [.standard, .mirrored, .alternate, .stacked])
+    #expect(moved.options.map(\.variant) == [.oneByTwoTall, .twoByOneTall, .oneByTwoWide, .twoByOneWide, .alternate, .stacked])
     #expect(moved.options[0].frames.count == 3)
 }
 

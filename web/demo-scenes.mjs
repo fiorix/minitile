@@ -171,7 +171,7 @@ export const scenes = [
         ["control", "option", "space"],
       ),
       step(
-        "Again: three columns.",
+        "Again: the large window moves to the top.",
         { ...carried, variant: 2 },
         ["control", "option", "space"],
       ),

@@ -191,14 +191,13 @@ test("Control+Option+Space cycles the shown page without moving windows to diffe
     );
   }
   const mirrored = windowRects(steps[4].state);
-  assert.equal(mirrored.mail.x, mirrored.calendar.x);
-  assert.equal(mirrored.notes.height, 1);
-  assert.equal(mirrored.notes.x, 0.5);
-  const columns = windowRects(steps[5].state);
-  for (const id of ["mail", "calendar", "notes"]) {
-    assert.equal(columns[id].height, 1);
-    assert.equal(columns[id].width, 1 / 3);
-  }
+  assert.equal(mirrored.calendar.x, mirrored.notes.x);
+  assert.equal(mirrored.mail.height, 1);
+  assert.equal(mirrored.mail.x, 0.5);
+  const top = windowRects(steps[5].state);
+  assert.deepEqual([top.mail.y, top.mail.width], [0, 1]);
+  assert.equal(top.calendar.y, top.notes.y);
+  assert.equal(top.calendar.y, top.mail.height);
 });
 
 test("resizes move shared dividers while the other windows remain tiled", () => {

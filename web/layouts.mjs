@@ -1,7 +1,7 @@
 export const layoutNames = {
   1: ["full page"],
   2: ["side by side", "stacked"],
-  3: ["main + stack", "stack + main", "columns", "rows"],
+  3: ["main + stack", "stack + main", "main on top", "main at bottom", "columns", "rows"],
   4: ["four quarters"],
 };
 
@@ -25,9 +25,19 @@ const arrangements = {
       [0.5, 0.5, 0.5, 0.5],
     ],
     [
+      [0.5, 0, 0.5, 1],
       [0, 0, 0.5, 0.5],
       [0, 0.5, 0.5, 0.5],
-      [0.5, 0, 0.5, 1],
+    ],
+    [
+      [0, 0, 1, 0.5],
+      [0, 0.5, 0.5, 0.5],
+      [0.5, 0.5, 0.5, 0.5],
+    ],
+    [
+      [0, 0.5, 1, 0.5],
+      [0, 0, 0.5, 0.5],
+      [0.5, 0, 0.5, 0.5],
     ],
     [
       [0, 0, 1 / 3, 1],

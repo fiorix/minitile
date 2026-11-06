@@ -72,7 +72,7 @@ private func open(_ state: SavedState, forward: Bool = true) -> SwitcherSelectio
 
 @Test func switcherRingVisitsTilesInReadingOrder() throws {
     var state = model([[[1, 2, 3]], [[4]]], focus: 2)
-    state.displays[0].workspaces[0].pages[0].variant = .mirrored
+    state.displays[0].workspaces[0].pages[0].variant = .twoByOneTall
     let selection = try #require(open(state))
     #expect(selection.order == [2, 1, 3, 4])
     #expect(selection.selected == 1)

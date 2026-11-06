@@ -22,7 +22,7 @@ extension Engine {
     window move [ID] display UUID|next|prev
     window swap [ID] OTHER_ID|next|prev
     window resize [ID] SHARE|WIDTHxHEIGHT|left|right|up|down
-    window place [ID] standard|alternate|mirrored|stacked SLOT
+    window place [ID] standard|alternate|stacked|1x2-tall|2x1-tall|1x2-wide|2x1-wide SLOT
     page list
     page info|show|variant [INDEX|next|prev]
     page next|prev [display UUID]
@@ -183,7 +183,7 @@ extension Engine {
             else { try resize(id, size: args[0], output: &output) }
         case "place":
             guard args.count == 2, let variant = Variant(rawValue: args[0]), let slot = Int(args[1]) else {
-                throw CommandError("Expected window place [ID] standard|alternate|mirrored|stacked SLOT")
+                throw CommandError("Expected window place [ID] standard|alternate|stacked|1x2-tall|2x1-tall|1x2-wide|2x1-wide SLOT")
             }
             try place(id, variant: variant, slot: slot, output: &output)
         default: throw CommandError("Expected window list|info|show|hide|focus|float|move|nudge|swap|resize|place|close")

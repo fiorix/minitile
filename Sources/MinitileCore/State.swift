@@ -1,7 +1,21 @@
 import Foundation
 
-/// A page's layout for its window count. `mirrored` and `stacked` exist only for three windows.
-public enum Variant: String, Codable, Sendable, CaseIterable { case standard, alternate, mirrored, stacked }
+/// A page's layout for its window count. `standard` is each count's first layout and every other variant but
+/// `alternate` exists only for three windows. The large-plus-two names count the large window and the pair in order;
+/// a tall large window spans the short axis and a wide one the long axis, as on a landscape display.
+public enum Variant: String, Codable, Sendable, CaseIterable {
+    case standard, alternate, stacked
+    case oneByTwoTall = "1x2-tall", twoByOneTall = "2x1-tall", oneByTwoWide = "1x2-wide", twoByOneWide = "2x1-wide"
+
+    /// State files may name `2x1-tall` by its former name, `mirrored`.
+    public init(from decoder: any Decoder) throws {
+        let name = try decoder.singleValueContainer().decode(String.self)
+        guard let variant = Variant(rawValue: name == "mirrored" ? Variant.twoByOneTall.rawValue : name) else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown layout \(name)"))
+        }
+        self = variant
+    }
+}
 
 /// Persistent page identity and ordered windows, including floating windows and reserved slots.
 public struct PageState: Codable, Sendable, Equatable {
