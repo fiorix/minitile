@@ -35,14 +35,31 @@ enum ViewChangeEcho {
 
     static func ignores(_ id: WindowID?, state: SavedState, now: TimeInterval, until: TimeInterval) -> Bool {
         guard now < until, let id else { return false }
-        for display in state.displays {
+        return state.pageShown(holding: id) == false
+    }
+}
+
+/// Some windows cannot become key, such as a small untitled window an app keeps open, and their app keeps the key
+/// window it had, often on the page minitile just hid. The reread after minitile focuses such a window names that
+/// window; following it would undo the navigation, so minitile keeps the page and focuses another window on it.
+enum RefusedFocus {
+    static func refused(_ target: WindowID, reported: WindowID?, state: SavedState) -> Bool {
+        guard let reported, reported != target, state.focus == target else { return false }
+        return state.pageShown(holding: target) == true && state.pageShown(holding: reported) == false
+    }
+}
+
+extension SavedState {
+    /// Whether the page holding `id` is its display's shown page; nil when no page holds it.
+    func pageShown(holding id: WindowID) -> Bool? {
+        for display in displays {
             for workspace in display.workspaces {
                 for page in workspace.pages where page.windows.contains(id) {
-                    return display.currentWorkspace != workspace.id || workspace.currentPage != page.id
+                    return display.currentWorkspace == workspace.id && workspace.currentPage == page.id
                 }
             }
         }
-        return false
+        return nil
     }
 }
 
@@ -103,6 +120,8 @@ final class Reconciler {
     private var ownFocus = FocusEchoes()
     private var focusRead: DispatchWorkItem?
     private var pendingFocus: WindowID?
+    /// The reread once a focus action's echo interval ends: the window minitile focused and the app's focus then.
+    var focusSettled: ((_ target: WindowID, _ reported: WindowID?) -> Void)?
     private(set) var lastFocusMilliseconds = 0.0
     var warning: ((String) -> Void)?
     private(set) var lastMilliseconds = 0.0
@@ -238,7 +257,10 @@ final class Reconciler {
         ownFocus.add(window.info.pid, now: ProcessInfo.processInfo.systemUptime)
         focusRead?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            MainActor.assumeIsolated { self?.discovery.refreshFocus(pid: window.info.pid) }
+            MainActor.assumeIsolated {
+                guard let self, case .known(let reported) = self.discovery.acceptedFocus(pid: window.info.pid) else { return }
+                self.focusSettled?(id, reported)
+            }
         }
         focusRead = work
         DispatchQueue.main.asyncAfter(deadline: .now() + FocusEchoes.interval, execute: work)

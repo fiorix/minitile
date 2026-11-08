@@ -140,7 +140,7 @@ Untested in minitile: the panel on screen and its columns, the link's hover and 
 
 ### Navigation and focus
 
-- Showing a page focuses the window that last had focus on it, or its first window. An empty page focuses nothing.
+- Showing a page focuses the window that last had focus on it, or its first window. An empty page focuses nothing. A window that cannot take focus leaves the page shown and the next window on it focused (see "Rules minitile must follow").
 - When the focused window closes, is minimized or ordered out, or its app is hidden, minitile does not focus another window. macOS picks the next one, and minitile follows it.
 - Ctrl+Up/Down (`workspace next|prev`) shows the page at the same position in the workspace above or below. If that workspace ends exactly one page short of the position, an empty page opens there, as Ctrl+Right from its last page would; if it is shorter still, its last page is shown. `workspace show` by index shows the page last viewed in that workspace.
 - Ctrl+Right on the last page opens an empty page, and Ctrl+Down on the last workspace opens an empty workspace. Neither opens a second empty one next to an empty one.
@@ -754,6 +754,7 @@ Focus and closing:
 - Set AX main and focused (plus raise), then call `activate`, then use SkyLight `_SLPSSetFrontProcessWithOptions` with the two key-window event records. On macOS 27, `activate` from an accessory app is dropped.
 - Keep our own record of the focused window; `kAXFocusedWindow` lags in some apps.
 - Forward focus/main-window notifications only from the frontmost app. For 1.2 s after a minitile focus action, suppress all focus notifications and activations from that pid, and reread once after the interval. Each app's echo is kept separately, so when focus moves quickly between apps (Cmd+` pressed repeatedly), late echoes of earlier focus actions are still recognised; an activation that is not an echo ends them all. A failed AX focus read is unknown and preserves the current focus.
+- Some windows cannot become key, such as a small untitled window an app keeps open, and their app keeps the key window it had. If the reread after focusing a window on a shown page, while the model's focus is still that window, names a window on a hidden page, the window refused focus: minitile keeps the page and runs `window focus next`, which also makes the next window the page's last focus. If that window refuses too, minitile stops there. Following the reread would undo the navigation and, with the refusing window as the page's last focus, bounce every visit to that page.
 - Focus actions are coalesced: the core's focus changes at once, but the Accessibility and SkyLight focus calls run once per main-loop turn for the latest target. `debug timings` reports the last run's duration as `focus_ms`.
 - Activating an app does not necessarily send a focus notification. When another app is activated, clear a recorded focus owned by a different app at once, without AX reads, then read the activated app's focus about 150 ms later, after macOS has settled its key window. An earlier read can return a stale key window on a hidden page.
 - Close a window by pressing its `kAXCloseButton`.

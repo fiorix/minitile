@@ -498,13 +498,17 @@ final class Discovery {
     }
 
     func refreshFocus(pid: Int32? = nil) {
-        guard !frozen, let frontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }
+        if case .known(let id) = acceptedFocus(pid: pid) { focused?(id) }
+    }
+
+    /// The frontmost app's focus, or unknown when `pid` is not frontmost or its focus reports are not accepted.
+    func acceptedFocus(pid: Int32? = nil) -> FocusObservation {
+        guard !frozen, let frontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return .unknown }
         let accepted = (pid == nil || pid == frontmost) && acceptsFocus?(frontmost) != false
         if traceFocus { startupLog("Focus notification pid=\(pid ?? frontmost) frontmost=\(frontmost) accepted=\(accepted)") }
-        guard accepted else { return }
-        if case .known(let id) = currentFocus() {
-            if traceFocus { startupLog("Focus read id=\(id.map(String.init) ?? "none")") }
-            focused?(id)
-        }
+        guard accepted else { return .unknown }
+        let focus = currentFocus()
+        if traceFocus, case .known(let id) = focus { startupLog("Focus read id=\(id.map(String.init) ?? "none")") }
+        return focus
     }
 }

@@ -71,6 +71,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var lastCrossed: DisplayID?
     var inputWaits = InputWaits()
     var viewEchoUntil: TimeInterval = 0
+    /// The window focused in place of one that refused focus; if it refuses too, minitile stops trying.
+    var focusFallback: WindowID?
     var lastConfig: String?
     var quitting = false
     var signalSources: [DispatchSourceSignal] = []
@@ -177,6 +179,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         discovery.activated = { [weak self] pid, received in self?.activate(pid, received: received, source: "ax") }
         discovery.acceptsFocus = { [weak reconciler] in reconciler?.acceptsFocus($0) == true }
         discovery.focused = { [weak self] in self?.focusReported($0) }
+        reconciler.focusSettled = { [weak self] in self?.focusSettled($0, reported: $1) }
         discovery.moved = { [weak self] in self?.windowMoved($0) }
         transitions.commit = { [weak self] in self?.commitHeld($0) }
         transitions.model = { [weak self] in self?.engine.savedState() ?? SavedState() }
@@ -337,6 +340,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let now = ProcessInfo.processInfo.systemUptime
         if ViewChangeEcho.ignores(id, state: engine.savedState(), now: now, until: viewEchoUntil) { return }
         handle(.focusChanged(id))
+    }
+
+    /// The reread after minitile focused `target`. A window that refused focus leaves the page shown and the next
+    /// window on it focused, which also replaces it as the page's last focus.
+    func focusSettled(_ target: WindowID, reported: WindowID?) {
+        let fallback = focusFallback
+        focusFallback = nil
+        guard RefusedFocus.refused(target, reported: reported, state: engine.savedState()) else {
+            focusReported(reported)
+            return
+        }
+        guard target != fallback else { return }
+        command(["window", "focus", "next"])
+        if let focus = engine.savedState().focus, focus != target { focusFallback = focus }
     }
 
     /// Apply a reconcile that waited for a transition capture, with the same ordering as `handle`.

@@ -39,6 +39,30 @@ import Testing
     #expect(!ViewChangeEcho.ignores(99, state: state, now: 1, until: 2))
 }
 
+@Test func appKeepingFocusOnAHiddenPageRefusedTheFocusedWindow() {
+    // Page 2 is shown and remembers a small window (10) its app cannot make key; the app keeps its window on page 3.
+    var shown = PageState(id: 2)
+    shown.windows = [11, 12, 10]
+    shown.lastFocus = 10
+    var hidden = PageState(id: 3)
+    hidden.windows = [20]
+    var state = SavedState()
+    state.displays = [DisplayState(info: DisplayInfo(id: "d", frame: .init(x: 0, y: 0, width: 1000, height: 800)),
+                                   workspaces: [WorkspaceState(id: 5, home: "d", pages: [shown, hidden], currentPage: 2)],
+                                   currentWorkspace: 5)]
+    state.focus = 10
+    #expect(RefusedFocus.refused(10, reported: 20, state: state))
+    #expect(!RefusedFocus.refused(10, reported: 10, state: state))
+    #expect(!RefusedFocus.refused(10, reported: 11, state: state))
+    #expect(!RefusedFocus.refused(10, reported: nil, state: state))
+    #expect(!RefusedFocus.refused(10, reported: 99, state: state))
+    // Focus that moved on since, or a target no longer on the shown page, is followed as before.
+    state.focus = 11
+    #expect(!RefusedFocus.refused(10, reported: 20, state: state))
+    state.focus = 20
+    #expect(!RefusedFocus.refused(20, reported: 10, state: state))
+}
+
 @Test func lateActivationsFromEarlierOwnFocusesStayEchoes() {
     var echoes = FocusEchoes()
     echoes.add(10, now: 0)
