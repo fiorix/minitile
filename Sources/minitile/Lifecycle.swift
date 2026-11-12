@@ -33,6 +33,10 @@ extension AppDelegate {
         observe(workspace, NSWorkspace.activeSpaceDidChangeNotification) { [weak self] _ in
             guard let self, self.discovery?.frozen == false else { return }
             self.displays.bounceFromStash()
+            // The model learns of windows entering or leaving full screen before the reconciler rereads where
+            // windows stand, so no later reconcile pulls a full screen window back to the desktop.
+            _ = self.displays.spacesChanged()
+            self.discovery?.spaceChanged()
             self.reconciler?.refreshSpaces()
             self.discovery?.recheckSoon()
             self.keyboard?.update(config: self.engine.config, displays: self.displays, dragged: self.reconciler?.dragging)
@@ -134,7 +138,7 @@ extension AppDelegate {
         let wasSuspended = !suspendedReasons.isEmpty
         let shouldResume = suspension.set(reason, enabled: enabled)
         discovery?.frozen = !suspendedReasons.isEmpty
-        if enabled { dropPanels.hide(); endGrab() }
+        if enabled { dropPanels.hide(); endGrab(); spaceSync = [] }
         if shouldResume { resume() }
         else if wasSuspended != !suspendedReasons.isEmpty { updateSwipes() }
         updateModalAvailability()
@@ -146,6 +150,8 @@ extension AppDelegate {
         func since(_ time: TimeInterval) -> Double { (ProcessInfo.processInfo.systemUptime - time) * 1000 }
         let changed = displays.refresh()
         displays.bounceFromStash()
+        // A window that went full screen meanwhile must leave the scene before it is applied again.
+        discovery.spaceChanged()
         reconciler.refreshSpaces(invalidateFrames: true)
         let displaysMs = since(start)
         if changed { transitions.displaysChanged(); handle(.displaysChanged(displays.infos)) }
@@ -193,8 +199,9 @@ extension AppDelegate {
         transitions.flush()
         reconciler?.activation = (pid, source, received)
         defer { reconciler?.activation = nil }
-        // No AX reads before this input: Cmd-Tab's desktop switch has a narrow race.
-        handle(.appActivated(pid: pid))
+        // No AX reads before this input: Cmd-Tab's desktop switch has a narrow race. Right after minitile switched a
+        // display's Space, the activation is macOS's answer to that, so it shows no page and only its focus is followed.
+        if now >= spaceSwitchedUntil { handle(.appActivated(pid: pid)) }
         if let app = NSRunningApplication(processIdentifier: pid), discovery?.allows(app) == false { handle(.focusChanged(nil)) }
         else { followActivatedFocus(pid) }
         discovery?.recheckSoon(pids: [pid])

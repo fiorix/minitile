@@ -69,6 +69,56 @@ private let up = TransitionKind.slide(TransitionDirection(dx: 0, dy: -1))
     #expect(plan(&e, "window nudge 2 left") == ["primary": left])
 }
 
+@Test func fullScreenPagesSlideLikeAnyOther() {
+    var engine = started(2)
+    var window = info(2)
+    window.fullscreen = true
+    _ = engine.handle(.windowUpdated(window))
+    #expect(plan(&engine, "page prev") == ["primary": left])
+    #expect(plan(&engine, "page next") == ["primary": right])
+}
+
+@Test func commandsActOnDisplaysWhoseViewChangedOrThatHoldTheFocusedWindow() {
+    var engine = started(1, displays: [primary, secondary], extra: [info(2), info(3, display: "secondary")])
+    func acted(_ command: String) -> Set<DisplayID> {
+        let before = engine.savedState()
+        let output = engine.handle(.command(command.split(separator: " ").map(String.init)))
+        #expect(output.reply?.ok == true)
+        return SpaceSync.displays(before: before, after: engine.savedState(), actions: output.actions)
+    }
+    #expect(acted("window focus 3") == ["secondary"])
+    #expect(acted("page next display primary") == ["primary"])
+    #expect(acted("page ratio 0.6") == [])
+    #expect(acted("window list") == [])
+    // A nudge shows the window's new page and focuses it there.
+    #expect(acted("window nudge 1 right") == ["primary"])
+}
+
+@Test func displayGoesToItsPagesSpaceOnlyWhereMinitileHasASay() {
+    // Visible desktop 1, stash 2, an extra desktop 5 and fullscreen Spaces 7 and 8.
+    #expect(SpaceSync.target(current: 1, visible: 1, page: 1, currentIsFullscreen: false) == nil)
+    #expect(SpaceSync.target(current: 7, visible: 1, page: 7, currentIsFullscreen: true) == nil)
+    // Onto a full screen window's Space from anywhere.
+    #expect(SpaceSync.target(current: 1, visible: 1, page: 7, currentIsFullscreen: false) == 7)
+    #expect(SpaceSync.target(current: 5, visible: 1, page: 7, currentIsFullscreen: false) == 7)
+    #expect(SpaceSync.target(current: 8, visible: 1, page: 7, currentIsFullscreen: true) == 7)
+    // Back to the desktop from a fullscreen Space only: the stash bounces by itself, and other desktops are the user's.
+    #expect(SpaceSync.target(current: 7, visible: 1, page: 1, currentIsFullscreen: true) == 1)
+    #expect(SpaceSync.target(current: 2, visible: 1, page: 1, currentIsFullscreen: false) == nil)
+    #expect(SpaceSync.target(current: 5, visible: 1, page: 1, currentIsFullscreen: false) == nil)
+}
+
+@Test func shownFullScreenWindowIsTheOneOnTheShownPage() {
+    var engine = started(2)
+    #expect(engine.savedState().shownFullscreenWindow(engine.savedState().displays[0]) == nil)
+    var window = info(2)
+    window.fullscreen = true
+    _ = engine.handle(.windowUpdated(window))
+    #expect(engine.savedState().shownFullscreenWindow(engine.savedState().displays[0]) == 2)
+    _ = engine.handle(.command(["page", "prev"]))
+    #expect(engine.savedState().shownFullscreenWindow(engine.savedState().displays[0]) == nil)
+}
+
 @Test func onlyTheCommandDisplayBounces() {
     var e = started(1, displays: [primary, secondary], extra: [info(9, display: "secondary")])
     #expect(e.commandDisplay == "primary")
@@ -248,6 +298,14 @@ private final class Harness {
     h.capture.requests[0].1(h.image)
     #expect(h.committed.count == 1)
     #expect(!h.handle(.command(["page", "variant"])))
+}
+
+@Test @MainActor func displayOffItsPagesSpaceDoesNotSlide() {
+    let harness = Harness()
+    // As while macOS shows the stash, or another app's fullscreen Space.
+    harness.transitions.showsItsPage = { _, _ in false }
+    #expect(!harness.handle(.command(["page", "next"])))
+    #expect(harness.capture.requests.isEmpty)
 }
 
 @Test @MainActor func bouncesAndDisabledTransitionsDoNotHoldTheReconcile() {

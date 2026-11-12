@@ -15,7 +15,7 @@ extension Engine {
             "floating": .bool(window.floating), "hidden": .bool(window.hidden), "focused": .bool(state.focus == id),
             "shown": .bool(at.map(isShown) == true && !window.info.minimized && !window.info.appHidden),
             "minimized": .bool(window.info.minimized), "app_hidden": .bool(window.info.appHidden),
-            "ordered_out": .bool(window.info.orderedOut),
+            "ordered_out": .bool(window.info.orderedOut), "fullscreen": .bool(window.info.fullscreen),
             "tileable": .bool(window.info.tileable),
         ])
     }

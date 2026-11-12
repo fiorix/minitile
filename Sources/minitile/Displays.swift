@@ -5,6 +5,9 @@ import MinitileCore
 struct NativeSpace: Codable, Equatable {
     var id: UInt64
     var type: Int
+
+    /// The Space macOS gives a full screen window, or two sharing a split view.
+    var fullscreen: Bool { type == 4 }
 }
 
 struct NativeDisplaySpaces: Equatable {
@@ -21,6 +24,20 @@ struct NativeDisplaySpaces: Equatable {
             }
             return Self(identifier: identifier, spaces: spaces)
         }
+    }
+
+    /// The displays' desktops without their fullscreen Spaces, which come and go with their windows.
+    static func desktops(_ displays: [Self]) -> [Self] {
+        displays.map { Self(identifier: $0.identifier, spaces: $0.spaces.filter { !$0.fullscreen }) }
+    }
+
+    /// Whether one of a window's Spaces is a fullscreen one.
+    static func fullscreen(_ spaces: [UInt64], in displays: [Self]) -> Bool {
+        displays.contains { $0.spaces.contains { $0.fullscreen && spaces.contains($0.id) } }
+    }
+
+    static func knows(_ spaces: [UInt64], in displays: [Self]) -> Bool {
+        spaces.allSatisfy { id in displays.contains { $0.spaces.contains { $0.id == id } } }
     }
 }
 
@@ -73,10 +90,32 @@ final class DisplayCatalog {
         return parsed.isEmpty ? nil : parsed
     }
 
-    /// Probe without committing a change before the lifecycle debounce completes.
+    /// Probe without committing a change before the lifecycle debounce completes. Fullscreen Spaces come and go with
+    /// their windows and leave every display's desktops as they were, so they are taken at once and are no change.
     func spacesChanged() -> Bool {
         guard let fresh = readSpaces() else { return false }
-        return fresh != nativeSpaces
+        return !takeFullscreenSpaces(fresh)
+    }
+
+    /// Takes a reading that differs from the catalog in fullscreen Spaces only. False when desktops changed too.
+    private func takeFullscreenSpaces(_ fresh: [NativeDisplaySpaces]) -> Bool {
+        guard NativeDisplaySpaces.desktops(fresh) == NativeDisplaySpaces.desktops(nativeSpaces) else { return false }
+        nativeSpaces = fresh
+        for index in displays.indices {
+            if let native = fresh.first(where: { $0.identifier == displays[index].identifier }) { displays[index].spaces = native.spaces }
+        }
+        return true
+    }
+
+    /// Whether a window on `spaces` stands on a native fullscreen Space. A Space the catalog has not seen is looked up
+    /// at once, since a fullscreen Space appears with its window.
+    func onFullscreenSpace(_ spaces: [UInt64]) -> Bool {
+        var native = nativeSpaces
+        if !NativeDisplaySpaces.knows(spaces, in: native), let fresh = readSpaces() {
+            _ = takeFullscreenSpaces(fresh)
+            native = fresh
+        }
+        return NativeDisplaySpaces.fullscreen(spaces, in: native)
     }
 
     /// Compare topology and usable geometry, excluding which desktop is currently showing.
@@ -130,6 +169,23 @@ final class DisplayCatalog {
         displays.first { display in
             display.info.unmanagedReason == nil && spaces.contains { $0 == display.info.visibleSpace || $0 == display.info.stashSpace }
         }
+    }
+
+    /// The catalog's native fullscreen Spaces.
+    var fullscreenSpaces: Set<UInt64> { Set(nativeSpaces.flatMap(\.spaces).filter(\.fullscreen).map(\.id)) }
+
+    /// The managed display on whose fullscreen Space a window on `spaces` stands.
+    func fullscreenOwner(spaces: [UInt64]) -> NativeDisplay? {
+        guard onFullscreenSpace(spaces) else { return nil }
+        return displays.first { display in
+            display.info.unmanagedReason == nil && display.spaces.contains { $0.fullscreen && spaces.contains($0.id) }
+        }
+    }
+
+    /// The fullscreen Space of display `id` among `spaces`, where one of its full screen windows stands.
+    func fullscreenSpace(of id: DisplayID, among spaces: [UInt64]) -> UInt64? {
+        guard onFullscreenSpace(spaces) else { return nil }
+        return displays.first { $0.info.id == id }?.spaces.first { $0.fullscreen && spaces.contains($0.id) }?.id
     }
 
     func bounceFromStash() {

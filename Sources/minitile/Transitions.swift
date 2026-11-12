@@ -25,7 +25,9 @@ final class Transitions {
     /// Applies a reconcile: moves and frames, then focus.
     var commit: ((Output) -> Void)?
     var model: (() -> SavedState)?
-    var visibleIsCurrent: ((DisplayID) -> Bool)?
+    /// Whether the display is on the native Space of the page it shows in the given state: its visible desktop, or a
+    /// full screen window's Space. Only then is what a slide or bounce captures the page.
+    var showsItsPage: ((DisplayID, SavedState) -> Bool)?
     /// Runs when an overlay goes away, so what it hid can show again.
     var uncovered: (() -> Void)?
     private(set) var milliseconds: Double = 0
@@ -63,7 +65,7 @@ final class Transitions {
     /// Returns true when the output's reconcile is held for a capture; it is then applied with its focus later.
     func hold(_ output: Output, plan: [DisplayID: TransitionKind], before: SavedState?) -> Bool {
         let slides = plan.compactMap { id, kind -> DisplayID? in
-            guard case .slide = kind, capture.canCapture(id), visibleIsCurrent?(id) != false else { return nil }
+            guard case .slide = kind, capture.canCapture(id), before.map({ showsItsPage?(id, $0) != false }) ?? true else { return nil }
             return id
         }
         if var pending {
@@ -171,13 +173,13 @@ final class Transitions {
         waiting.forEach { $0() }
     }
 
-    /// Capture the new page once its windows have moved, only while the visible desktop is current: if macOS
+    /// Capture the new page once its windows have moved, only while the display is on that page's Space: if macOS
     /// switched to the stash, the shell bounces back first.
     private func captureIncoming(_ id: DisplayID, generation: Int, deadline: TimeInterval) {
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.incomingDelay) { [weak self] in
             guard let self, let overlay = self.overlays[id], overlay.generation == generation,
                   ProcessInfo.processInfo.systemUptime < deadline else { return }
-            guard self.visibleIsCurrent?(id) != false else {
+            if let state = self.model?(), self.showsItsPage?(id, state) == false {
                 self.captureIncoming(id, generation: generation, deadline: deadline); return
             }
             self.capture.image(of: id) { image in
@@ -190,7 +192,7 @@ final class Transitions {
     /// A bounce changes nothing underneath, so its reconcile is not held. A later slide request on the display
     /// drops it; a bounce cuts a running slide short.
     private func bounce(_ id: DisplayID, _ direction: TransitionDirection) {
-        guard enabled, capture.canCapture(id), visibleIsCurrent?(id) != false else { return }
+        guard enabled, capture.canCapture(id), model.map({ showsItsPage?(id, $0()) != false }) ?? true else { return }
         bounceRequests[id, default: 0] += 1
         let request = bounceRequests[id]
         capture.image(of: id) { [weak self] image in

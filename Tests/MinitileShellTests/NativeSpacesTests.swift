@@ -60,3 +60,24 @@ private func nativeRow(_ identifier: String, _ spaces: [(UInt64, Int)], current:
                                           identifier: "b", spaces: spaces, current: 1)]
     #expect(DisplayCatalog.changed(plugged, from: before))
 }
+
+@Test func fullscreenSpacesAreNotDesktops() {
+    let desktops = NativeDisplaySpaces.parse([nativeRow("laptop", [(1, 0), (2, 0)]), nativeRow("external", [(3, 0), (4, 0)])])
+    let fullscreen = NativeDisplaySpaces.parse([nativeRow("laptop", [(1, 0), (7, 4), (2, 0)]), nativeRow("external", [(3, 0), (4, 0), (8, 4)])])
+    #expect(fullscreen != desktops)
+    #expect(NativeDisplaySpaces.desktops(fullscreen) == desktops)
+    #expect(NativeDisplaySpaces.desktops(desktops) == desktops)
+    let added = NativeDisplaySpaces.parse([nativeRow("laptop", [(1, 0), (7, 4), (2, 0), (9, 0)]), nativeRow("external", [(3, 0), (4, 0)])])
+    #expect(NativeDisplaySpaces.desktops(added) != desktops)
+}
+
+@Test func windowStandsOnAFullscreenSpaceByItsType() {
+    let displays = NativeDisplaySpaces.parse([nativeRow("laptop", [(1, 0), (7, 4), (2, 0)])])
+    #expect(NativeDisplaySpaces.fullscreen([7], in: displays))
+    #expect(!NativeDisplaySpaces.fullscreen([1], in: displays))
+    #expect(!NativeDisplaySpaces.fullscreen([], in: displays))
+    #expect(!NativeDisplaySpaces.fullscreen([99], in: displays))
+    #expect(NativeDisplaySpaces.knows([1, 7], in: displays))
+    #expect(NativeDisplaySpaces.knows([], in: displays))
+    #expect(!NativeDisplaySpaces.knows([1, 99], in: displays))
+}

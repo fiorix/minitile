@@ -23,6 +23,7 @@ static CFArrayRef (*managed_spaces)(int);
 static CFArrayRef (*window_spaces)(int, int, CFArrayRef);
 static uint64_t (*current_space)(int, CFStringRef);
 static AXError (*window_id)(AXUIElementRef, uint32_t *);
+static AXUIElementRef (*element_with_token)(CFDataRef);
 static CGError (*front_process)(ProcessSerialNumber *, uint32_t, uint32_t);
 static CGError (*post_record)(ProcessSerialNumber *, uint8_t *);
 static CGError (*hotkey_value)(int, uint16_t *, uint16_t *, uint32_t *);
@@ -88,6 +89,8 @@ bool csl_init(char *error, size_t length) {
     LOAD(hotkey_value, "CGSGetSymbolicHotKeyValue");
     LOAD(hotkey_enabled, "CGSIsSymbolicHotKeyEnabled");
 #undef LOAD
+    // Optional: without it, windows on Spaces that are not on screen are found once their Space is shown.
+    *(void **)&element_with_token = dlsym(RTLD_DEFAULT, "_AXUIElementCreateWithRemoteToken");
     *(void **)&perform = local_symbol(SKYLIGHT_PATH, BRIDGED_SYMBOL);
     if (!perform) return missing(error, length, BRIDGED_SYMBOL);
 #define CLASS(target, name, selector) \
@@ -143,6 +146,20 @@ bool csl_switch_space(CFStringRef display, uint64_t target, uint64_t hide) {
 
 bool csl_window_id(AXUIElementRef element, uint32_t *id) {
     return ready && element && id && window_id(element, id) == kAXErrorSuccess && *id != 0;
+}
+
+AXUIElementRef csl_copy_element(int32_t pid, uint64_t number) {
+    if (!element_with_token) return NULL;
+    // The token AppKit apps hand out: pid, zero, 'coco', element number.
+    uint8_t token[20] = {0};
+    int32_t magic = 0x636f636f;
+    memcpy(token, &pid, sizeof(pid));
+    memcpy(token + 8, &magic, sizeof(magic));
+    memcpy(token + 12, &number, sizeof(number));
+    CFDataRef data = CFDataCreate(NULL, token, sizeof(token));
+    AXUIElementRef element = element_with_token(data);
+    CFRelease(data);
+    return element;
 }
 
 #pragma clang diagnostic push

@@ -70,12 +70,20 @@ extension Engine {
         }
     }
 
+    func isFullscreen(_ id: WindowID) -> Bool { state.windows[id]?.info.fullscreen == true }
+
+    /// Whether the page can take the window. A full screen window has its page to itself: nothing joins it, and it
+    /// joins only an empty page.
+    func hasRoom(_ page: PageState, for id: WindowID) -> Bool {
+        if isFullscreen(id) { return page.windows.isEmpty }
+        if page.windows.contains(where: isFullscreen) { return false }
+        return state.windows[id]?.floating == true || tiled(page).count < 4
+    }
+
     mutating func place(_ id: WindowID, at start: Location) -> Location {
         var at = start
-        if state.windows[id]?.floating != true {
-            while at.page < state.displays[at.display].workspaces[at.workspace].pages.count,
-                  tiled(page(at)).count >= 4 { at.page += 1 }
-        }
+        while at.page < state.displays[at.display].workspaces[at.workspace].pages.count,
+              !hasRoom(page(at), for: id) { at.page += 1 }
         if at.page == state.displays[at.display].workspaces[at.workspace].pages.count {
             let created = PageState(id: nextSerial())
             state.displays[at.display].workspaces[at.workspace].pages.append(created)
@@ -259,14 +267,18 @@ extension Engine {
             for (w, workspace) in display.workspaces.enumerated() {
                 for (p, page) in workspace.pages.enumerated() {
                     let at = Location(display: d, workspace: w, page: p)
-                    result.frames.merge(frames(at)) { _, new in new }
-                    if isShown(at) { result.visible += page.windows }
-                    else { result.stashed += page.windows }
+                    // A full screen window stays where macOS put it, so it has no desktop and no frame here.
+                    let placed = page.windows.filter { !isFullscreen($0) }
+                    result.frames.merge(frames(at).filter { !isFullscreen($0.key) }) { _, new in new }
+                    if isShown(at) { result.visible += placed }
+                    else { result.stashed += placed }
                 }
             }
             scene.displays[display.info.id] = result
         }
-        for (id, window) in state.windows where window.hidden { scene.displays[window.display]?.stashed.append(id) }
+        for (id, window) in state.windows where window.hidden && !window.info.fullscreen {
+            scene.displays[window.display]?.stashed.append(id)
+        }
         for id in scene.displays.keys { scene.displays[id]?.stashed.sort() }
         return scene
     }

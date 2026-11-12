@@ -32,14 +32,17 @@ struct SwipePolicy: Equatable, Sendable {
     struct Display: Equatable, Sendable {
         var id: DisplayID
         var frame: Rect
-        /// Managed, and showing its visible desktop rather than the stash, a fullscreen Space or an extra desktop.
+        /// Managed, and showing its visible desktop or a managed window's fullscreen Space rather than the stash,
+        /// another app's fullscreen Space or an extra desktop.
         var owned: Bool
 
         init(id: DisplayID, frame: Rect, owned: Bool) { self.id = id; self.frame = frame; self.owned = owned }
 
-        init(_ info: DisplayInfo, currentSpace: UInt64) {
+        /// `fullscreenPage` says the current Space is a fullscreen one while the grid shows a full screen window's page.
+        init(_ info: DisplayInfo, currentSpace: UInt64, fullscreenPage: Bool = false) {
             self.init(id: info.id, frame: info.frame,
-                      owned: info.unmanagedReason == nil && info.visibleSpace != nil && info.visibleSpace == currentSpace)
+                      owned: info.unmanagedReason == nil && info.visibleSpace != nil
+                          && (info.visibleSpace == currentSpace || fullscreenPage))
         }
     }
 
@@ -194,8 +197,12 @@ extension AppDelegate {
     }
 
     func swipePolicy() -> SwipePolicy {
-        SwipePolicy(started: started, suspended: !suspendedReasons.isEmpty, displays: displays.displays.map {
-            SwipePolicy.Display($0.info, currentSpace: csl_current_space($0.identifier as CFString))
+        let state = engine.savedState()
+        return SwipePolicy(started: started, suspended: !suspendedReasons.isEmpty, displays: displays.displays.map { display in
+            let current = csl_current_space(display.identifier as CFString)
+            let shown = state.displays.first { $0.info.id == display.info.id }.flatMap(state.shownFullscreenWindow)
+            let fullscreen = shown != nil && display.spaces.contains { $0.id == current && $0.fullscreen }
+            return SwipePolicy.Display(display.info, currentSpace: current, fullscreenPage: fullscreen)
         })
     }
 

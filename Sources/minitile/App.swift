@@ -71,6 +71,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var lastCrossed: DisplayID?
     var inputWaits = InputWaits()
     var viewEchoUntil: TimeInterval = 0
+    /// Displays a command acted on, which the next reconcile puts onto their pages' native Spaces.
+    var spaceSync: Set<DisplayID> = []
+    /// Until then an activation is macOS's answer to minitile's own Space switch, not a request to show a page.
+    var spaceSwitchedUntil: TimeInterval = 0
     /// The window focused in place of one that refused focus; if it refuses too, minitile stops trying.
     var focusFallback: WindowID?
     var lastConfig: String?
@@ -183,10 +187,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         discovery.moved = { [weak self] in self?.windowMoved($0) }
         transitions.commit = { [weak self] in self?.commitHeld($0) }
         transitions.model = { [weak self] in self?.engine.savedState() ?? SavedState() }
-        transitions.visibleIsCurrent = { [weak self] id in
-            guard let display = self?.displays.displays.first(where: { $0.info.id == id }), let visible = display.info.visibleSpace else { return true }
-            return csl_current_space(display.identifier as CFString) == visible
-        }
+        transitions.showsItsPage = { [weak self] id, state in self?.showsItsPage(id, state: state) ?? true }
         transitions.uncovered = { [weak self] in self?.updateGrab() }
         grabHighlight.due = { [weak self] in self?.updateGrab() }
         updateTransitions()
@@ -306,9 +307,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // A display crossed into usually keeps its shown page, which alone would not show the indicator there.
             if let crossed { gridIndicator.show(on: crossed) }
             plan = TransitionPlan.plan(before: before, after: after, argv: argv, context: context, crossed: crossed != nil)
+            spaceSync.formUnion(SpaceSync.displays(before: before, after: after, actions: output.actions))
         }
         let held = transitions.hold(output, plan: plan, before: before)
-        if !held, discovery?.frozen != true { reconciler?.apply(output) }
+        if !held, discovery?.frozen != true { reconcile(output) }
         var reply = output.reply
         for action in output.actions {
             switch action {
@@ -358,7 +360,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Apply a reconcile that waited for a transition capture, with the same ordering as `handle`.
     func commitHeld(_ output: Output) {
-        if discovery?.frozen != true { reconciler?.apply(output, held: true) }
+        if discovery?.frozen != true { reconcile(output, held: true) }
         for action in output.actions {
             if case .focus(let id) = action { reconciler?.focus(id) }
         }

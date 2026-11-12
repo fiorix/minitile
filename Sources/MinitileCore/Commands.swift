@@ -152,6 +152,9 @@ extension Engine {
         if window.info.orderedOut && !["info", "close"].contains(verb) {
             throw CommandError("Window \(id) is ordered out by its app")
         }
+        if window.info.fullscreen && !["info", "show", "focus", "close"].contains(verb) {
+            throw CommandError("Window \(id) is full screen")
+        }
         switch verb {
         case "info", "show", "focus", "hide", "close":
             guard args.isEmpty else { throw CommandError("Expected window \(verb) [ID]") }

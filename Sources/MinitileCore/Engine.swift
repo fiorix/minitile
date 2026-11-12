@@ -30,6 +30,7 @@ public struct Engine: Sendable {
         case .dragEnded(let id, let frame, let cursor): dragEnded(id, frame: frame, cursor: cursor, output: &output)
         case .displaysChanged(let displays): changeDisplays(displays, output: &output)
         }
+        isolateFullscreen(output: &output)
         cleanup()
         resetLayouts()
         for i in output.events.indices where output.events[i].type == "page_shown" {

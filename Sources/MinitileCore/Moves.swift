@@ -26,9 +26,7 @@ extension Engine {
                 carryAcross(id, from: at, dx: direction, dy: 0, output: &output)
                 return
             }
-            while pages.indices.contains(index), state.windows[id]?.floating != true, tiled(pages[index]).count >= 4 {
-                index += direction
-            }
+            while pages.indices.contains(index), !hasRoom(pages[index], for: id) { index += direction }
             if !pages.indices.contains(index) {
                 index = direction < 0 ? 0 : pages.count
                 let created = PageState(id: nextSerial())
@@ -124,6 +122,7 @@ extension Engine {
               state.windows[first]?.floating == false, state.windows[second]?.floating == false else {
             throw CommandError("Expected two tiled windows")
         }
+        guard !isFullscreen(first), !isFullscreen(second) else { throw CommandError("A full screen window keeps its page") }
         guard first != second else { return }
         state.displays[a.display].workspaces[a.workspace].pages[a.page].windows[a.slot] = second
         state.displays[b.display].workspaces[b.workspace].pages[b.page].windows[b.slot] = first

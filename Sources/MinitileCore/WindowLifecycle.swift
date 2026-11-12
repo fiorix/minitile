@@ -25,6 +25,7 @@ extension Engine {
         }
         updateFloating(info.id, value: floating(info, override: old.floatingOverride), output: &output)
         if old.info.orderedOut && !info.orderedOut { orderedIn(info.id, output: &output) }
+        if !old.info.fullscreen && info.fullscreen { wentFullscreen(info.id, output: &output) }
         if !lostFocus && old.info.minimized && !info.minimized, let at = location(info.id) {
             show(at, focusWindow: false, output: &output)
             focus(info.id, action: true, output: &output)
@@ -41,6 +42,39 @@ extension Engine {
         if window.info.fromFrontmostApp {
             show(at, focusWindow: false, output: &output)
             focus(id, action: false, output: &output)
+        }
+    }
+
+    /// macOS shows a window that goes full screen on a native Space of its own, so the window takes a page of its
+    /// own and that page is shown. Leaving full screen needs nothing: the window is tiled on that page.
+    mutating func wentFullscreen(_ id: WindowID, output: inout Output) {
+        guard let at = isolate(id, output: &output), canFocus(id) else { return }
+        show(at, focusWindow: false, output: &output)
+        focus(id, action: false, output: &output)
+    }
+
+    /// Moves a full screen window that shares its page onto a new page right after it. Returns where the window is.
+    mutating func isolate(_ id: WindowID, output: inout Output) -> Location? {
+        guard var at = location(id) else { return nil }
+        guard page(at).windows.count > 1 else { return at }
+        removeFromPage(id)
+        var created = PageState(id: nextSerial())
+        created.windows = [id]
+        at = Location(display: at.display, workspace: at.workspace, page: at.page + 1)
+        state.displays[at.display].workspaces[at.workspace].pages.insert(created, at: at.page)
+        output.events.append(Event(type: "window_moved", data: .number(Double(id))))
+        return at
+    }
+
+    /// Full screen windows that came to share a page some other way, as one found full screen at startup does, each
+    /// move to a page of their own. The view follows the focused one.
+    mutating func isolateFullscreen(output: inout Output) {
+        for id in state.windows.keys.sorted() where isFullscreen(id) {
+            guard let old = location(id), page(old).windows.count > 1, let at = isolate(id, output: &output) else { continue }
+            if state.focus == id {
+                show(at, focusWindow: false, output: &output)
+                focus(id, action: false, output: &output)
+            }
         }
     }
 

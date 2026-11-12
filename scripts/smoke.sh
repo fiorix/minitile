@@ -4,6 +4,7 @@ cd "$(dirname "$0")/.."
 interactive=0
 display_test=0
 activation_test=0
+fullscreen_test=0
 build=1
 recovery_directory=""
 while [ "$#" -gt 0 ]; do
@@ -11,19 +12,24 @@ while [ "$#" -gt 0 ]; do
         --interactive) interactive=1 ;;
         --displays) display_test=1 ;;
         --activation) activation_test=1 ;;
+        --fullscreen) fullscreen_test=1 ;;
         --no-build) build=0 ;;
         --cleanup)
             if [ "$#" -lt 2 ] || [ -z "$2" ]; then echo '--cleanup requires a test directory.' >&2; exit 2; fi
             recovery_directory=$2
             shift
             ;;
-        --help|-h) echo 'Usage: smoke.sh [--interactive | --displays | --activation | --cleanup TEST_DIRECTORY] [--no-build]'; exit 0 ;;
+        --help|-h) echo 'Usage: smoke.sh [--interactive | --displays | --activation | --fullscreen | --cleanup TEST_DIRECTORY] [--no-build]'; exit 0 ;;
         *) echo "Unknown argument: $1" >&2; exit 2 ;;
     esac
     shift
 done
 if [ "$activation_test" = 1 ] && { [ "$interactive" = 1 ] || [ "$display_test" = 1 ] || [ -n "$recovery_directory" ]; }; then
     echo '--activation cannot be combined with --interactive, --displays or --cleanup.' >&2
+    exit 2
+fi
+if [ "$fullscreen_test" = 1 ] && { [ "$interactive" = 1 ] || [ "$display_test" = 1 ] || [ "$activation_test" = 1 ] || [ -n "$recovery_directory" ]; }; then
+    echo '--fullscreen cannot be combined with another mode.' >&2
     exit 2
 fi
 if [ "$display_test" = 1 ] && { [ "$interactive" = 1 ] || [ -n "$recovery_directory" ]; }; then
@@ -325,6 +331,12 @@ fi
 if [ "$display_test" = 1 ]; then
     # shellcheck source=scripts/smoke-displays.sh
     source scripts/smoke-displays.sh
+    exit 0
+fi
+
+if [ "$fullscreen_test" = 1 ]; then
+    # shellcheck source=scripts/smoke-fullscreen.sh
+    source scripts/smoke-fullscreen.sh
     exit 0
 fi
 

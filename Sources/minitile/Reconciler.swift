@@ -172,6 +172,8 @@ final class Reconciler {
         let moves = ReconcilePlan.moves(scene: scene, displays: displays.infos,
                                         known: Set(discovery.windows.keys), spaces: spaces)
         for move in moves { submit(move) }
+        // macOS gives a window that leaves full screen the frame it had before, so its tile is written again then.
+        frames = frames.filter { discovery.windows[$0.key]?.info.fullscreen != true }
         var targets = scene.displays.values.reduce(into: [WindowID: Rect]()) { $0.merge($1.frames) { _, new in new } }
         for action in output.actions {
             if case .setFrame(let id, let frame) = action { deferred[id] = frame }

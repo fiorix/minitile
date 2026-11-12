@@ -139,15 +139,15 @@ private func snapshot(_ records: CGWindowRecord...) -> [WindowID: CGWindowRecord
 
 @Test func failedAttributeReadsKeepPriorValues() {
     var info = WindowInfo(id: 1, pid: 10, title: "Old", frame: Rect(x: 0, y: 0, width: 10, height: 10), tileable: true, minimized: false)
-    info.apply(WindowAttributes(), appHidden: true, geometry: true)
+    info.apply(WindowAttributes(), appHidden: true, geometry: true, fullscreen: false)
     #expect(info.title == "Old" && info.tileable && !info.minimized && info.appHidden)
     #expect(info.frame == Rect(x: 0, y: 0, width: 10, height: 10))
     let read = WindowAttributes(title: "New", minimized: true, frame: Rect(x: 5, y: 5, width: 20, height: 20), tileable: false)
     var settling = info
-    settling.apply(read, appHidden: false, geometry: false)
+    settling.apply(read, appHidden: false, geometry: false, fullscreen: false)
     #expect(settling.frame == info.frame)
     #expect(settling.title == "New" && settling.minimized && !settling.tileable && !settling.appHidden)
-    info.apply(read, appHidden: false, geometry: true)
+    info.apply(read, appHidden: false, geometry: true, fullscreen: false)
     #expect(info.frame == Rect(x: 5, y: 5, width: 20, height: 20))
 }
 
@@ -227,4 +227,68 @@ private func offScreen(_ id: WindowID, pid: Int32 = 10) -> CGWindowRecord {
         #expect(checks.check(windows, pids: [10], snapshot: records, offScreen: [1, 2, 3, 4, 5], taken: 5).isEmpty)
     }
     #expect(checks.counts.isEmpty)
+}
+
+@Test func eitherSignMakesAWindowFullScreenAndUnreadOnesStay() {
+    var signs = FullscreenSigns()
+    #expect(!signs.fullscreen)
+    // The app's word comes first on the way in.
+    signs.observe(attribute: true, space: false)
+    #expect(signs.fullscreen)
+    signs.observe(attribute: nil, space: true)
+    #expect(signs.attribute && signs.space)
+    // On the way out the window still stands on its fullscreen Space.
+    signs.observe(attribute: false, space: nil)
+    #expect(signs.fullscreen)
+    signs.observe(attribute: nil, space: false)
+    #expect(!signs.fullscreen)
+    signs.observe(attribute: nil, space: true)
+    #expect(signs.fullscreen)
+}
+
+@Test func fullScreenWindowKeepsWhetherItTiles() {
+    var info = WindowInfo(id: 1, pid: 10, tileable: true)
+    info.apply(WindowAttributes(tileable: false), appHidden: false, geometry: true, fullscreen: true)
+    #expect(info.fullscreen && info.tileable)
+    info.apply(WindowAttributes(tileable: false), appHidden: false, geometry: true, fullscreen: false)
+    #expect(!info.fullscreen && !info.tileable)
+}
+
+@Test func windowInTransitIsRereadUntilItLandsAFixedNumberOfTimes() {
+    var rereads = TransitRereads()
+    func reread(_ inTransit: Bool) -> Bool { rereads.reread(1, inTransit: inTransit) }
+    func fired() -> Bool { rereads.fired(1) }
+    #expect(!reread(false))
+    #expect(reread(true))
+    // One reread at a time, however many reads find the window still in transit.
+    #expect(!reread(true))
+    #expect(fired())
+    #expect(!fired())
+    for _ in 1..<TransitRereads.limit {
+        #expect(reread(true))
+        #expect(fired())
+    }
+    // The scan takes over until the window lands, which starts the count again.
+    #expect(!reread(true))
+    #expect(!reread(false))
+    #expect(reread(true))
+    rereads.forget(1)
+    #expect(!fired())
+}
+
+@Test func elementSearchWalksNumbersUntilEveryWindowIsFound() {
+    let windows: [UInt64: WindowID] = [3: 30, 9: 90, 40: 400]
+    var asked: [UInt64] = []
+    let found = ElementSearch.find([30, 90], window: { asked.append($0); return windows[$0] ?? 0 }, expired: { false })
+    #expect(found == [30: 3, 90: 9])
+    #expect(asked == Array(0...9))
+}
+
+@Test func elementSearchStopsWhenTheAppStopsAnsweringOrTheBudgetIsSpent() {
+    #expect(ElementSearch.find([30], window: { $0 < 5 ? 0 : nil }, expired: { false }).isEmpty)
+    #expect(ElementSearch.find([], window: { _ in Issue.record("Nothing to look for"); return nil }, expired: { false }).isEmpty)
+    var asked = 0
+    let found = ElementSearch.find([30], window: { _ in asked += 1; return 0 }, expired: { true })
+    #expect(found.isEmpty)
+    #expect(asked == 255)
 }

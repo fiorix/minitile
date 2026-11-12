@@ -12,6 +12,8 @@ private func checkInvariants(_ e: Engine, _ out: Output, step: Int) {
             #expect(workspace.pages.contains { $0.id == workspace.currentPage })
             for page in workspace.pages {
                 #expect(e.tiled(page).count <= 4)
+                #expect(page.windows.count == 1 || !page.windows.contains { state.windows[$0]?.info.fullscreen == true },
+                        "A full screen window shares its page at step \(step)")
                 #expect((0.2...0.8).contains(page.r1))
                 #expect((0.2...0.8).contains(page.r2))
                 for id in page.windows {
@@ -28,7 +30,7 @@ private func checkInvariants(_ e: Engine, _ out: Output, step: Int) {
     #expect(Set(placed).count == placed.count)
     let managed = Set(state.displays.filter { $0.info.unmanagedReason == nil }.map { $0.info.id })
     #expect(Set(placed) == Set(state.windows.filter {
-        managed.contains($0.value.display) && ($0.value.hidden || !$0.value.info.orderedOut)
+        managed.contains($0.value.display) && ($0.value.hidden || !$0.value.info.orderedOut) && !$0.value.info.fullscreen
     }.keys))
     for (id, frame) in out.scene.displays.values.flatMap({ $0.frames }) {
         #expect(state.windows[id]?.floating == false)
@@ -60,6 +62,7 @@ private func checkInvariants(_ e: Engine, _ out: Output, step: Int) {
         default:
             var info = window(id, frontmost: random & 1 == 0)
             info.orderedOut = (random >> 8) % 3 != 0
+            info.fullscreen = (random >> 12) % 3 == 0
             input = .windowUpdated(info)
         }
         let out = e.handle(input)

@@ -19,6 +19,10 @@ struct WindowAttributes: Equatable, Sendable {
     var document: String?
     /// True for a popup, which minitile never manages; nil when unknown.
     var popup: Bool?
+    /// The app's word that the window is full screen (`AXFullScreen`).
+    var fullscreen: Bool?
+    /// The native Spaces the window stands on.
+    var spaces: [UInt64]?
 
     /// A popup, such as a browser's address bar suggestions, has no meaningful subrole and no close button. Nil
     /// when the subrole could not be read, or the close button could not be for an `AXUnknown` window.
@@ -29,14 +33,58 @@ struct WindowAttributes: Equatable, Sendable {
     }
 }
 
+/// Whether a window is full screen, from two signs that change at different moments: its app's word and its
+/// standing on a native fullscreen Space. Either makes it full screen, so minitile lets go of the window as soon as it
+/// starts to leave the desktop and takes it back only once it has returned. A sign that could not be read stays as
+/// it was.
+struct FullscreenSigns: Equatable, Sendable {
+    private(set) var attribute = false
+    private(set) var space = false
+
+    var fullscreen: Bool { attribute || space }
+
+    mutating func observe(attribute: Bool?, space: Bool?) {
+        self.attribute = attribute ?? self.attribute
+        self.space = space ?? self.space
+    }
+}
+
+/// A window entering or leaving full screen stands on no Space while macOS animates it, about half a second, and no
+/// notification is sure to follow when it lands. Such a window is reread every tenth of a second until its Spaces
+/// can be read again, for a bounded number of times; the three-second scan takes over after that.
+struct TransitRereads {
+    static let interval: TimeInterval = 0.1
+    static let limit = 20
+
+    private var left: [WindowID: Int] = [:]
+    private var pending: Set<WindowID> = []
+
+    /// Records what the latest read found. True when a reread should be scheduled now.
+    mutating func reread(_ id: WindowID, inTransit: Bool) -> Bool {
+        guard inTransit else { left.removeValue(forKey: id); return false }
+        let remaining = left[id] ?? Self.limit
+        guard remaining > 0, !pending.contains(id) else { return false }
+        left[id] = remaining - 1
+        pending.insert(id)
+        return true
+    }
+
+    /// The scheduled reread is due. False when the window was forgotten meanwhile.
+    mutating func fired(_ id: WindowID) -> Bool { pending.remove(id) != nil }
+
+    mutating func forget(_ id: WindowID) { left.removeValue(forKey: id); pending.remove(id) }
+}
+
 extension WindowInfo {
-    /// `geometry` is false while minitile's own frame write is settling, so the stale frame is not taken.
-    mutating func apply(_ attributes: WindowAttributes, appHidden: Bool, geometry: Bool) {
+    /// `geometry` is false while minitile's own frame write is settling, so the stale frame is not taken. Whether a
+    /// window tiles is judged on the desktop, so a full screen window keeps what was known.
+    mutating func apply(_ attributes: WindowAttributes, appHidden: Bool, geometry: Bool, fullscreen: Bool) {
         title = attributes.title ?? title
         minimized = attributes.minimized ?? minimized
         self.appHidden = appHidden
+        self.fullscreen = fullscreen
         if geometry { frame = attributes.frame ?? frame }
-        if let tileable = attributes.tileable { self.tileable = tileable }
+        if let tileable = attributes.tileable, !fullscreen { self.tileable = tileable }
     }
 }
 
@@ -194,6 +242,10 @@ struct AppReadRequest: Sendable {
     /// The app's windows in the snapshot.
     var records: [WindowID: CGWindowRecord]
     var documents: Bool
+    /// Native fullscreen Spaces. A window standing on one that is not on screen is missing from the app's list.
+    var fullscreenSpaces: Set<UInt64> = []
+    /// Windows already searched for by element number, which are not searched for again.
+    var searched: Set<WindowID> = []
 }
 
 struct WindowRead: Sendable {
@@ -216,7 +268,46 @@ struct AppRead: Sendable {
     var answered: Bool?
     var windows: [WindowRead] = []
     var candidates: [CandidateRead] = []
+    /// Windows searched for by element number in this read, found or not.
+    var searched: [WindowID] = []
     var milliseconds = 0.0
+}
+
+/// An app's `AXWindows` omits windows on Spaces that are not on screen, which is where a full screen window stands
+/// while the user works elsewhere. Their elements are still reachable by number: an app numbers its elements as it
+/// hands them out, so the search walks the numbers until it has the windows it wants. An old process can be far
+/// along, so the walk has a time budget.
+enum ElementSearch {
+    static let budget: TimeInterval = 1.5
+
+    /// The window among `wanted` that each numbered element is, by `window(number)`: nil ends the search (an app that
+    /// stopped answering, or no way to reach elements by number), and 0 is an element that is no window. Stops once
+    /// every wanted window is found or `expired` says the budget is spent, which is asked every 256 numbers.
+    static func find(_ wanted: Set<WindowID>, window: (UInt64) -> WindowID?, expired: () -> Bool) -> [WindowID: UInt64] {
+        var found: [WindowID: UInt64] = [:]
+        var number: UInt64 = 0
+        while found.count < wanted.count {
+            if number % 256 == 255, expired() { break }
+            guard let id = window(number) else { break }
+            if wanted.contains(id), found[id] == nil { found[id] = number }
+            number += 1
+        }
+        return found
+    }
+
+    static func elements(_ wanted: Set<WindowID>, pid: Int32) -> [WindowID: AXUIElement] {
+        var elements: [UInt64: AXUIElement] = [:]
+        let deadline = ProcessInfo.processInfo.systemUptime + budget
+        let found = find(wanted, window: { number in
+            guard let element = csl_copy_element(pid, number) else { return nil }
+            let (role, error) = AX.copy(element, kAXRoleAttribute)
+            if error == .cannotComplete { return nil }
+            guard role as? String == kAXWindowRole, let id = AX.id(element), wanted.contains(id) else { return 0 }
+            elements[number] = element
+            return id
+        }, expired: { ProcessInfo.processInfo.systemUptime > deadline })
+        return found.compactMapValues { elements[$0] }
+    }
 }
 
 /// Background AX reads for discovery. Each app's reads run in order on one thread.
@@ -232,18 +323,37 @@ enum DiscoveryReader {
         let (value, error) = AX.copy(request.app.element, kAXWindowsAttribute)
         var result = AppRead(pid: request.pid, answered: error != .cannotComplete)
         guard result.answered == true else { return result }
+        var listed = Set<WindowID>()
         for element in value as? [AXUIElement] ?? [] {
-            guard let id = AX.id(element), let record = request.records[id], record.real,
+            guard let id = AX.id(element) else { continue }
+            listed.insert(id)
+            guard let record = request.records[id], record.real,
                   !request.known.contains(where: { $0.id == id && CFEqual($0.element.element, element) }),
                   AX.value(element, kAXRoleAttribute) as? String == kAXWindowRole else { continue }
             result.windows.append(WindowRead(id: id, element: AXRef(element), listed: true,
-                                             attributes: attributes(element, documents: request.documents)))
+                                             attributes: attributes(element, id: id, documents: request.documents)))
+        }
+        result.searched = unlisted(request, listed: listed)
+        for (id, element) in ElementSearch.elements(Set(result.searched), pid: request.pid) {
+            result.windows.append(WindowRead(id: id, element: AXRef(element), listed: true,
+                                             attributes: attributes(element, id: id, documents: request.documents)))
         }
         for known in request.known {
             result.windows.append(WindowRead(id: known.id, element: known.element, listed: false,
-                                             attributes: attributes(known.element.element, documents: request.documents)))
+                                             attributes: attributes(known.element.element, id: known.id, documents: request.documents)))
         }
         return result
+    }
+
+    /// The app's unknown real windows that stand on a fullscreen Space and were not listed. Without a fullscreen Space
+    /// there is nothing to ask.
+    private static func unlisted(_ request: AppReadRequest, listed: Set<WindowID>) -> [WindowID] {
+        guard !request.fullscreenSpaces.isEmpty else { return [] }
+        return request.records.values.filter { record in
+            record.real && !listed.contains(record.id) && !request.searched.contains(record.id)
+                && !request.known.contains { $0.id == record.id }
+                && DisplayCatalog.windowSpaces(record.id).contains(where: request.fullscreenSpaces.contains)
+        }.map(\.id).sorted()
     }
 
     private static func readCandidates(_ candidates: [AXRef], _ request: AppReadRequest) -> AppRead {
@@ -256,13 +366,18 @@ enum DiscoveryReader {
             if result.answered == nil { result.answered = error != .cannotComplete }
             guard result.answered == true, role as? String == kAXWindowRole else { continue }
             result.windows.append(WindowRead(id: id, element: candidate, listed: true,
-                                             attributes: attributes(candidate.element, documents: request.documents)))
+                                             attributes: attributes(candidate.element, id: id, documents: request.documents)))
         }
         return result
     }
 
-    static func attributes(_ element: AXUIElement, documents: Bool) -> WindowAttributes {
+    static func attributes(_ element: AXUIElement, id: WindowID, documents: Bool) -> WindowAttributes {
         var result = WindowAttributes()
+        let spaces = DisplayCatalog.windowSpaces(id)
+        if !spaces.isEmpty { result.spaces = spaces }
+        // A window whose app has no such attribute is never full screen by its word.
+        let (fullscreen, error) = AX.copy(element, "AXFullScreen")
+        result.fullscreen = fullscreen as? Bool ?? (error == .attributeUnsupported || error == .noValue ? false : nil)
         if documents { result.document = AX.value(element, kAXDocumentAttribute) as? String }
         result.title = AX.value(element, kAXTitleAttribute) as? String
         result.minimized = AX.value(element, kAXMinimizedAttribute) as? Bool

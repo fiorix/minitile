@@ -15,5 +15,18 @@ case "quit-empty":
            && ($0[kCGWindowLayer as String] as? NSNumber)?.intValue == 0 }) {
         app.terminate()
     }
+case "fullscreen":
+    // fullscreen PID TITLE on|off: asks the app's window with that title to enter or leave full screen.
+    guard arguments.count == 5, let pid = Int32(arguments[2]) else { exit(1) }
+    var windows: CFTypeRef?
+    AXUIElementCopyAttributeValue(AXUIElementCreateApplication(pid), kAXWindowsAttribute as CFString, &windows)
+    for window in windows as? [AXUIElement] ?? [] {
+        var title: CFTypeRef?
+        AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &title)
+        guard title as? String == arguments[3] else { continue }
+        let value: CFBoolean = arguments[4] == "on" ? kCFBooleanTrue : kCFBooleanFalse
+        exit(AXUIElementSetAttributeValue(window, "AXFullScreen" as CFString, value) == .success ? 0 : 1)
+    }
+    exit(1)
 default: exit(1)
 }

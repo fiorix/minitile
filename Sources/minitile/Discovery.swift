@@ -30,6 +30,7 @@ final class Discovery {
         var registrations = ObserverRegistrations()
         /// The ledger stamp when the window became known.
         var added = 0
+        var fullscreen = FullscreenSigns()
     }
 
     @MainActor final class Application {
@@ -61,6 +62,9 @@ final class Discovery {
     private var adoption: [WindowID: (pid: Int32, display: NativeDisplay)] = [:]
     private var ledger = DiscoveryLedger()
     private var passes = ScanPasses()
+    /// Windows searched for by element number, once each: one not found is listed when its Space is shown.
+    private var searched: Set<WindowID> = []
+    private var transit = TransitRereads()
     /// Snapshots and app reads run here, one task per app, so a hung app delays only its own results. New windows are
     /// read here too, so the queue is not a low priority one.
     private let background = DispatchQueue(label: "minitile.discovery", qos: .userInitiated, attributes: .concurrent)
@@ -171,7 +175,10 @@ final class Discovery {
             if let pass { passes.cancel(pass) }
             return
         }
-        if pids == nil { checkPresence(cg, offScreen: offScreen, pids: Set(windows.values.map { $0.info.pid }), taken: ticket.stamp) }
+        if pids == nil {
+            checkPresence(cg, offScreen: offScreen, pids: Set(windows.values.map { $0.info.pid }), taken: ticket.stamp)
+            searched.formIntersection(cg.keys)
+        }
         let apps = pids.map { $0.compactMap { NSRunningApplication(processIdentifier: $0) } } ?? NSWorkspace.shared.runningApplications
         let started = selection(apps, cg: cg, reading: ledger.reading).filter { startRead($0, cg: cg, ticket: ticket, pass: pass) }
         if let pass { passes.reading(pass, reads: started.count, at: ProcessInfo.processInfo.systemUptime) }
@@ -208,7 +215,8 @@ final class Discovery {
             window.info.pid == pid && records[id] != nil ? KnownElement(id: id, element: AXRef(window.element)) : nil
         }
         return AppReadRequest(pid: pid, app: AXRef(applications[pid]?.element ?? AXUIElementCreateApplication(pid)), known: known,
-                              candidates: candidates?.map(AXRef.init), records: records, documents: smokeScope.directory != nil)
+                              candidates: candidates?.map(AXRef.init), records: records, documents: smokeScope.directory != nil,
+                              fullscreenSpaces: displays.fullscreenSpaces, searched: searched)
     }
 
     /// False when the app's previous read is still running.
@@ -242,6 +250,7 @@ final class Discovery {
 
     private func apply(_ read: AppRead, records: [WindowID: CGWindowRecord], ticket: Ticket) {
         guard let app = NSRunningApplication(processIdentifier: read.pid), allows(app) else { return }
+        searched.formUnion(read.searched)
         let answers = read.answered ?? ledger.answers(read.pid)
         if answers { observe(app) }
         for window in read.windows where !ledger.stale(window.id, since: ticket) {
@@ -285,15 +294,20 @@ final class Discovery {
             remove(id)
         }
         let spaces = DisplayCatalog.windowSpaces(id)
-        guard let display = adoption[id]?.display ?? displays.owner(spaces: spaces),
-              let frame = read.attributes.frame else { return }
+        // A window first seen on a fullscreen Space is taken only if it is the full screen window itself; a window
+        // its app opened beside it stays out of the grid.
+        let owner = adoption[id]?.display ?? displays.owner(spaces: spaces)
+            ?? (read.attributes.fullscreen == true ? displays.fullscreenOwner(spaces: spaces) : nil)
+        guard let display = owner, let frame = read.attributes.frame else { return }
         var info = WindowInfo(id: id, pid: app.processIdentifier, bundleID: app.bundleIdentifier,
                               appName: app.localizedName ?? record.app, title: record.title, frame: frame,
-                              tileable: false, appHidden: app.isHidden,
+                              tileable: read.attributes.tileable ?? false, appHidden: app.isHidden,
                               fromFrontmostApp: app.isActive, display: display.info.id,
                               onStash: adoption[id] != nil || spaces.contains(display.info.stashSpace ?? 0))
-        info.apply(read.attributes, appHidden: app.isHidden, geometry: suppressGeometry?(id) != true)
-        windows[id] = Window(info: info, element: element, added: ledger.touch(id))
+        var signs = FullscreenSigns()
+        signs.observe(attribute: read.attributes.fullscreen, space: displays.onFullscreenSpace(spaces))
+        info.apply(read.attributes, appHidden: app.isHidden, geometry: suppressGeometry?(id) != true, fullscreen: signs.fullscreen)
+        windows[id] = Window(info: info, element: element, added: ledger.touch(id), fullscreen: signs)
         if register { registerWindow(id) }
         if traceFocus {
             startupLog("Window appeared id=\(id) pid=\(info.pid) app_active=\(info.fromFrontmostApp) frontmost=\(NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0)")
@@ -312,9 +326,20 @@ final class Discovery {
         guard let old = windows[id] else { return }
         if attributes.popup == true { remove(id); return }
         if smokeScope.directory != nil, let document = attributes.document, !smokeScope.allows(document: document) { remove(id); return }
-        var info = old.info
-        info.apply(attributes, appHidden: app.isHidden, geometry: suppressGeometry?(id) != true)
+        var info = old.info, signs = old.fullscreen
+        signs.observe(attribute: attributes.fullscreen, space: attributes.spaces.map { displays.onFullscreenSpace($0) })
+        info.apply(attributes, appHidden: app.isHidden, geometry: suppressGeometry?(id) != true, fullscreen: signs.fullscreen)
         windows[id]?.info = info
+        windows[id]?.fullscreen = signs
+        // Entering or leaving full screen, a window stands on no Space for a moment; it is reread until it lands.
+        if transit.reread(id, inTransit: signs.fullscreen && attributes.spaces == nil) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + TransitRereads.interval) { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, self.transit.fired(id) else { return }
+                    self.update(id)
+                }
+            }
+        }
         if info != old.info { input?(.windowUpdated(info)) }
     }
 
@@ -333,7 +358,17 @@ final class Discovery {
     func update(_ id: WindowID) {
         guard !frozen, let old = windows[id], let app = NSRunningApplication(processIdentifier: old.info.pid) else { return }
         ledger.touch(id)
-        applyAttributes(DiscoveryReader.attributes(old.element, documents: smokeScope.directory != nil), to: id, app: app)
+        applyAttributes(DiscoveryReader.attributes(old.element, id: id, documents: smokeScope.directory != nil), to: id, app: app)
+    }
+
+    /// A window enters and leaves full screen with a native Space change, which no window notification is sure to
+    /// follow. Rereads the windows that were full screen and those now standing on a fullscreen Space.
+    func spaceChanged() {
+        guard !frozen else { return }
+        for id in windows.keys.sorted() {
+            guard let window = windows[id] else { continue }
+            if window.info.fullscreen || displays.onFullscreenSpace(DisplayCatalog.windowSpaces(id)) { update(id) }
+        }
     }
 
     /// minitile wrote the window's frame, so background reads begun earlier are stale.
@@ -360,6 +395,7 @@ final class Discovery {
         }
         misses.forget(id)
         orderedOutChecks.forget(id)
+        transit.forget(id)
         input?(.windowGone(id))
     }
 
