@@ -3,9 +3,10 @@ import MinitileCore
 import Testing
 @testable import minitile
 
-private let names: [UInt16: String] = [48: "tab", 123: "left", 124: "right", 125: "down", 126: "up", 36: "return", 53: "escape", 0: "a", 96: "f5"]
+private let names: [UInt16: String] = [48: "tab", 123: "left", 124: "right", 125: "down", 126: "up", 36: "return", 53: "escape", 0: "a", 96: "f5",
+                                       12: "q"]
 private let tab: UInt16 = 48, left: UInt16 = 123, right: UInt16 = 124, down: UInt16 = 125, up: UInt16 = 126
-private let enter: UInt16 = 36, escape: UInt16 = 53
+private let enter: UInt16 = 36, escape: UInt16 = 53, q: UInt16 = 12
 
 private func makeRouter(_ bindings: [Chord: [String]] = Config.defaultBindings) -> KeyRouter {
     var router = KeyRouter(bindings: bindings, names: names)
@@ -148,9 +149,31 @@ private func makeRouter(_ bindings: [Chord: [String]] = Config.defaultBindings) 
     #expect(router.switcher == nil)
 }
 
+@Test func qQuitsFromTheOpenSwitcherOncePerPress() {
+    var router = makeRouter()
+    #expect(router.key(q, modifiers: .cmd, down: true) == .pass)
+    #expect(router.key(q, modifiers: .cmd, down: false) == .pass)
+    #expect(router.key(tab, modifiers: .cmd, down: true) == .switcher(.open(forward: true, held: .cmd), session: 1))
+    #expect(router.key(q, modifiers: .cmd, down: true) == .switcher(.quit, session: 1))
+    // Held, it quits nothing more: the selection moves on as the app goes, and repeats would take the next ones too.
+    #expect(router.key(q, modifiers: .cmd, down: true, autorepeat: true) == .swallow)
+    #expect(router.key(q, modifiers: .cmd, down: false) == .swallow)
+    // The switcher stays open, and another press quits again.
+    #expect(router.switcher?.session == 1)
+    #expect(router.key(q, modifiers: [], down: true) == .switcher(.quit, session: 1))
+    #expect(router.key(q, modifiers: [], down: false) == .swallow)
+    #expect(router.flags([]) == .switcher(.commit, session: 1))
+    // Closed, Cmd+Q is the frontmost app's again; a Q still held from the switcher stays swallowed.
+    #expect(router.key(q, modifiers: .cmd, down: true) == .pass)
+    #expect(router.key(tab, modifiers: .cmd, down: true) == .switcher(.open(forward: true, held: .cmd), session: 2))
+    #expect(router.key(q, modifiers: .cmd, down: true) == .switcher(.quit, session: 2))
+    #expect(router.flags([]) == .switcher(.commit, session: 2))
+    #expect(router.key(q, modifiers: [], down: true, autorepeat: true) == .swallow)
+}
+
 @MainActor
 private final class FakePresenter: SwitcherPresenting {
-    var shown: [WindowID] = []
+    var shown: [SwitcherTarget] = []
     /// Each show's display and the display it slides from.
     var moves: [(display: DisplayID, from: DisplayID?)] = []
     var contents: [SwitcherContent] = []
@@ -174,10 +197,15 @@ private final class FakeClock {
 }
 
 @MainActor
-private func controller() -> (WindowSwitcher, FakePresenter, FakeClock) {
+private final class FakeApps {
+    var running: [SwitcherApp] = []
+}
+
+@MainActor
+private func controller(_ apps: FakeApps = FakeApps()) -> (WindowSwitcher, FakePresenter, FakeClock) {
     let presenter = FakePresenter(), clock = FakeClock()
     let switcher = WindowSwitcher(presenter: presenter, schedule: { clock.pending.append(($0, $1)) },
-                                  names: { ["d": "Laptop", "e": "External"] })
+                                  names: { ["d": "Laptop", "e": "External"] }, apps: { apps.running })
     return (switcher, presenter, clock)
 }
 
@@ -255,13 +283,64 @@ private func switcherState() -> SavedState {
 
 @Test @MainActor func modifierCheckBeforeShowingCanCommitFirst() {
     let (switcher, presenter, clock) = controller()
-    var committed: WindowID?
+    var committed: SwitcherTarget?
     switcher.willShow = { committed = switcher.commit() }
     #expect(switcher.open(session: 1, forward: true, held: true, state: switcherState(), display: "d", config: .default))
     clock.fire()
     #expect(committed == 2)
     #expect(presenter.shown.isEmpty)
     #expect(!switcher.isOpen)
+}
+
+/// The windows of `switcherState` gone, so only the apps row is left.
+private func emptyState() -> SavedState {
+    var state = switcherState()
+    state.displays[0].workspaces[0].pages[0].windows = []
+    state.windows = [:]
+    state.focus = nil
+    return state
+}
+
+@Test @MainActor func switcherStepsFromTheWindowsIntoTheAppsRowAndFollowsIt() {
+    let apps = FakeApps()
+    apps.running = [SwitcherApp(pid: 1, name: "One"), SwitcherApp(pid: 7, name: "Seven"), SwitcherApp(pid: 8, name: "Eight")]
+    let (switcher, presenter, _) = controller(apps)
+    #expect(switcher.open(session: 1, forward: false, held: false, state: switcherState(), display: "d", config: .default))
+    #expect(presenter.shown == [3])
+    #expect(presenter.contents.last?.apps.map(\.pid) == [7, 8])
+    switcher.step(forward: true)
+    #expect(presenter.shown == [3, .app(7)])
+    #expect(presenter.contents.last?.app == "Seven" && presenter.contents.last?.title == "No window in the grid")
+    #expect(presenter.moves.last?.display == "d")
+    // The app quits: the next one takes the selection, and the row redraws without it.
+    apps.running.remove(at: 1)
+    #expect(switcher.update(state: switcherState(), config: .default) == nil)
+    #expect(presenter.shown == [3, .app(7), .app(8)])
+    #expect(presenter.contents.last?.apps.map(\.pid) == [8])
+    #expect(switcher.commit() == .app(8))
+    #expect(presenter.hides == 1)
+}
+
+@Test @MainActor func quickCmdTabNeverOpensAnApp() {
+    let apps = FakeApps()
+    apps.running = [SwitcherApp(pid: 7, name: "Seven")]
+    let (switcher, presenter, clock) = controller(apps)
+    // With no window anywhere the first selection is an app, which a release before the panel shows leaves alone.
+    #expect(switcher.open(session: 1, forward: true, held: true, state: emptyState(), display: "d", config: .default))
+    #expect(switcher.selection?.selected == .app(7))
+    #expect(switcher.commit() == nil)
+    #expect(!switcher.isOpen && presenter.shown.isEmpty)
+    // Once the panel shows, releasing opens the app.
+    #expect(switcher.open(session: 2, forward: true, held: true, state: emptyState(), display: "d", config: .default))
+    clock.fire()
+    #expect(presenter.shown == [.app(7)])
+    #expect(switcher.commit() == .app(7))
+    // The last app quitting with no window left closes the switcher.
+    #expect(switcher.open(session: 3, forward: true, held: false, state: emptyState(), display: "d", config: .default))
+    apps.running = []
+    #expect(switcher.update(state: emptyState(), config: .default) == 3)
+    #expect(!switcher.isOpen)
+    #expect(!switcher.open(session: 4, forward: true, held: false, state: emptyState(), display: "d", config: .default))
 }
 
 @Test func switcherDefaultBindingsUseShellVerbs() {

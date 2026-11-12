@@ -15,11 +15,13 @@ struct GridMetrics: Equatable {
     var reservedIcon: CGFloat
     /// Floating windows as a tray of selectable icons on the cell's top edge; nil draws a count badge.
     var trayIcon: CGFloat?
+    /// The icons of the switcher's apps row under the grid; nil leaves no room for one.
+    var shelfIcon: CGFloat?
 
     static let indicator = GridMetrics(scale: 2, cellArea: 128 * 80, spacing: 12, labelGap: 4, minWidth: 440, icon: 20...28,
                                        reservedIcon: 20, trayIcon: nil)
     static let switcher = GridMetrics(scale: 2, cellArea: 256 * 160, spacing: 24, labelGap: 24, minWidth: 600, icon: 32...64,
-                                      reservedIcon: 28, trayIcon: 32)
+                                      reservedIcon: 28, trayIcon: 32, shelfIcon: 40)
     /// The switcher's cell size, in a single row without labels; its tiles are the drop targets.
     static let picker = GridMetrics(cellArea: 128 * 80, spacing: 12, labelGap: 0, minWidth: 0, icon: 16...32,
                                     reservedIcon: 14, trayIcon: nil).scaled(2)
@@ -29,7 +31,7 @@ struct GridMetrics: Equatable {
         func whole(_ value: CGFloat) -> CGFloat { (value * factor).rounded(.down) }
         return GridMetrics(scale: scale * factor, cellArea: cellArea * factor * factor, spacing: spacing * factor,
                            labelGap: labelGap * factor, minWidth: minWidth * factor, icon: whole(icon.lowerBound)...whole(icon.upperBound),
-                           reservedIcon: whole(reservedIcon), trayIcon: trayIcon.map(whole))
+                           reservedIcon: whole(reservedIcon), trayIcon: trayIcon.map(whole), shelfIcon: shelfIcon.map(whole))
     }
 
     /// Scaled down uniformly, never up, to about the largest `size` that fits `room`; with no room at all the metrics
@@ -48,8 +50,8 @@ struct GridMetrics: Equatable {
 }
 
 /// Panel layout in flipped view coordinates, sized from the number of drawn cells and scaled down to fit the usable
-/// area less `PanelStyle.inset` on each side. The header, labels, cells and footer form the inner layout, which sits at
-/// `inset` in the panel, past the bands that hold monitor markers.
+/// area less `PanelStyle.inset` on each side. The header, labels, cells, footer and apps row form the inner layout, which
+/// sits at `inset` in the panel, past the bands that hold monitor markers.
 struct GridIndicatorGeometry: Equatable {
     var metrics: GridMetrics
     var cell: CGSize
@@ -59,6 +61,8 @@ struct GridIndicatorGeometry: Equatable {
     var warning: Bool
     /// Edges with a monitor marker, each in a band the panel adds on that side.
     var markers: Set<SwitcherDirection>
+    /// How many apps the apps row under the grid holds; none without a `shelfIcon` in the metrics.
+    var shelf: Int
 
     init(content: GridIndicatorContent) {
         self.init(area: content.area, rows: content.rows.count, columns: content.columns.count, cropped: content.cropped,
@@ -66,17 +70,17 @@ struct GridIndicatorGeometry: Equatable {
     }
 
     init(area: Rect, rows: Int, columns: Int, cropped: Bool, warning: Bool = false, markers: Set<SwitcherDirection> = [],
-         metrics: GridMetrics) {
+         shelf: Int = 0, metrics: GridMetrics) {
         func layout(_ metrics: GridMetrics) -> GridIndicatorGeometry {
             GridIndicatorGeometry(metrics: metrics, cell: Self.cellSize(area: area, metrics: metrics), rows: rows, columns: columns,
-                                  cropped: cropped, warning: warning, markers: markers)
+                                  cropped: cropped, warning: warning, markers: markers, shelf: metrics.shelfIcon == nil ? 0 : shelf)
         }
         let room = CGSize(width: area.width - 2 * PanelStyle.inset, height: area.height - 2 * PanelStyle.inset)
         self = layout(metrics.fitted(to: room) { layout($0).size })
     }
 
     private init(metrics: GridMetrics, cell: CGSize, rows: Int, columns: Int, cropped: Bool, warning: Bool,
-                 markers: Set<SwitcherDirection>) {
+                 markers: Set<SwitcherDirection>, shelf: Int) {
         self.metrics = metrics
         self.cell = cell
         self.rows = rows
@@ -84,6 +88,7 @@ struct GridIndicatorGeometry: Equatable {
         self.cropped = cropped
         self.warning = warning
         self.markers = markers
+        self.shelf = shelf
     }
 
     /// Constant area in the display's proportions, so portrait displays get tall cells and wide ones stay legible.
@@ -109,9 +114,18 @@ struct GridIndicatorGeometry: Equatable {
     var inner: CGSize {
         if warning { return CGSize(width: metrics.minWidth + 28 * metrics.scale, height: 116 * metrics.scale) }
         let width = origin.x + span(columns, cell.width) + margin
-        let height = origin.y + span(rows, cell.height) + (cropped ? metrics.spacing + footerHeight : 0) + margin
-        return CGSize(width: max(metrics.minWidth, width), height: height)
+        return CGSize(width: max(metrics.minWidth, width), height: shelfTop + (shelf > 0 ? metrics.spacing + shelfHeight : 0) + margin)
     }
+
+    private var gridBottom: CGFloat { origin.y + span(rows, cell.height) }
+    /// Where the footer ends, or the grid without one; the apps row follows a cell's spacing below.
+    private var shelfTop: CGFloat { gridBottom + (cropped ? metrics.spacing + footerHeight : 0) }
+    private var shelfPadding: CGFloat { 3 * metrics.scale }
+    /// The apps row's plate: an icon at full size and the plate's padding around it.
+    var shelfHeight: CGFloat { (metrics.shelfIcon ?? 0) + 2 * shelfPadding }
+
+    /// Room between the apps row's icons.
+    static func shelfGap(_ metrics: GridMetrics) -> CGFloat { 4 * metrics.scale }
 
     var size: CGSize {
         CGSize(width: inner.width + band(.left) + band(.right), height: inner.height + band(.up) + band(.down))
@@ -176,7 +190,26 @@ struct GridIndicatorGeometry: Equatable {
     }
 
     var footerRect: CGRect {
-        CGRect(x: margin, y: inner.height - margin - footerHeight, width: inner.width - 2 * margin, height: footerHeight)
+        CGRect(x: margin, y: gridBottom + metrics.spacing, width: inner.width - 2 * margin, height: footerHeight)
+    }
+
+    /// The apps row's icons, centered under the grid and its footer as the Dock is under the desktop. Icons shrink
+    /// when the row would not fit the panel.
+    var shelfRects: [CGRect] {
+        guard shelf > 0, let side = metrics.shelfIcon else { return [] }
+        let s = metrics.scale, gap = Self.shelfGap(metrics), count = CGFloat(shelf)
+        let room = inner.width - 2 * margin - 2 * shelfPadding
+        let size = max(4 * s, min(side, ((room - (count - 1) * gap) / count).rounded(.down)))
+        let first = ((inner.width - count * size - (count - 1) * gap) / 2).rounded()
+        let top = (shelfTop + metrics.spacing + (shelfHeight - size) / 2).rounded()
+        return (0..<shelf).map { CGRect(x: first + CGFloat($0) * (size + gap), y: top, width: size, height: size) }
+    }
+
+    /// The plate under the apps row's icons.
+    var shelfPlate: CGRect? {
+        let rects = shelfRects
+        guard let first = rects.first, let last = rects.last else { return nil }
+        return first.union(last).insetBy(dx: -shelfPadding, dy: -shelfPadding)
     }
 
     /// The page's usable area inside a cell, inset so tiles clear the cell outline.
@@ -295,6 +328,20 @@ struct GridPainter {
                 Self.plate(rect.insetBy(dx: -1.5 * s, dy: -1.5 * s), radius: 3 * s, fill: PanelStyle.highlightFill, stroke: PanelStyle.highlight)
             }
             icon(floater.pid, in: rect, fraction: chosen ? 1 : PanelStyle.iconOpacity)
+        }
+    }
+
+    /// The switcher's apps row: icons on a plate, the selected one highlighted like a tray icon.
+    func shelf(_ pids: [Int32], geometry: GridIndicatorGeometry, selected: Int32?) {
+        let s = metrics.scale
+        guard let plate = geometry.shelfPlate else { return }
+        Self.plate(plate, radius: 5 * s, fill: PanelStyle.plateFill, stroke: PanelStyle.plate)
+        for (pid, rect) in zip(pids, geometry.shelfRects) {
+            let chosen = pid == selected
+            if chosen {
+                Self.plate(rect.insetBy(dx: -1.5 * s, dy: -1.5 * s), radius: 3 * s, fill: PanelStyle.highlightFill, stroke: PanelStyle.highlight)
+            }
+            icon(pid, in: rect, fraction: chosen ? 1 : PanelStyle.iconOpacity)
         }
     }
 

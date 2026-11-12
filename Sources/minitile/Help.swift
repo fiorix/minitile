@@ -72,7 +72,7 @@ struct HelpContent: Equatable {
                directions: ["left", "right", "up", "down"]),
         Action(text: "Cycle layouts", commands: [["page variant"]]),
         Action(text: "Find a window anywhere", commands: [["switcher next"]],
-               detail: "Hold Cmd, choose with Tab or arrows, then release to jump.", reverse: "switcher prev"),
+               detail: "Hold Cmd, choose with Tab or arrows, then release to jump. Q quits the chosen app.", reverse: "switcher prev"),
         Action(text: "Cycle windows on this page", commands: [["window focus next"]], reverse: "window focus prev"),
         Action(text: "Swap a window with its neighbour", commands: [["window swap next"]], reverse: "window swap prev"),
         Action(text: "Show every shortcut", commands: [["help show"]], detail: "Press Esc or click anywhere else to close."),

@@ -38,6 +38,8 @@ enum SwitcherKey: Equatable, Sendable {
     case open(forward: Bool, held: Modifiers)
     case step(forward: Bool)
     case move(SwitcherDirection)
+    /// Q: quit the selection's app.
+    case quit
     case commit
     case cancel
 }
@@ -155,9 +157,11 @@ struct KeyRouter {
 
     mutating func key(_ code: UInt16, modifiers: Modifiers, down: Bool, autorepeat: Bool = false) -> KeyDecision {
         if !down { repeating.remove(code); return swallowed.remove(code) != nil ? .swallow : .pass }
-        // The open switcher takes its keys whatever the modifiers, repeats included.
+        // The open switcher takes its keys whatever the modifiers, repeats included. A held Q quits one app only:
+        // the selection moves on as each app goes, and repeats would take the next ones with it.
         if let open = switcher, let key = Self.switcherKey(names[code], shift: modifiers.contains(.shift)) {
             swallowed.insert(code)
+            if key == .quit, autorepeat { return .swallow }
             if key == .commit || key == .cancel { modal = nil }
             return .switcher(key, session: open.session)
         }
@@ -281,6 +285,7 @@ struct KeyRouter {
         case "right": .move(.right)
         case "up": .move(.up)
         case "down": .move(.down)
+        case "q": .quit
         case "return": .commit
         case "escape": .cancel
         default: nil

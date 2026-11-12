@@ -22,7 +22,7 @@ import Testing
                                 ["Control", "Option", "Space"], ["Cmd", "Tab"], ["Cmd", "Backtick"], ["Option", "Cmd", "Backtick"],
                                 ["Cmd", "H"]])
     #expect(rows[0].detail == nil && rows[1].detail == nil)
-    #expect(rows[4].detail == "Hold Cmd, choose with Tab or arrows, then release to jump. Add Shift to go back.")
+    #expect(rows[4].detail == "Hold Cmd, choose with Tab or arrows, then release to jump. Q quits the chosen app. Add Shift to go back.")
     #expect(rows[5].detail == "Add Shift to go back." && rows[6].detail == "Add Shift to go back.")
     #expect(rows[7].detail == "Press Esc or click anywhere else to close.")
 }

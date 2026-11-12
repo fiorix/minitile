@@ -79,7 +79,7 @@ minitile takes over the system shortcuts listed below while active, including Mi
 | Control + Shift + arrows | Move the focused window |
 | Control + Option + arrows | Resize the focused window |
 | Control + Option + Space | Cycle the page's layouts |
-| Cmd + Tab / Cmd + Shift + Tab | Switch windows: a ring across the grid from the top-left; hold Cmd to see the switcher |
+| Cmd + Tab / Cmd + Shift + Tab | Switch windows: a ring across the grid from the top-left; hold Cmd to see the switcher, with apps that have no window in a row under the grid, and press Q to quit the chosen app |
 | Cmd + backtick / Cmd + Shift + backtick | Cycle windows on the current page |
 | Cmd + Option + backtick / Cmd + Option + Shift + backtick | Swap the focused window with the next / previous slot on its page |
 | Cmd + H | Show every shortcut while Cmd is held |

@@ -17,12 +17,15 @@ extension AppDelegate {
     func observeLifecycle() {
         let workspace = NSWorkspace.shared.notificationCenter
         observeActivation(workspace)
+        // An app that starts or quits changes the switcher's apps row, which `updateMenu` brings up to date.
         observe(workspace, NSWorkspace.didLaunchApplicationNotification) { [weak self] pid in
             guard let pid else { return }
             self?.discovery?.scan(pids: [pid]); self?.discovery?.recheckSoon(pids: [pid])
+            self?.updateMenu()
         }
         observe(workspace, NSWorkspace.didTerminateApplicationNotification) { [weak self] pid in
             if let pid { self?.discovery?.terminated(pid) }
+            self?.updateMenu()
         }
         for name in [NSWorkspace.didHideApplicationNotification, NSWorkspace.didUnhideApplicationNotification] {
             observe(workspace, name) { [weak self] pid in

@@ -5,6 +5,11 @@ import Testing
 
 private let area = Rect(x: 0, y: 33, width: 1512, height: 945)
 
+/// Lets expectations name a selected window by its ID alone.
+extension SwitcherTarget: ExpressibleByIntegerLiteral {
+    public init(integerLiteral value: WindowID) { self = .window(value) }
+}
+
 /// A display whose workspaces hold pages of window IDs, with `shown` the page it shows.
 private struct Screen {
     var id: DisplayID
@@ -51,9 +56,12 @@ private func model(_ grid: [[[WindowID]]], floating: Set<WindowID> = [], minimiz
           minimized: minimized, appHidden: appHidden, focus: focus, recent: recent)
 }
 
-private func open(_ state: SavedState, forward: Bool = true) -> SwitcherSelection? {
-    SwitcherSelection(state: state, config: .default, forward: forward)
+private func open(_ state: SavedState, apps: [SwitcherApp] = [], forward: Bool = true, active: DisplayID? = nil) -> SwitcherSelection? {
+    SwitcherSelection(state: state, config: .default, apps: apps, forward: forward, active: active)
 }
+
+/// Running apps named after their pids. A window's pid is its ID, so app 3 owns window 3.
+private func apps(_ pids: Int32...) -> [SwitcherApp] { pids.map { SwitcherApp(pid: $0, name: "App \($0)") } }
 
 @Test func switcherRingRunsInGridOrderFromTheFocusedWindow() throws {
     let state = model([[[1, 2, 3, 4], [5, 6]]], focus: 1, recent: [1, 5, 2])
@@ -61,7 +69,7 @@ private func open(_ state: SavedState, forward: Bool = true) -> SwitcherSelectio
     #expect(selection.order == [1, 2, 3, 4, 5, 6])
     #expect(selection.selected == 2)
     #expect(open(state, forward: false)?.selected == 6)
-    var visited: [WindowID] = []
+    var visited: [SwitcherTarget] = []
     for _ in 0..<6 { selection.step(forward: true); visited.append(selection.selected) }
     #expect(visited == [3, 4, 5, 6, 1, 2])
     selection.step(forward: false)
@@ -114,7 +122,7 @@ private func open(_ state: SavedState, forward: Bool = true) -> SwitcherSelectio
     var selection = try #require(open(state))
     #expect(selection.selected == 1)
     #expect(selection.grid.shown == GridCell(workspace: 0, page: 1))
-    var path: [WindowID] = []
+    var path: [SwitcherTarget] = []
     for direction: SwitcherDirection in [.left, .right, .right, .right, .down, .left, .up, .up, .left, .down, .down, .down, .up] {
         selection.move(direction)
         path.append(selection.selected)
@@ -129,10 +137,10 @@ private func open(_ state: SavedState, forward: Bool = true) -> SwitcherSelectio
     var selection = try #require(open(state))
     #expect(selection.selected == 1)
     selection.move(.up)
-    #expect([2, 3].contains(selection.selected))
-    let tray = selection.selected
+    let tray = try #require(selection.selected.window)
+    #expect([2, 3].contains(tray))
     selection.move(tray == 2 ? .right : .left)
-    #expect(selection.selected == (tray == 2 ? 3 : 2))
+    #expect(selection.selected == .window(tray == 2 ? 3 : 2))
     selection.move(.down)
     #expect(selection.selected == 1)
     selection.move(.down)
@@ -219,8 +227,8 @@ private func selecting(_ id: WindowID, in state: SavedState) -> SwitcherSelectio
 }
 
 /// Where an arrow from `id` takes the selection, and the display it lands on.
-private func arrow(_ id: WindowID, _ direction: SwitcherDirection, in state: SavedState) -> (WindowID, DisplayID)? {
-    guard var selection = selecting(id, in: state), selection.selected == id else { return nil }
+private func arrow(_ id: WindowID, _ direction: SwitcherDirection, in state: SavedState) -> (SwitcherTarget, DisplayID)? {
+    guard var selection = selecting(id, in: state), selection.selected == .window(id) else { return nil }
     selection.move(direction)
     return (selection.selected, selection.display)
 }
@@ -261,7 +269,7 @@ private func arrow(_ id: WindowID, _ direction: SwitcherDirection, in state: Sav
     func expect(_ id: WindowID, _ direction: SwitcherDirection, _ window: WindowID, _ display: DisplayID,
                 sourceLocation: SourceLocation = #_sourceLocation) {
         let landed = arrow(id, direction, in: state)
-        #expect(landed?.0 == window && landed?.1 == display, "\(id) \(direction)", sourceLocation: sourceLocation)
+        #expect(landed?.0 == .window(window) && landed?.1 == display, "\(id) \(direction)", sourceLocation: sourceLocation)
     }
     // Up enters the display above from below, at its lowest window: the lower right tile.
     expect(10, .up, 22, "above")
@@ -383,4 +391,220 @@ private func arrow(_ id: WindowID, _ direction: SwitcherDirection, in state: Sav
     #expect(try draws(view, in: name))
     view.content.displayName = nil
     #expect(try !draws(view, in: name))
+}
+
+@Test func appsWithoutAWindowInTheRingFollowTheWindows() throws {
+    // App 2's only window is minimized and app 4's is hidden; apps 8 and 9 have none; app 1 owns a window in the ring.
+    let state = model([[[1, 2, 3]], [[4]]], minimized: [2], appHidden: [4], focus: 3)
+    var selection = try #require(open(state, apps: apps(9, 1, 2, 4, 8)))
+    #expect(selection.order == [1, 3, .app(9), .app(2), .app(4), .app(8)])
+    #expect(selection.apps.map(\.pid) == [9, 2, 4, 8])
+    // Opening wraps around the windows alone, either way.
+    #expect(selection.selected == 1)
+    #expect(open(state, apps: apps(9, 8), forward: false)?.selected == 1)
+    var unfocused = state
+    unfocused.focus = nil
+    #expect(open(unfocused, apps: apps(9, 8))?.selected == 1)
+    #expect(open(unfocused, apps: apps(9, 8), forward: false)?.selected == 3)
+    // Tab walks on from the last window through the apps and back to the first window.
+    var visited: [SwitcherTarget] = []
+    for _ in 0..<6 { selection.step(forward: true); visited.append(selection.selected) }
+    #expect(visited == [3, .app(9), .app(2), .app(4), .app(8), 1])
+    selection.step(forward: false)
+    #expect(selection.selected == .app(8))
+}
+
+@Test func theViewStaysWhereTheSelectionWasWhileAnAppIsSelected() throws {
+    let state = plus(["centre": [[[10]], [[11]]], "above": [[[20]]]], focus: 10)
+    var selection = try #require(open(state, apps: apps(7)))
+    #expect(selection.order == [20, 10, 11, .app(7)])
+    #expect(selection.selected == 11 && selection.place == .init(display: "centre", cell: GridCell(workspace: 1, page: 0)))
+    selection.step(forward: true)
+    #expect(selection.selected == .app(7) && selection.display == "centre")
+    #expect(selection.place.cell == GridCell(workspace: 1, page: 0) && selection.entry == nil)
+    selection.step(forward: true)
+    #expect(selection.selected == 20 && selection.display == "above")
+    selection.step(forward: false)
+    #expect(selection.selected == .app(7) && selection.display == "above")
+}
+
+@Test func appsAloneOpenOnTheActiveDisplay() throws {
+    let state = plus(["centre": [[[]]], "above": [[[]]]])
+    #expect(open(state) == nil)
+    #expect(!SwitcherSelection.offers(state: state, config: .default))
+    #expect(SwitcherSelection.offers(state: state, config: .default) { apps(7) })
+    let selection = try #require(open(state, apps: apps(7, 8), active: "centre"))
+    #expect(selection.order == [.app(7), .app(8)])
+    #expect(selection.selected == .app(7) && selection.display == "centre")
+    #expect(selection.place.cell == GridCell(workspace: 0, page: 0))
+    #expect(open(state, apps: apps(7, 8), forward: false, active: "centre")?.selected == .app(8))
+    // Without a known active display the first one in arrangement order is on view.
+    #expect(open(state, apps: apps(7))?.display == "above")
+    // Apps need a managed display to be shown on, and are asked for only when no window is on offer.
+    let unmanaged = plus(["centre": [[[]]]], unmanaged: ["centre"])
+    #expect(!SwitcherSelection.offers(state: unmanaged, config: .default) { apps(7) })
+    #expect(open(unmanaged, apps: apps(7)) == nil)
+    var asked = false
+    #expect(SwitcherSelection.offers(state: model([[[1]]]), config: .default) { asked = true; return [] })
+    #expect(!asked)
+}
+
+@Test func arrowsMoveBetweenTheGridAndTheAppsRow() throws {
+    // W1: [1 | 2], W2: [3] on the first of two pages, and three apps in the row under them.
+    let state = model([[[1, 2], []], [[3]]], focus: 3)
+    var selection = try #require(open(state, apps: apps(7, 8, 9)))
+    #expect(selection.selected == 1)
+    var path: [SwitcherTarget] = []
+    for direction: SwitcherDirection in [.down, .down, .down, .left, .right, .right, .right, .up, .up, .right, .down, .down] {
+        selection.move(direction)
+        path.append(selection.selected)
+    }
+    // Down from 1 reaches 3 before the row, then the app nearest 3, on the left, and stops there. Left and Right stay
+    // in the row and stop at its ends, with no other display to cross to. Up returns to the nearest window, 3, and on
+    // to 1. Down from 2 takes 3, the only window in the half-plane below, before the row.
+    #expect(path == [3, .app(7), .app(7), .app(7), .app(8), .app(9), .app(9), 3, 1, 2, 3, .app(7)])
+    // Right from a window does not drop into the row, though the row reaches further right.
+    let wide = model([[[1]]], focus: 1)
+    var single = try #require(open(wide, apps: apps(5, 6, 7, 8, 9)))
+    single.move(.right)
+    #expect(single.selected == 1)
+    single.move(.down)
+    #expect(single.selected == .app(7))
+}
+
+@Test func arrowsCrossDisplaysPastTheAppsRow() throws {
+    let state = plus(["centre": [[[10]]], "below": [[[30]]], "left": [[[40]]]], focus: 30)
+    var selection = try #require(open(state, apps: apps(7, 8)))
+    #expect(selection.selected == 40)
+    selection.step(forward: true)
+    #expect(selection.selected == 10)
+    // Down stops at the row before it crosses to the display below: at the first of the two apps, which tie.
+    selection.move(.down)
+    #expect(selection.selected == .app(7) && selection.display == "centre")
+    selection.move(.right)
+    #expect(selection.selected == .app(8) && selection.display == "centre")
+    selection.move(.left)
+    #expect(selection.selected == .app(7))
+    // Left from the row's end crosses like Left from a window.
+    selection.move(.left)
+    #expect(selection.selected == 40 && selection.display == "left")
+    selection.move(.right)
+    #expect(selection.selected == 10 && selection.display == "centre")
+    selection.move(.down)
+    selection.move(.down)
+    #expect(selection.selected == 30 && selection.display == "below")
+    // Up from the display below enters at the window, not the row.
+    selection.move(.up)
+    #expect(selection.selected == 10 && selection.display == "centre")
+}
+
+@Test func theAppsRowFollowsAppsAndWindowsComingAndGoing() throws {
+    let state = model([[[1, 2]]], focus: 1)
+    var selection = try #require(open(state, apps: apps(1, 2, 7, 8, 9)))
+    #expect(selection.order == [1, 2, .app(7), .app(8), .app(9)])
+    selection.step(forward: true)
+    selection.step(forward: true)
+    #expect(selection.selected == .app(8))
+    // App 8 quits and app 6 starts: 9 follows 8 in the order, and 6 joins at the end.
+    var kept = selection.update(state: state, config: .default, apps: apps(6, 1, 2, 7, 9))
+    #expect(kept && selection.order == [1, 2, .app(7), .app(9), .app(6)])
+    #expect(selection.selected == .app(9) && selection.apps.map(\.pid) == [7, 9, 6])
+    // Window 2 closes, leaving its app without one, and app 9 opens window 9: windows stay ahead of the apps, and the
+    // selection moves on from the app that left the row.
+    kept = selection.update(state: model([[[1, 9]]], focus: 1), config: .default, apps: apps(6, 1, 2, 7, 9))
+    #expect(kept && selection.order == [1, 9, .app(7), .app(6), .app(2)])
+    #expect(selection.selected == .app(6))
+    // The app of a selected window quits: its windows go, and the next entry is selected.
+    selection.step(forward: true)
+    selection.step(forward: true)
+    selection.step(forward: true)
+    #expect(selection.selected == 9)
+    kept = selection.update(state: model([[[1]]], focus: 1), config: .default, apps: apps(6, 1, 2, 7))
+    #expect(kept && selection.selected == .app(7))
+    // With every window gone the apps keep the switcher open on the same display; with nothing left it closes.
+    kept = selection.update(state: model([[[]]]), config: .default, apps: apps(6, 7))
+    #expect(kept && selection.order == [.app(7), .app(6)] && selection.display == "d")
+    kept = selection.update(state: model([[[]]]), config: .default)
+    #expect(!kept)
+}
+
+@Test func headerSaysWhyASelectedAppHasNoWindowToShow() throws {
+    let state = model([[[1, 2, 3, 4]]], minimized: [2], appHidden: [4], focus: 3)
+    var selection = try #require(open(state, apps: apps(2, 4, 8)))
+    var content = SwitcherContent(selection: selection, state: state)
+    #expect(content.selected == 1 && content.labeled == GridCell(workspace: 0, page: 0))
+    #expect(content.apps.map(\.pid) == [2, 4, 8])
+    #expect(content.pids == [1, 2, 3, 4, 8])
+    var seen: [[String]] = []
+    selection.step(forward: true)
+    #expect(selection.selected == 3)
+    for _ in 0..<3 {
+        selection.step(forward: true)
+        content = SwitcherContent(selection: selection, state: state)
+        seen.append([content.app, content.title, content.position])
+        #expect(content.labeled == nil && content.cell == GridCell(workspace: 0, page: 0))
+    }
+    #expect(seen == [["App 2", "Minimized", ""], ["App 4", "Hidden", ""], ["App 8", "No window in the grid", ""]])
+}
+
+@Test func appsRowSitsCenteredUnderTheGridAndShrinksToFit() {
+    let laptop = Rect(x: 0, y: 0, width: 1512, height: 945)
+    let bare = GridIndicatorGeometry(area: laptop, rows: 2, columns: 3, cropped: false, metrics: .switcher)
+    let geometry = GridIndicatorGeometry(area: laptop, rows: 2, columns: 3, cropped: false, shelf: 4, metrics: .switcher)
+    #expect(bare.shelfRects.isEmpty && bare.shelfPlate == nil)
+    #expect(geometry.metrics == .switcher)
+    // The row adds a cell's spacing and its plate, 40 pt icons with 6 pt around them, under the grid.
+    #expect(geometry.size == CGSize(width: bare.size.width, height: bare.size.height + 24 + 52))
+    let rects = geometry.shelfRects
+    #expect(rects.count == 4 && rects.allSatisfy { $0.size == CGSize(width: 40, height: 40) })
+    #expect(zip(rects, rects.dropFirst()).allSatisfy { $1.minX - $0.maxX == 8 })
+    let plate = geometry.shelfPlate ?? .zero
+    #expect(abs(plate.midX - geometry.inner.width / 2) <= 0.5)
+    #expect(plate.minY == geometry.cellRect(row: 1, column: 0).maxY + 24 && plate.maxY == geometry.inner.height - geometry.margin)
+    // The cropped note keeps its place under the grid, and the row follows it.
+    let cropped = GridIndicatorGeometry(area: laptop, rows: 2, columns: 3, cropped: true, shelf: 4, metrics: .switcher)
+    #expect(cropped.footerRect.minY == cropped.cellRect(row: 1, column: 0).maxY + 24)
+    #expect(cropped.shelfPlate?.minY == cropped.footerRect.maxY + 24)
+    // Many apps shrink their icons instead of widening the panel.
+    let crowded = GridIndicatorGeometry(area: laptop, rows: 1, columns: 1, cropped: false, shelf: 30, metrics: .switcher)
+    let small = crowded.shelfRects
+    #expect(crowded.size.width == 600 && small.count == 30)
+    #expect(small[0].width < 40 && small[0].width >= 8 && (crowded.shelfPlate?.minX ?? 0) >= crowded.margin)
+    #expect((crowded.shelfPlate?.maxX ?? .infinity) <= crowded.inner.width - crowded.margin)
+    // Other panels have no row, whatever they are asked for.
+    #expect(GridIndicatorGeometry(area: laptop, rows: 2, columns: 3, cropped: false, shelf: 4, metrics: .indicator).shelf == 0)
+    // A full grid with a row still fits the laptop, scaled down a little further.
+    let full = GridIndicatorGeometry(area: laptop, rows: 4, columns: 5, cropped: true, shelf: 6, metrics: .switcher)
+    #expect(full.size.width <= laptop.width - 32 && full.size.height <= laptop.height - 32)
+    #expect(full.metrics.scale < GridIndicatorGeometry(area: laptop, rows: 4, columns: 5, cropped: true, metrics: .switcher).metrics.scale)
+    #expect(abs(full.metrics.scale - 1.8) < 0.01)
+}
+
+@Test @MainActor func switcherDrawsTheAppsRowAndHighlightsTheSelectedApp() throws {
+    let state = model([[[1, 2], [3]], [[4]]], focus: 4)
+    var selection = try #require(open(state, apps: apps(7, 8, 9)))
+    let view = SwitcherView(content: SwitcherContent(selection: selection, state: state))
+    let rects = view.content.geometry.shelfRects
+    #expect(rects.count == 3)
+    // Each app's icon is drawn in its place in the row.
+    let white = NSImage(size: NSSize(width: 8, height: 8), flipped: false) { NSColor.white.setFill(); $0.fill(); return true }
+    #expect(try !draws(view, in: rects[0].insetBy(dx: 8, dy: 8)))
+    view.icons = [7: white]
+    #expect(try draws(view, in: rects[0].insetBy(dx: 8, dy: 8)))
+    #expect(try !draws(view, in: rects[1].insetBy(dx: 8, dy: 8)))
+    // The selected app gets the lit line around its icon.
+    let around = rects[1].insetBy(dx: -3, dy: -3)
+    let unlit = try drawn(view, in: around).count
+    while selection.selected != .app(8) { selection.step(forward: true) }
+    view.content = SwitcherContent(selection: selection, state: state)
+    #expect(try drawn(view, in: around).count > unlit)
+    let apps = ["Utilities/Terminal", "TextEdit", "Notes", "Preview", "", "", "Mail", "Calendar", "Music"]
+    view.icons = Dictionary(uniqueKeysWithValues: apps.enumerated().filter { !$1.isEmpty }.map {
+        (Int32($0 + 1), NSWorkspace.shared.icon(forFile: "/System/Applications/\($1).app"))
+    })
+    let bitmap = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+    view.cacheDisplay(in: view.bounds, to: bitmap)
+    try saveRender(bitmap, name: "switcher-apps-row")
+    view.content.apps = []
+    #expect(view.content.geometry.shelfRects.isEmpty)
 }

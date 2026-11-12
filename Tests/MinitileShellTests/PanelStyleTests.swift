@@ -102,7 +102,8 @@ import Testing
 
 @Test func panelsAreAtScaleTwo() {
     let indicator = GridMetrics(cellArea: 64 * 40, spacing: 6, labelGap: 2, minWidth: 220, icon: 10...14, reservedIcon: 10, trayIcon: nil)
-    let switcher = GridMetrics(cellArea: 128 * 80, spacing: 12, labelGap: 12, minWidth: 300, icon: 16...32, reservedIcon: 14, trayIcon: 16)
+    let switcher = GridMetrics(cellArea: 128 * 80, spacing: 12, labelGap: 12, minWidth: 300, icon: 16...32, reservedIcon: 14, trayIcon: 16,
+                               shelfIcon: 20)
     #expect(indicator.scaled(2) == .indicator)
     #expect(switcher.scaled(2) == .switcher)
     #expect(GridMetrics.picker.scale == 2 && GridMetrics.picker.cellArea == 256 * 160)

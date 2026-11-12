@@ -9,12 +9,27 @@ protocol SwitcherPresenting: AnyObject {
     func hide()
 }
 
+extension SwitcherApp {
+    static let finder = "com.apple.finder"
+
+    /// The apps the native app switcher lists, other than minitile, oldest first, so the apps row keeps its order as
+    /// apps come and go.
+    @MainActor static func running() -> [SwitcherApp] {
+        let own = ProcessInfo.processInfo.processIdentifier
+        return NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy == .regular && !$0.isTerminated && $0.processIdentifier != own }
+            .sorted { ($0.launchDate ?? .distantPast, $0.processIdentifier) < ($1.launchDate ?? .distantPast, $1.processIdentifier) }
+            .map { SwitcherApp(pid: $0.processIdentifier, name: $0.localizedName ?? "") }
+    }
+}
+
 /// The switcher's main-thread side: its selection, its session with the key router, and when the panel shows. Opened
 /// by a held binding, the panel waits `showDelay`, so a quick Cmd+Tab switches without it ever appearing.
 @MainActor
 final class WindowSwitcher {
     typealias Schedule = @MainActor (TimeInterval, @escaping @MainActor @Sendable () -> Void) -> Void
     typealias Names = @MainActor () -> [DisplayID: String]
+    typealias Apps = @MainActor () -> [SwitcherApp]
     static let showDelay: TimeInterval = 0.15
 
     private(set) var selection: SwitcherSelection?
@@ -33,26 +48,31 @@ final class WindowSwitcher {
     private let presenter: any SwitcherPresenting
     private let schedule: Schedule
     private let names: Names
+    /// The running apps the apps row draws from, read when the switcher opens and on each update while it is open.
+    private let apps: Apps
 
     init(presenter: any SwitcherPresenting, schedule: @escaping Schedule = { delay, work in
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { MainActor.assumeIsolated { work() } }
-    }, names: @escaping Names = { DisplayCatalog.names() }) {
+    }, names: @escaping Names = { DisplayCatalog.names() }, apps: @escaping Apps = { SwitcherApp.running() }) {
         self.presenter = presenter
         self.schedule = schedule
         self.names = names
+        self.apps = apps
     }
 
     var isOpen: Bool { selection != nil }
 
     func isStale(_ session: Int) -> Bool { session <= latest }
 
-    /// Opens over the windows of every managed display, replacing an open switcher. The panel starts in the middle of
-    /// `display`, the active one, and slides on to the selection's display when that is another. Returns false,
-    /// leaving it closed, when no managed display has a window to offer.
+    /// Opens over the windows of every managed display and the apps row, replacing an open switcher. The panel starts
+    /// in the middle of `display`, the active one, and slides on to the selection's display when that is another.
+    /// Returns false, leaving it closed, without a managed display or anything to offer.
     func open(session: Int, forward: Bool, held: Bool, state: SavedState, display: DisplayID?, config: Config) -> Bool {
         latest = max(latest, session)
         close()
-        guard let selection = SwitcherSelection(state: state, config: config, forward: forward) else { return false }
+        guard let selection = SwitcherSelection(state: state, config: config, apps: apps(), forward: forward, active: display) else {
+            return false
+        }
         self.selection = selection
         self.session = session
         self.held = held
@@ -73,19 +93,21 @@ final class WindowSwitcher {
         redraw()
     }
 
-    /// Follows model changes. Returns the session it closed because no window is left to offer.
+    /// Follows model changes and apps starting and quitting. Returns the session it closed because nothing is left to
+    /// offer.
     func update(state: SavedState, config: Config) -> Int? {
         guard var selection, let session else { return nil }
-        guard selection.update(state: state, config: config) else { close(); return session }
+        guard selection.update(state: state, config: config, apps: apps()) else { close(); return session }
         self.selection = selection
         self.state = state
         redraw()
         return nil
     }
 
-    /// Hides the panel before returning the window to focus, so the panel never shows in a transition capture.
-    func commit() -> WindowID? {
-        let selected = selection?.selected
+    /// Hides the panel before returning what to switch to, so the panel never shows in a transition capture. An app
+    /// opens only from a panel that showed, so a quick Cmd+Tab switches to a window or does nothing.
+    func commit() -> SwitcherTarget? {
+        let selected = visible || selection?.selected.app == nil ? selection?.selected : nil
         close()
         return selected
     }
@@ -163,15 +185,16 @@ final class SwitcherPanel: SwitcherPresenting {
         let panel = self.panel ?? makePanel(content)
         self.panel = panel
         if let view = panel.styledContent as? SwitcherView {
-            icons.prune(keeping: Set(content.pages.flatMap { $0.flatMap { $0.slots.map(\.pid) + $0.floaters.map(\.pid) } }))
+            icons.prune(keeping: Set(content.pages.flatMap { $0.flatMap { $0.slots.map(\.pid) + $0.floaters.map(\.pid) } }
+                                         + content.apps.map(\.pid)))
             var images: [Int32: NSImage] = [:]
             for pid in content.pids {
                 images[pid] = icons.icon(pid) { NSRunningApplication(processIdentifier: $0)?.icon }
             }
             view.icons = images
             view.content = content
-            let name = content.displayName.map { ", \($0)" } ?? ""
-            view.setAccessibilityLabel("Window switcher, \(content.app), \(content.title), \(content.position)\(name)")
+            let parts = [content.app, content.title, content.position, content.displayName ?? ""].filter { !$0.isEmpty }
+            view.setAccessibilityLabel((["Window switcher"] + parts).joined(separator: ", "))
         }
         let size = content.geometry.size, area = screen.visibleFrame
         let target = PanelSlide.frame(size, centeredOn: CGPoint(x: area.midX, y: area.midY))
@@ -279,9 +302,10 @@ final class SwitcherView: NSView {
             GridPainter.text(name, rect: NSRect(x: bounds.width - margin - 150 * s, y: 29 * s, width: 150 * s, height: 16 * s),
                              size: 10 * s, color: PanelStyle.dim, alignment: .right, monospaced: true)
         }
-        GridPainter(area: content.area, metrics: geometry.metrics, icons: icons)
-            .grid(content.pages, rows: content.rows, columns: content.columns, geometry: geometry, labeled: content.cell,
-                  current: content.shown, selected: content.selected)
+        let painter = GridPainter(area: content.area, metrics: geometry.metrics, icons: icons)
+        painter.grid(content.pages, rows: content.rows, columns: content.columns, geometry: geometry, labeled: content.labeled,
+                     current: content.shown, selected: content.selected.window)
+        painter.shelf(content.apps.map(\.pid), geometry: geometry, selected: content.selected.app)
         if content.cropped {
             GridPainter.text("Grid cropped around the selection", rect: geometry.footerRect, size: 9 * s, color: PanelStyle.dim,
                              monospaced: true)
@@ -299,7 +323,7 @@ extension AppDelegate {
             let forward = argv[1] == "next"
             if windowSwitcher.isOpen { windowSwitcher.step(forward: forward); return Reply(text: "OK") }
             let opened = openSwitcher(session: keyboard?.open(.switcher) ?? 0, forward: forward, held: false)
-            return opened ? Reply(text: "OK") : Reply(ok: false, text: "No window to switch to")
+            return opened ? Reply(text: "OK") : Reply(ok: false, text: "No window or app to switch to")
         case "commit":
             return windowSwitcher.isOpen ? commitSwitcher() : Reply(ok: false, text: "The switcher is not open")
         case "cancel":
@@ -321,15 +345,16 @@ extension AppDelegate {
         switch key {
         case .step(let forward): windowSwitcher.step(forward: forward)
         case .move(let direction): windowSwitcher.move(direction)
+        case .quit: quitSwitcherSelection()
         case .commit: _ = commitSwitcher()
         case .cancel: windowSwitcher.cancel()
         case .open: break
         }
     }
 
-    /// Opens over every managed display's windows, starting on the display a command without an address acts on. The
-    /// help screen closes even when there is no window to offer, since the router has already given the keyboard to
-    /// the switcher.
+    /// Opens over every managed display's windows and the apps row, starting on the display a command without an
+    /// address acts on. The help screen closes even when there is nothing to offer, since the router has already given
+    /// the keyboard to the switcher.
     func openSwitcher(session: Int, forward: Bool, held: Bool) -> Bool {
         helpScreen.supersede(session)
         let state = engine.savedState()
@@ -339,22 +364,55 @@ extension AppDelegate {
         return opened
     }
 
-    /// Focuses the selection through the command path, so its page shows with the usual slide and focus follows.
+    /// Focuses a selected window through the command path, so its page shows with the usual slide and focus follows,
+    /// and opens a selected app.
     func commitSwitcher() -> Reply {
+        guard windowSwitcher.isOpen else { return Reply(ok: false, text: "The switcher is not open") }
         let session = windowSwitcher.session
-        guard let id = windowSwitcher.commit() else { return Reply(ok: false, text: "The switcher is not open") }
+        let target = windowSwitcher.commit()
         if let session { keyboard?.close(session) }
-        let reply = command(["window", "focus", String(id)])
-        if !reply.ok { logger.info("Switcher focus \(id): \(reply.text, privacy: .public)") }
-        return reply
+        switch target {
+        case .window(let id):
+            let reply = command(["window", "focus", String(id)])
+            if !reply.ok { logger.info("Switcher focus \(id): \(reply.text, privacy: .public)") }
+            return reply
+        case .app(let pid): return openApp(pid)
+        case nil: return Reply(text: "OK")
+        }
     }
 
-    /// The switcher's bindings work while minitile is started and not suspended and some managed display has a window
-    /// to offer, and the help screen's while it is started and not suspended; otherwise Cmd+Tab and Cmd+H pass to
-    /// macOS.
+    /// Opens a running app as a click on its Dock icon does: it comes to the front, unhidden, and is asked to reopen,
+    /// which brings back a window in most apps that show none. Plain activation, as the native app switcher does it,
+    /// would leave such an app with only its menu bar.
+    func openApp(_ pid: Int32) -> Reply {
+        guard let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated else {
+            return Reply(ok: false, text: "App \(pid) is not running")
+        }
+        guard let url = app.bundleURL else { app.activate(); return Reply(text: "OK") }
+        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { _, error in
+            guard let error else { return }
+            logger.info("Switcher open \(pid): \(error.localizedDescription, privacy: .public)")
+            DispatchQueue.main.async { _ = NSRunningApplication(processIdentifier: pid)?.activate() }
+        }
+        return Reply(text: "OK")
+    }
+
+    /// Q asks the selection's app to quit: the selected app, or the selected window's. Only a panel on screen takes
+    /// it, so nothing quits unseen, and Finder is left alone, as in the native app switcher. The switcher stays open and
+    /// follows the app going away.
+    func quitSwitcherSelection() {
+        guard windowSwitcher.visible, let target = windowSwitcher.selection?.selected else { return }
+        let pid = target.app ?? target.window.flatMap { engine.savedState().windows[$0]?.info.pid }
+        guard let pid, let app = NSRunningApplication(processIdentifier: pid), app.bundleIdentifier != SwitcherApp.finder else { return }
+        if !app.terminate() { logger.info("Switcher quit \(pid): the app did not take the request") }
+    }
+
+    /// The switcher's bindings work while minitile is started and not suspended, with a managed display and a window
+    /// or an app to offer, and the help screen's while it is started and not suspended; otherwise Cmd+Tab and Cmd+H
+    /// pass to macOS.
     func updateModalAvailability() {
         let help = modalsAvailable
-        let switcher = help && SwitcherSelection.offers(state: engine.savedState(), config: engine.config)
+        let switcher = help && SwitcherSelection.offers(state: engine.savedState(), config: engine.config) { SwitcherApp.running() }
         keyboard?.availability(switcher: switcher, help: help)
         if !switcher, let session = windowSwitcher.session {
             windowSwitcher.cancel()
