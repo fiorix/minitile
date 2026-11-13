@@ -37,7 +37,7 @@ enum DropEdge: String, CaseIterable, Sendable {
 /// the frame it reports stays the one before the write until an unsuppressed observation replaces it. A drag that
 /// begins sooner starts from here.
 @MainActor
-final class SettledFrame {
+struct SettledFrame {
     private(set) var frame: Rect?
     private var target: Rect?
     private var otherDrag: (() -> Bool)?
@@ -45,10 +45,10 @@ final class SettledFrame {
     nonisolated init() {}
 
     /// A new write makes the frame an earlier one settled at wrong.
-    func wrote() { frame = nil; target = nil; otherDrag = nil }
+    mutating func wrote() { frame = nil; target = nil; otherDrag = nil }
 
-    /// Shared with the writer so discovery can recognize its echoes without reporting them to the core.
-    func expectEcho(of target: Rect, duringOtherDrag: @escaping () -> Bool) {
+    /// The write's target lets discovery recognize its echoes without reporting them to the core.
+    mutating func expectEcho(of target: Rect, duringOtherDrag: @escaping () -> Bool) {
         self.target = target
         otherDrag = duringOtherDrag
     }
@@ -56,7 +56,7 @@ final class SettledFrame {
     /// `suppressed` marks an observation that is taken for the echo of minitile's write and not reported. With the
     /// button down only the exact target or an echo during another window's confirmed drag is trustworthy; other
     /// frames may be the user's own drag. A reported observation clears the write; a failed read changes nothing.
-    func observe(_ observed: Rect?, suppressed: Bool, buttonDown: Bool) {
+    mutating func observe(_ observed: Rect?, suppressed: Bool, buttonDown: Bool) {
         guard let observed else { return }
         if !suppressed { wrote() }
         else if !buttonDown || observed == target || otherDrag?() == true { frame = observed }

@@ -3,6 +3,57 @@ import MinitileCore
 import Testing
 @testable import minitile
 
+@Test @MainActor func indicatorRecordsRoundTripsBeforeRedrawAndUsesTheLastDeadline() throws {
+    let indicator = GridIndicator()
+    var state = SavedState()
+    state.displays = [DisplayState(info: DisplayInfo(id: "d", frame: .init(x: 0, y: 0, width: 1000, height: 800)),
+                                  workspaces: [WorkspaceState(id: 1, home: "d", pages: [PageState(id: 2), PageState(id: 3)], currentPage: 2)],
+                                  currentWorkspace: 1)]
+    indicator.recordPositions(state: state, now: 10)
+    #expect(indicator.takePositionChanges() == ["d"])
+    #expect(indicator.takePositionChanges().isEmpty)
+    state.displays[0].workspaces[0].currentPage = 3
+    indicator.recordPositions(state: state, now: 20)
+    state.displays[0].workspaces[0].currentPage = 2
+    indicator.recordPositions(state: state, now: 20.25)
+    // Recording the redraw's final snapshot must not erase the intervening changes or extend their deadline.
+    indicator.recordPositions(state: state, now: 20.5)
+    #expect(indicator.takePositionChanges() == ["d"])
+    #expect(indicator.takePositionChanges().isEmpty)
+    let timing = try #require(indicator.timing["d"])
+    #expect(timing.position == GridPosition(workspace: 1, page: 2))
+    #expect(timing.visibleUntil == 21.75)
+    #expect(timing.hideDelay(now: 20.5) == 1.25)
+    #expect(timing.hideDelay(now: 21.75) == nil)
+    #expect(timing.hideDelay(now: 22) == nil)
+    indicator.recordPositions(state: state, now: 23)
+    #expect(indicator.takePositionChanges().isEmpty)
+    #expect(indicator.timing["d"]?.visibleUntil == 21.75)
+}
+
+@Test @MainActor func indicatorConsumesExplicitShowsOnceAndRecordsUnmanagedPositions() throws {
+    let indicator = GridIndicator()
+    var state = SavedState()
+    state.displays = [DisplayState(info: DisplayInfo(id: "d", frame: .init(x: 0, y: 0, width: 1000, height: 800)),
+                                  workspaces: [WorkspaceState(id: 1, home: "d", pages: [PageState(id: 2)], currentPage: 2)],
+                                  currentWorkspace: 1)]
+    indicator.recordPositions(state: state, now: 10)
+    _ = indicator.takePositionChanges()
+    indicator.show(on: "d")
+    indicator.recordPositions(state: state, now: 20)
+    indicator.recordPositions(state: state, now: 20.5)
+    #expect(indicator.takePositionChanges() == ["d"])
+    #expect(indicator.timing["d"]?.hideDelay(now: 20.5) == 1)
+    state.displays[0].info.unmanagedReason = "No desktop pair"
+    indicator.recordPositions(state: state, now: 21)
+    #expect(indicator.takePositionChanges() == ["d"])
+    let timing = try #require(indicator.timing["d"])
+    #expect(timing.hideDelay(now: 21) == nil)
+    indicator.show(on: "d")
+    indicator.recordPositions(state: state, now: 22)
+    #expect(indicator.takePositionChanges().isEmpty)
+}
+
 @Test func indicatorRoundTripBeforeRedrawKeepsTheLastChangesDeadline() {
     var clock = GridIndicatorTiming()
     let first = GridPosition(workspace: 1, page: 2)

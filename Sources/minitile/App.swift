@@ -27,8 +27,8 @@ enum MinitileMain {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let paths = ShellPaths()
-    let status = StatusMenu()
-    let menuRefresh = MenuRefresh()
+    lazy var status = StatusMenu()
+    let menuRefresh: MenuRefresh
     let gridIndicator = GridIndicator()
     let switcherPanel = SwitcherPanel()
     lazy var windowSwitcher = WindowSwitcher(presenter: switcherPanel)
@@ -99,6 +99,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var signalSources: [DispatchSourceSignal] = []
     var suspension = SuspensionState()
     var suspendedReasons: Set<String> { suspension.reasons }
+
+    init(menuRefresh: MenuRefresh = MenuRefresh()) {
+        self.menuRefresh = menuRefresh
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         startupLog("Application launched; Accessibility trusted: \(AXIsProcessTrusted())")

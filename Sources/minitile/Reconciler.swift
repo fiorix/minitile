@@ -257,8 +257,7 @@ final class Reconciler {
                 if verify { correctedFrames.removeValue(forKey: id) }
                 else { correctedFrames[id] = target }
                 suppression[id] = ProcessInfo.processInfo.systemUptime + 1.2
-                discovery.wroteFrame(id)
-                window.settled.expectEcho(of: target) { [weak self] in
+                discovery.wroteFrame(id, target: target) { [weak self] in
                     guard let self, let dragging = self.dragging, dragging != id else { return false }
                     return self.dragPressIsCurrent?() == true
                 }

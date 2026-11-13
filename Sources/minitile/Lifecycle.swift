@@ -1,5 +1,4 @@
 import AppKit
-import Carbon
 import CSkyLight
 import MinitileCore
 
@@ -53,11 +52,6 @@ extension AppDelegate {
         observe(.default, NSApplication.didChangeScreenParametersNotification) { [weak self] _ in
             self?.scheduleDisplays()
             self?.updateMenu()
-        }
-        observe(DistributedNotificationCenter.default(), Notification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String)) { [weak self] _ in
-            guard let self, !self.quitting else { return }
-            self.keyboard?.invalidateKeyNames()
-            self.keyboard?.update(config: self.engine.config, displays: self.displays, dragged: self.reconciler?.dragging)
         }
         observe(workspace, NSWorkspace.accessibilityDisplayOptionsDidChangeNotification) { [weak self] _ in
             self?.updateTransitions(); self?.updateMenu()

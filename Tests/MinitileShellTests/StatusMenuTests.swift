@@ -7,6 +7,32 @@ import Testing
     var rendered: [Int] = []
 }
 
+@Test @MainActor func appWarningsRequestRefreshOnlyWhenTheyChange() throws {
+    var queued: [MenuRefresh.Work] = []
+    let delegate = AppDelegate(menuRefresh: MenuRefresh { queued.append($0) })
+    // Complete the queued request through its shutdown guard, without rendering panels or a status item.
+    func finishRequest() throws {
+        try #require(queued.count == 1)
+        delegate.quitting = true
+        queued.removeFirst()()
+        delegate.quitting = false
+    }
+    delegate.warnings = [:]
+    #expect(queued.isEmpty)
+    delegate.warnings["test"] = "First warning"
+    try finishRequest()
+    delegate.warnings["test"] = "First warning"
+    delegate.warnings = ["test": "First warning"]
+    #expect(queued.isEmpty)
+    delegate.warnings["test"] = "Second warning"
+    try finishRequest()
+    delegate.warnings.removeValue(forKey: "test")
+    try finishRequest()
+    delegate.warnings.removeValue(forKey: "test")
+    #expect(queued.isEmpty)
+    #expect(!delegate.started)
+}
+
 @Test @MainActor func menuRefreshCoalescesABurstAndReadsTheLatestState() {
     var queued: [MenuRefresh.Work] = []
     let refresh = MenuRefresh { queued.append($0) }

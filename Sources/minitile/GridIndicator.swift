@@ -36,6 +36,8 @@ struct GridIndicatorTiming {
     }
 
     func visible(now: TimeInterval) -> Bool { position != nil && now < visibleUntil }
+
+    func hideDelay(now: TimeInterval) -> TimeInterval? { visible(now: now) ? visibleUntil - now : nil }
 }
 
 /// Never key or main, so showing it leaves focus where it is.
@@ -196,7 +198,7 @@ struct AppIconCache<Icon> {
 @MainActor
 final class GridIndicator {
     private var panels: [DisplayID: NSPanel] = [:]
-    private var timing: [DisplayID: GridIndicatorTiming] = [:]
+    private(set) var timing: [DisplayID: GridIndicatorTiming] = [:]
     private var hideWork: [DisplayID: DispatchWorkItem] = [:]
     private var icons = AppIconCache<NSImage>()
     private var requested: Set<DisplayID> = []
@@ -208,8 +210,7 @@ final class GridIndicator {
     func show(on id: DisplayID) { requested.insert(id) }
 
     /// Record every position before redraws coalesce, including a burst that returns to its starting page.
-    func recordPositions(state: SavedState) {
-        let now = ProcessInfo.processInfo.systemUptime
+    func recordPositions(state: SavedState, now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
         for display in state.displays {
             let id = display.info.id
             var clock = timing[id] ?? GridIndicatorTiming()
@@ -221,13 +222,18 @@ final class GridIndicator {
         requested = []
     }
 
+    func takePositionChanges() -> Set<DisplayID> {
+        let changed = changedPositions
+        changedPositions = []
+        return changed
+    }
+
     func update(state: SavedState, config: Config) {
         recordPositions(state: state)
         icons.prune(keeping: Set(state.windows.values.map(\.info.pid)))
         var present = Set<DisplayID>()
         let now = ProcessInfo.processInfo.systemUptime
-        let changedPositions = changedPositions
-        self.changedPositions = []
+        let changedPositions = takePositionChanges()
         let names = DisplayCatalog.names()
         for screen in NSScreen.screens {
             guard let id = DisplayCatalog.id(for: screen), let display = state.displays.first(where: { $0.info.id == id }) else { continue }
@@ -235,7 +241,7 @@ final class GridIndicator {
             let clock = timing[id] ?? GridIndicatorTiming()
             if changedPositions.contains(id) {
                 hideWork.removeValue(forKey: id)?.cancel()
-                if clock.visible(now: now) {
+                if let delay = clock.hideDelay(now: now) {
                     let until = clock.visibleUntil
                     let work = DispatchWorkItem { [weak self] in
                         MainActor.assumeIsolated {
@@ -245,7 +251,7 @@ final class GridIndicator {
                         }
                     }
                     hideWork[id] = work
-                    DispatchQueue.main.asyncAfter(deadline: .now() + (until - now), execute: work)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
                 }
             }
             guard clock.visible(now: now) else { panels[id]?.orderOut(nil); continue }

@@ -508,9 +508,10 @@ final class Discovery {
     }
 
     /// minitile wrote the window's frame, so background reads begun earlier are stale.
-    func wroteFrame(_ id: WindowID) {
+    func wroteFrame(_ id: WindowID, target: Rect, duringOtherDrag: @escaping () -> Bool) {
         ledger.touch(id)
         windows[id]?.settled.wrote()
+        windows[id]?.settled.expectEcho(of: target, duringOtherDrag: duringOtherDrag)
     }
 
     /// The frame a drag of the window begins from: where minitile's last write left it, if nothing observed since

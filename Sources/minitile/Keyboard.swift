@@ -156,7 +156,9 @@ struct KeyRouter {
     mutating func resetHeld() { swallowed.removeAll(); repeating.removeAll() }
 
     /// Escape cancels the pointer's edge action independently of where the key itself is routed.
-    func cancelsEdgeDrop(_ code: UInt16, down: Bool) -> Bool { down && code == 53 && dragged != nil }
+    static func cancelsEdgeDrop(_ code: UInt16, down: Bool, leftButtonDown: () -> Bool) -> Bool {
+        down && code == 53 && leftButtonDown()
+    }
 
     mutating func key(_ code: UInt16, modifiers: Modifiers, down: Bool, autorepeat: Bool = false) -> KeyDecision {
         if !down { repeating.remove(code); return swallowed.remove(code) != nil ? .swallow : .pass }
@@ -298,15 +300,28 @@ struct KeyRouter {
 
 /// The layout translation is reused independently of the configurable window-cycling keycode.
 struct KeyNameCache {
-    private var names: [UInt16: String]?
-
-    mutating func value(hotkey: UInt16?, read: () -> [UInt16: String]) -> [UInt16: String] {
-        let names = self.names ?? read()
-        self.names = names
-        return CycleKey.named(names, hotkey: hotkey)
+    struct Identity: Equatable {
+        var sourceID: String
+        var keyboardType: UInt32
     }
 
-    mutating func invalidate() { names = nil }
+    static let fixedNames: [UInt16: String] = {
+        var names: [UInt16: String] = [123: "left", 124: "right", 125: "down", 126: "up", 36: "return", 49: "space", 48: "tab", 53: "escape"]
+        let functionKeys: [UInt16] = [122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111, 105, 107, 113, 106, 64, 79, 80, 90]
+        for (index, code) in functionKeys.enumerated() { names[code] = "f\(index + 1)" }
+        return names
+    }()
+
+    private var cached: (identity: Identity, names: [UInt16: String])?
+
+    mutating func value(identity: Identity?, hotkey: UInt16?, read: () -> [UInt16: String]?) -> [UInt16: String] {
+        if let cached, cached.identity == identity { return CycleKey.named(cached.names, hotkey: hotkey) }
+        let names = read()
+        // An unavailable source or layout data must be retried on the next policy refresh.
+        cached = nil
+        if let identity, let names { cached = (identity, names) }
+        return CycleKey.named(names ?? Self.fixedNames, hotkey: hotkey)
+    }
 }
 
 final class KeyboardTap: @unchecked Sendable {
@@ -345,15 +360,20 @@ final class KeyboardTap: @unchecked Sendable {
         }
         var key: UInt16 = 0, modifiers: UInt32 = 0, enabled = false
         let cycle = csl_symbolic_hotkey(CycleKey.hotkey, &key, &modifiers, &enabled) ? key : nil
-        let names = keyNameCache.value(hotkey: cycle, read: Self.keyNames)
+        let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue()
+        let keyboardType = UInt32(LMGetKbdType())
+        let identity = source.flatMap { source -> KeyNameCache.Identity? in
+            guard let pointer = TISGetInputSourceProperty(source, kTISPropertyInputSourceID) else { return nil }
+            let id = Unmanaged<CFString>.fromOpaque(pointer).takeUnretainedValue() as String
+            return KeyNameCache.Identity(sourceID: id, keyboardType: keyboardType)
+        }
+        let names = keyNameCache.value(identity: identity, hotkey: cycle) { Self.keyNames(source: source, keyboardType: keyboardType) }
         lock.withLock { router.bindings = config.bindings; router.names = names; router.blocked = blocked; router.dragged = dragged }
     }
 
-    @MainActor func invalidateKeyNames() { keyNameCache.invalidate() }
-
     func drag(_ id: WindowID?) { lock.withLock { router.dragged = id } }
 
-    /// Runs on the tap thread when Escape goes down during a drag, before the key is passed on.
+    /// Runs on the tap thread when Escape goes down with the left button held, before the key is passed on.
     func onDragEscape(_ action: @escaping @Sendable () -> Void) { lock.withLock { dragEscape = action } }
 
     func frontmost(managed: Bool) { lock.withLock { router.frontmostManaged = managed } }
@@ -448,8 +468,11 @@ final class KeyboardTap: @unchecked Sendable {
         let down = type == .keyDown
         let flags = event.flags.rawValue
         let modifiers = KeyRouter.modifiers(event.flags)
+        let cancelEdgeDrop = KeyRouter.cancelsEdgeDrop(code, down: down) {
+            CGEventSource.buttonState(.combinedSessionState, button: .left)
+        }
         let (decision, trace, escape): (KeyDecision, KeyTrace?, (@Sendable () -> Void)?) = lock.withLock {
-            let escape = router.cancelsEdgeDrop(code, down: down) ? dragEscape : nil
+            let escape = cancelEdgeDrop ? dragEscape : nil
             let decision = router.key(code, modifiers: modifiers, down: down,
                                       autorepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0)
             let trace = traceEnabled && traceFilter.includes(code, modifiers: modifiers, down: down)
@@ -467,20 +490,17 @@ final class KeyboardTap: @unchecked Sendable {
         return decision == .pass ? Unmanaged.passUnretained(event) : nil
     }
 
-    @MainActor private static func keyNames() -> [UInt16: String] {
-        var names: [UInt16: String] = [123: "left", 124: "right", 125: "down", 126: "up", 36: "return", 49: "space", 48: "tab", 53: "escape"]
-        let functionKeys: [UInt16] = [122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111, 105, 107, 113, 106, 64, 79, 80, 90]
-        for (index, code) in functionKeys.enumerated() { names[code] = "f\(index + 1)" }
-        guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
-              let pointer = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else { return names }
+    @MainActor private static func keyNames(source: TISInputSource?, keyboardType: UInt32) -> [UInt16: String]? {
+        guard let source, let pointer = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else { return nil }
         let data = Unmanaged<CFData>.fromOpaque(pointer).takeUnretainedValue()
         return withExtendedLifetime((source, data)) {
-            guard let bytes = CFDataGetBytePtr(data) else { return names }
+            guard let bytes = CFDataGetBytePtr(data) else { return nil }
+            var names = KeyNameCache.fixedNames
             let layout = UnsafeRawPointer(bytes).assumingMemoryBound(to: UCKeyboardLayout.self)
             for code: UInt16 in 0..<128 where names[code] == nil {
                 var dead: UInt32 = 0, count = 0
                 var characters = [UniChar](repeating: 0, count: 4)
-                let result = UCKeyTranslate(layout, code, UInt16(kUCKeyActionDown), 0, UInt32(LMGetKbdType()),
+                let result = UCKeyTranslate(layout, code, UInt16(kUCKeyActionDown), 0, keyboardType,
                                             OptionBits(kUCKeyTranslateNoDeadKeysMask), &dead, characters.count, &count, &characters)
                 if result == noErr, count == 1, let scalar = UnicodeScalar(characters[0]),
                    ("a"..."z").contains(String(scalar).lowercased()) || ("0"..."9").contains(String(scalar)) {
