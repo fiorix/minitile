@@ -36,18 +36,30 @@ enum DropEdge: String, CaseIterable, Sendable {
 /// The frame a window rests at after minitile's own write. Discovery keeps the echoes of that write from the core, so
 /// the frame it reports stays the one before the write until an unsuppressed observation replaces it. A drag that
 /// begins sooner starts from here.
-struct SettledFrame: Equatable, Sendable {
+@MainActor
+final class SettledFrame {
     private(set) var frame: Rect?
+    private var target: Rect?
+    private var otherDrag: (() -> Bool)?
+
+    nonisolated init() {}
 
     /// A new write makes the frame an earlier one settled at wrong.
-    mutating func wrote() { frame = nil }
+    func wrote() { frame = nil; target = nil; otherDrag = nil }
+
+    /// Shared with the writer so discovery can recognize its echoes without reporting them to the core.
+    func expectEcho(of target: Rect, duringOtherDrag: @escaping () -> Bool) {
+        self.target = target
+        otherDrag = duringOtherDrag
+    }
 
     /// `suppressed` marks an observation that is taken for the echo of minitile's write and not reported. With the
-    /// left button down a changing frame is the start of the user's drag instead, which begins from the frame seen
-    /// before it. An unsuppressed observation is reported, so nothing is kept. A failed read changes nothing.
-    mutating func observe(_ observed: Rect?, suppressed: Bool, buttonDown: Bool) {
+    /// button down only the exact target or an echo during another window's confirmed drag is trustworthy; other
+    /// frames may be the user's own drag. A reported observation clears the write; a failed read changes nothing.
+    func observe(_ observed: Rect?, suppressed: Bool, buttonDown: Bool) {
         guard let observed else { return }
-        if !suppressed { frame = nil } else if !buttonDown { frame = observed }
+        if !suppressed { wrote() }
+        else if !buttonDown || observed == target || otherDrag?() == true { frame = observed }
     }
 
     /// Where a drag begins, given the frame discovery reports.

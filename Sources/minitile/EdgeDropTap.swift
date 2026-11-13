@@ -24,7 +24,7 @@ final class EdgeDropTap: @unchecked Sendable {
 
     func start() {
         let thread = Thread { [self] in
-            let mask = [CGEventType.leftMouseDown, .leftMouseDragged, .leftMouseUp, .keyDown]
+            let mask = [CGEventType.leftMouseDown, .leftMouseDragged, .leftMouseUp]
                 .reduce(CGEventMask(0)) { $0 | CGEventMask(1) << $1.rawValue }
             guard let tap = CGEvent.tapCreate(tap: .cghidEventTap, place: .headInsertEventTap, options: .defaultTap,
                                               eventsOfInterest: mask, callback: { _, type, event, pointer in
@@ -90,9 +90,6 @@ final class EdgeDropTap: @unchecked Sendable {
             case .leftMouseDown: tracker.begin(at: point); return
             case .leftMouseDragged: location = tracker.drag(to: point)
             case .leftMouseUp: location = tracker.end(at: point)
-            case .keyDown:
-                if event.getIntegerValueField(.keyboardEventKeycode) == 53 { tracker.cancel() }
-                return
             default: return
             }
             if location != point { event.location = CGPoint(x: location.x, y: location.y) }

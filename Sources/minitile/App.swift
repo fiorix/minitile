@@ -52,7 +52,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var reconciler: Reconciler?
     var keyboard: KeyboardTap?
     var swipes: SwipeTap?
-    var edgeDrops: EdgeDropTap?
+    var edgeDrops: EdgeDropTap? {
+        didSet { keyboard?.onDragEscape { [weak edgeDrops] in edgeDrops?.cancel() } }
+    }
     var server: Server?
     var configWatcher: ConfigWatcher?
     lazy var stateWriter = StateWriter(file: paths.state)
@@ -155,6 +157,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.discovery = discovery
         let reconciler = Reconciler(discovery: discovery, displays: displays)
         self.reconciler = reconciler
+        reconciler.dragPressIsCurrent = { [weak self] in
+            guard let self, let press = self.dragPress else { return false }
+            return self.edgeDrops?.sequence == press
+        }
         reconciler.warning = { [weak self] message in self?.warnings["reconcile"] = message; self?.updateMenu() }
         // A dragged window's frame is read as it moves, even right after a write, since the drop picker follows it.
         discovery.suppressGeometry = { [weak reconciler] id in reconciler.map { $0.suppresses(id) && $0.dragging != id } == true }

@@ -254,8 +254,8 @@ private let screen = Rect(x: 0, y: 0, width: 2056, height: 1329)
 private let beforeWrite = Rect(x: 8, y: 47, width: 1016, height: 1274)
 private let afterWrite = Rect(x: 1032, y: 688, width: 1014, height: 637)
 
-@Test func aDragBeginsFromTheFrameMinitilesWriteSettledAt() {
-    var settled = SettledFrame()
+@Test @MainActor func aDragBeginsFromTheFrameMinitilesWriteSettledAt() {
+    let settled = SettledFrame()
     #expect(settled.origin(reported: beforeWrite) == beforeWrite) // Nothing written: the reported frame stands.
     settled.wrote()
     settled.observe(Rect(x: 1032, y: 688, width: 1016, height: 633), suppressed: true, buttonDown: false)
@@ -272,8 +272,8 @@ private let afterWrite = Rect(x: 1032, y: 688, width: 1014, height: 637)
     #expect(settled.frame == nil && settled.origin(reported: dragged) == dragged)
 }
 
-@Test func aNewWriteOrAReportedFrameDiscardsTheSettledFrame() {
-    var settled = SettledFrame()
+@Test @MainActor func aNewWriteOrAReportedFrameDiscardsTheSettledFrame() {
+    let settled = SettledFrame()
     settled.observe(afterWrite, suppressed: true, buttonDown: false)
     settled.wrote() // Its echo arrives with the button held, so what the earlier write settled at must not linger.
     settled.observe(beforeWrite, suppressed: true, buttonDown: true)
@@ -283,13 +283,13 @@ private let afterWrite = Rect(x: 1032, y: 688, width: 1014, height: 637)
     #expect(settled.frame == nil)
 }
 
-@Test func aDragBegunRightAfterAWriteIsAcquiredFromTheSettledFrameOnly() throws {
+@Test @MainActor func aDragBegunRightAfterAWriteIsAcquiredFromTheSettledFrameOnly() throws {
     var dragged = afterWrite; dragged.x -= 30; dragged.y += 40
     let press = Point(x: afterWrite.x + 300, y: afterWrite.y + 14)
     // From the frame before the write the window seems resized and the press seems to miss it.
     #expect(dropOwner(bounds: screen, origin: beforeWrite, frame: dragged) == nil)
     #expect(!beforeWrite.contains(press))
-    var settled = SettledFrame()
+    let settled = SettledFrame()
     settled.wrote()
     settled.observe(afterWrite, suppressed: true, buttonDown: false)
     let origin = settled.origin(reported: beforeWrite)
@@ -303,4 +303,62 @@ private let afterWrite = Rect(x: 1032, y: 688, width: 1014, height: 637)
     // A resize in the same interval still never acquires the pointer.
     var resized = afterWrite; resized.width -= 40
     #expect(dropOwner(bounds: screen, origin: origin, frame: resized) == nil)
+}
+
+@Test @MainActor func aHeldWriteEchoNeverTakesItsRestFrameFromTheUsersDrag() {
+    let settled = SettledFrame()
+    settled.wrote()
+    settled.expectEcho(of: afterWrite, duringOtherDrag: { false })
+    var dragged = afterWrite; dragged.x += 1
+    settled.observe(dragged, suppressed: true, buttonDown: true)
+    #expect(settled.frame == nil) // Even a one-point move is not an exact write echo.
+    settled.observe(afterWrite, suppressed: true, buttonDown: true)
+    #expect(settled.frame == afterWrite)
+    settled.observe(nil, suppressed: true, buttonDown: true)
+    dragged.x += 30
+    settled.observe(dragged, suppressed: true, buttonDown: true)
+    #expect(settled.frame == afterWrite)
+    var resized = afterWrite; resized.width += 4
+    settled.observe(resized, suppressed: true, buttonDown: true)
+    #expect(settled.frame == afterWrite)
+}
+
+@Test @MainActor func aRetileDuringAnotherDragAcquiresEdgeTargetsOnTheNextPress() throws {
+    let settled = SettledFrame()
+    let requested = Rect(x: 1032, y: 688, width: 1016, height: 633)
+    var tracker = EdgeDropTracker()
+    tracker.begin(at: down)
+    let otherPress = tracker.sequence
+    settled.wrote()
+    settled.expectEcho(of: requested, duringOtherDrag: { tracker.sequence == otherPress })
+    settled.observe(requested, suppressed: true, buttonDown: true)
+    settled.observe(afterWrite, suppressed: true, buttonDown: true) // The other app rounds its tile's size.
+    #expect(settled.origin(reported: beforeWrite) == afterWrite)
+    _ = tracker.end(at: down)
+    #expect(tracker.finish(now: 1) == .ready(nil))
+    let press = Point(x: afterWrite.x + 300, y: afterWrite.y + 14)
+    tracker.begin(at: press)
+    var dragged = afterWrite; dragged.x -= 30; dragged.y += 40
+    // Drag tracking for the first press can still be pending when the second press begins.
+    settled.observe(dragged, suppressed: true, buttonDown: true)
+    #expect(settled.frame == afterWrite)
+    let origin = settled.origin(reported: beforeWrite)
+    let candidate = try #require(dropOwner(bounds: screen, origin: origin, frame: dragged))
+    tracker.update(candidate, moved: DragMove.isMove(dragged, from: origin), press: tracker.sequence)
+    #expect(tracker.owner == candidate)
+    #expect(tracker.end(at: Point(x: 1000, y: 1328)) == Point(x: 1000, y: 1269))
+    #expect(tracker.finish(now: 2) == .ready(EdgeDropRelease(owner: candidate, edge: .bottom, location: Point(x: 1000, y: 1328))))
+}
+
+@Test @MainActor func aNewWriteOrReportedObservationDiscardsHeldEchoEvidence() {
+    for reported in [false, true] {
+        let settled = SettledFrame()
+        settled.expectEcho(of: afterWrite, duringOtherDrag: { true })
+        settled.observe(afterWrite, suppressed: true, buttonDown: true)
+        if reported { settled.observe(beforeWrite, suppressed: false, buttonDown: true) }
+        else { settled.wrote() }
+        settled.observe(afterWrite, suppressed: true, buttonDown: true)
+        #expect(settled.frame == nil)
+        #expect(settled.origin(reported: beforeWrite) == beforeWrite)
+    }
 }

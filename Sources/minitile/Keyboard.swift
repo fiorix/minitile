@@ -155,6 +155,9 @@ struct KeyRouter {
 
     mutating func resetHeld() { swallowed.removeAll(); repeating.removeAll() }
 
+    /// Escape cancels the pointer's edge action independently of where the key itself is routed.
+    func cancelsEdgeDrop(_ code: UInt16, down: Bool) -> Bool { down && code == 53 && dragged != nil }
+
     mutating func key(_ code: UInt16, modifiers: Modifiers, down: Bool, autorepeat: Bool = false) -> KeyDecision {
         if !down { repeating.remove(code); return swallowed.remove(code) != nil ? .swallow : .pass }
         // The open switcher takes its keys whatever the modifiers, repeats included. A held Q quits one app only:
@@ -303,6 +306,7 @@ final class KeyboardTap: @unchecked Sendable {
     private var loop: CFRunLoop?
     private var stopping = false
     private var failed = false
+    private var dragEscape: (@Sendable () -> Void)?
     let traceEnabled: Bool
     /// Every dispatched decision carries the uptime its event reached the tap, so the main thread can tell how long it
     /// waited.
@@ -332,6 +336,9 @@ final class KeyboardTap: @unchecked Sendable {
     }
 
     func drag(_ id: WindowID?) { lock.withLock { router.dragged = id } }
+
+    /// Runs on the tap thread when Escape goes down during a drag, before the key is passed on.
+    func onDragEscape(_ action: @escaping @Sendable () -> Void) { lock.withLock { dragEscape = action } }
 
     func frontmost(managed: Bool) { lock.withLock { router.frontmostManaged = managed } }
 
@@ -425,13 +432,16 @@ final class KeyboardTap: @unchecked Sendable {
         let down = type == .keyDown
         let flags = event.flags.rawValue
         let modifiers = KeyRouter.modifiers(event.flags)
-        let (decision, trace): (KeyDecision, KeyTrace?) = lock.withLock {
+        let (decision, trace, escape): (KeyDecision, KeyTrace?, (@Sendable () -> Void)?) = lock.withLock {
+            let escape = router.cancelsEdgeDrop(code, down: down) ? dragEscape : nil
             let decision = router.key(code, modifiers: modifiers, down: down,
                                       autorepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0)
             let trace = traceEnabled && traceFilter.includes(code, modifiers: modifiers, down: down)
                 ? KeyTrace(time: received, keycode: code, flags: flags, down: down) : nil
-            return (decision, trace)
+            return (decision, trace, escape)
         }
+        // Outside this tap's lock: the handler takes the edge-drop tap's lock.
+        escape?()
         switch decision {
         case .command, .switcher, .help, .grabReleased:
             DispatchQueue.main.async { [handle] in handle(decision, trace, received) }

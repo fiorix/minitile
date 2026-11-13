@@ -112,6 +112,7 @@ final class Reconciler {
     let discovery: Discovery
     let displays: DisplayCatalog
     var dragging: WindowID?
+    var dragPressIsCurrent: (() -> Bool)?
     var geometry = GeometrySettlement()
     private(set) var scene = Scene()
     private var spaces: [WindowID: UInt64] = [:]
@@ -257,6 +258,10 @@ final class Reconciler {
                 else { correctedFrames[id] = target }
                 suppression[id] = ProcessInfo.processInfo.systemUptime + 1.2
                 discovery.wroteFrame(id)
+                window.settled.expectEcho(of: target) { [weak self] in
+                    guard let self, let dragging = self.dragging, dragging != id else { return false }
+                    return self.dragPressIsCurrent?() == true
+                }
                 AX.setFrame(window.element, target)
                 if verify {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.25) { [weak self] in
