@@ -8,7 +8,7 @@ private let origin = Rect(x: 200, y: 100, width: 500, height: 400)
 private let moved = Rect(x: 220, y: 120, width: 500, height: 400)
 private let down = Point(x: 400, y: 110)
 
-private func owner(bounds: Rect = bounds, origin: Rect = origin, frame: Rect = moved,
+private func dropOwner(bounds: Rect = bounds, origin: Rect = origin, frame: Rect = moved,
                    edit: (inout WindowState, inout DisplayInfo) -> Void = { _, _ in }) -> EdgeDropOwner? {
     var window = WindowState(info: WindowInfo(id: 42, pid: 123, frame: frame, display: "d"), display: "d", floating: false)
     var display = DisplayInfo(id: "d", frame: bounds, visibleSpace: 4, stashSpace: 5)
@@ -23,7 +23,7 @@ private func owner(bounds: Rect = bounds, origin: Rect = origin, frame: Rect = m
     (.bottom, Point(x: 500, y: 799), Point(x: 500, y: 740), ["window", "move", "42", "workspace", "next"]),
 ])
 func edgeDropClampsDragAndReleaseAndCommitsOnce(_ edge: DropEdge, _ raw: Point, _ clamped: Point, _ command: [String]) throws {
-    let owner = try #require(owner())
+    let owner = try #require(dropOwner())
     var tracker = EdgeDropTracker()
     tracker.begin(at: down)
     tracker.update(owner, moved: true, press: tracker.sequence)
@@ -37,7 +37,7 @@ func edgeDropClampsDragAndReleaseAndCommitsOnce(_ edge: DropEdge, _ raw: Point, 
 }
 
 @Test func edgeDropWaitsForAConfirmedMoveInsideThePressedWindow() throws {
-    let owner = try #require(owner()), edge = Point(x: 999, y: 400)
+    let owner = try #require(dropOwner()), edge = Point(x: 999, y: 400)
     var tracker = EdgeDropTracker()
     tracker.update(owner, moved: true, press: tracker.sequence)
     #expect(tracker.drag(to: edge) == edge) // Starting the tap during a drag does not acquire it.
@@ -54,7 +54,7 @@ func edgeDropClampsDragAndReleaseAndCommitsOnce(_ edge: DropEdge, _ raw: Point, 
 }
 
 @Test func edgeDropCanLeaveTheBandOrChangeEdgesBeforeRelease() throws {
-    let owner = try #require(owner())
+    let owner = try #require(dropOwner())
     var tracker = EdgeDropTracker()
     tracker.begin(at: down)
     tracker.update(owner, moved: true, press: tracker.sequence)
@@ -68,7 +68,7 @@ func edgeDropClampsDragAndReleaseAndCommitsOnce(_ edge: DropEdge, _ raw: Point, 
 }
 
 @Test func edgeDropKeepsItsBandOnAClampedReleaseAndResolvesCorners() throws {
-    let owner = try #require(owner())
+    let owner = try #require(dropOwner())
     #expect(owner.edge(at: Point(x: 940, y: 400)) == .right)
     #expect(owner.edge(at: Point(x: 939, y: 200)) == nil)
     #expect(owner.edge(at: Point(x: 0, y: 0)) == .left)
@@ -78,7 +78,7 @@ func edgeDropClampsDragAndReleaseAndCommitsOnce(_ edge: DropEdge, _ raw: Point, 
 }
 
 @Test func edgeDropCornerIgnoresSubpixelJitterButAllowsDeliberateDirectionChanges() throws {
-    let owner = try #require(owner())
+    let owner = try #require(dropOwner())
     var previous: DropEdge? = .right
     // A physical top-right hold alternated y=0 with fractions of a point while x stayed just below the maximum.
     for y in [0.0, 0.65625, 0, 0.21875, 0] {
@@ -95,33 +95,33 @@ func edgeDropClampsDragAndReleaseAndCommitsOnce(_ edge: DropEdge, _ raw: Point, 
 }
 
 @Test func edgeDropUsesGlobalCoordinatesAndCapsTheInsetOnSmallDisplays() throws {
-    let shifted = try #require(owner(bounds: Rect(x: -1000, y: -800, width: 1000, height: 800)))
+    let shifted = try #require(dropOwner(bounds: Rect(x: -1000, y: -800, width: 1000, height: 800)))
     #expect(shifted.clamp(Point(x: -1001, y: -400)) == Point(x: -940, y: -400))
     #expect(shifted.edge(at: Point(x: -500, y: -1)) == .bottom)
-    let tiny = try #require(owner(bounds: Rect(x: -40, y: 0, width: 80, height: 40)))
+    let tiny = try #require(dropOwner(bounds: Rect(x: -40, y: 0, width: 80, height: 40)))
     #expect(tiny.clamp(Point(x: -40, y: 0)) == Point(x: -20, y: 10))
     #expect(tiny.clamp(Point(x: 40, y: 40)) == Point(x: 20, y: 30))
     #expect(tiny.edge(at: Point(x: 0, y: 20)) == nil)
-    #expect(owner(bounds: Rect(x: 0, y: 0, width: 0, height: 800)) == nil)
+    #expect(dropOwner(bounds: Rect(x: 0, y: 0, width: 0, height: 800)) == nil)
 }
 
 @Test func edgeDropRejectsResizesAndIneligibleWindowsButAllowsFloating() {
-    #expect(owner(frame: Rect(x: 220, y: 120, width: 510, height: 400)) == nil)
-    #expect(owner { window, _ in window.hidden = true } == nil)
-    #expect(owner { window, _ in window.info.minimized = true } == nil)
-    #expect(owner { window, _ in window.info.appHidden = true } == nil)
-    #expect(owner { window, _ in window.info.fullscreen = true } == nil)
-    #expect(owner { window, _ in window.info.orderedOut = true } == nil)
-    #expect(owner { window, _ in window.info.onStash = true } == nil)
-    #expect(owner { window, _ in window.display = "other" } == nil)
-    #expect(owner { _, display in display.unmanagedReason = "no stash" } == nil)
-    #expect(owner { _, display in display.visibleSpace = 6 } == nil)
-    #expect(owner { _, display in display.visibleSpace = nil } == nil)
-    #expect(owner { window, _ in window.floating = true } != nil)
+    #expect(dropOwner(frame: Rect(x: 220, y: 120, width: 510, height: 400)) == nil)
+    #expect(dropOwner { window, _ in window.hidden = true } == nil)
+    #expect(dropOwner { window, _ in window.info.minimized = true } == nil)
+    #expect(dropOwner { window, _ in window.info.appHidden = true } == nil)
+    #expect(dropOwner { window, _ in window.info.fullscreen = true } == nil)
+    #expect(dropOwner { window, _ in window.info.orderedOut = true } == nil)
+    #expect(dropOwner { window, _ in window.info.onStash = true } == nil)
+    #expect(dropOwner { window, _ in window.display = "other" } == nil)
+    #expect(dropOwner { _, display in display.unmanagedReason = "no stash" } == nil)
+    #expect(dropOwner { _, display in display.visibleSpace = 6 } == nil)
+    #expect(dropOwner { _, display in display.visibleSpace = nil } == nil)
+    #expect(dropOwner { window, _ in window.floating = true } != nil)
 }
 
 @Test func edgeDropCancellationAndOwnerChangesCannotRearmTheSamePress() throws {
-    let original = try #require(owner())
+    let original = try #require(dropOwner())
     var replaced = original; replaced.pid += 1
     var otherWindow = original; otherWindow.window += 1
     var otherDisplay = original; otherDisplay.display = "other"
@@ -148,7 +148,7 @@ func edgeDropClampsDragAndReleaseAndCommitsOnce(_ edge: DropEdge, _ raw: Point, 
 }
 
 @Test func edgeDropReleaseWaitsForTheTapAndDoesNotInventMissingEvents() throws {
-    let owner = try #require(owner())
+    let owner = try #require(dropOwner())
     var tracker = EdgeDropTracker()
     tracker.begin(at: down)
     tracker.update(owner, moved: true, press: tracker.sequence)
@@ -166,7 +166,7 @@ func edgeDropClampsDragAndReleaseAndCommitsOnce(_ edge: DropEdge, _ raw: Point, 
 }
 
 @Test func edgeDropNeverReusesAReleaseAfterAnotherPressOrInvalidation() throws {
-    let owner = try #require(owner())
+    let owner = try #require(dropOwner())
     for newPress in [false, true] {
         var tracker = EdgeDropTracker()
         tracker.begin(at: down)
@@ -178,7 +178,7 @@ func edgeDropClampsDragAndReleaseAndCommitsOnce(_ edge: DropEdge, _ raw: Point, 
 }
 
 @Test func edgeDropOldDragTrackingCannotClaimARapidSecondPress() throws {
-    let owner = try #require(owner())
+    let owner = try #require(dropOwner())
     var tracker = EdgeDropTracker()
     tracker.begin(at: down)
     let first = tracker.sequence
@@ -216,7 +216,7 @@ func edgeDropPanelsStayInsideTheUsableArea(_ area: Rect) {
 }
 
 @Test func edgeDropAcceptsTheEntireVisibleTargetBeyondTheNativeEdgeBand() throws {
-    var owner = try #require(owner())
+    var owner = try #require(dropOwner())
     owner.area = Rect(x: 80, y: 39, width: 920, height: 700) // A Dock on the left and a menu bar above.
     for edge in DropEdge.allCases {
         let target = edge.target(in: owner.area)
@@ -287,13 +287,13 @@ private let afterWrite = Rect(x: 1032, y: 688, width: 1014, height: 637)
     var dragged = afterWrite; dragged.x -= 30; dragged.y += 40
     let press = Point(x: afterWrite.x + 300, y: afterWrite.y + 14)
     // From the frame before the write the window seems resized and the press seems to miss it.
-    #expect(owner(bounds: screen, origin: beforeWrite, frame: dragged) == nil)
+    #expect(dropOwner(bounds: screen, origin: beforeWrite, frame: dragged) == nil)
     #expect(!beforeWrite.contains(press))
     var settled = SettledFrame()
     settled.wrote()
     settled.observe(afterWrite, suppressed: true, buttonDown: false)
     let origin = settled.origin(reported: beforeWrite)
-    let candidate = try #require(owner(bounds: screen, origin: origin, frame: dragged))
+    let candidate = try #require(dropOwner(bounds: screen, origin: origin, frame: dragged))
     var tracker = EdgeDropTracker()
     tracker.begin(at: press)
     tracker.update(candidate, moved: DragMove.isMove(dragged, from: origin), press: tracker.sequence)
@@ -302,5 +302,5 @@ private let afterWrite = Rect(x: 1032, y: 688, width: 1014, height: 637)
     #expect(tracker.hovered == .bottom)
     // A resize in the same interval still never acquires the pointer.
     var resized = afterWrite; resized.width -= 40
-    #expect(owner(bounds: screen, origin: origin, frame: resized) == nil)
+    #expect(dropOwner(bounds: screen, origin: origin, frame: resized) == nil)
 }
