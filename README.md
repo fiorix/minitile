@@ -13,12 +13,12 @@
 
 minitile is a small tiling window manager for macOS. It arranges your windows, gives them room, and stays in the menu bar. Pages run horizontally, workspaces stack vertically, and the shortcuts build on the ones your Mac already uses.
 
-**In development.** The core, command-line tool, and macOS shell are implemented. Live verification has covered one display; multiple displays and several newer interactions still need on-screen testing. See [DESIGN.md](DESIGN.md) for the current implementation and verification status. The illustrations here and on the website are conceptual previews, not recordings of the native app.
+**In development.** The core, command-line tool, and macOS shell are implemented. Live verification has covered one display, and screen-edge drops across two; other multiple-display behavior and several newer interactions still need on-screen testing. See [DESIGN.md](DESIGN.md) for the current implementation and verification status. The illustrations here and on the website are conceptual previews, not recordings of the native app.
 
 ## Design
 
 - **A small, predictable model.** Each page has up to four tiled windows. Additional pages make room for more work, and workspaces group those pages. Floating windows are supported outside the tile limit.
-- **Blend with macOS.** A native Swift/AppKit app, a menu bar presence, and ordinary app windows. Resize an edge, drag to swap tiles, or use the layout picker while dragging.
+- **Blend with macOS.** A native Swift/AppKit app, a menu bar presence, and ordinary app windows. Resize an edge, drag to swap tiles, or use the layout picker while dragging. A window's native tabs share its tile.
 - **Reuse familiar chords.** Control and arrows navigate. Add Shift to move a window. Cmd+Tab switches windows, Cmd+backtick cycles the current page, and Cmd+H shows every shortcut. Cmd+W and Cmd+Q remain native.
 - **Keep the system intact.** System Integrity Protection stays enabled. minitile uses Accessibility and SkyLight; page transitions additionally use Screen Recording permission.
 - **Keep it scriptable.** The `mntl` command-line tool exposes the window manager's commands. Configuration is a small TOML file.
@@ -65,7 +65,7 @@ The script creates `build/Minitile.app`, with the `mntl` command line tool insid
 ## Getting started
 
 1. **Required: a second desktop on every display.** minitile keeps the pages you are not looking at on a second desktop, one per display, and macOS does not let apps create desktops. Open Mission Control and click + at the top of each display so it has two. Without a second desktop, minitile cannot tile that display, and its menu bar item names the display and shows how to add one.
-2. **Required: Accessibility.** minitile uses it to move, resize and focus windows, and to hear its keyboard shortcuts and trackpad swipes. Grant it when minitile first starts, in System Settings > Privacy & Security > Accessibility. Without it, minitile cannot do anything.
+2. **Required: Accessibility.** minitile uses it to move, resize and focus windows, and to hear its keyboard shortcuts, trackpad swipes and window drags. Grant it when minitile first starts, in System Settings > Privacy & Security > Accessibility. Without it, minitile cannot do anything.
 3. **Optional: Screen & System Audio Recording.** This is only for the slide between pages and the bounce at the edges: minitile captures the screen for the moment of the animation, and nothing is saved or sent anywhere. It never records audio, even though macOS names the setting for both. Without it, or with `transition_ms = 0`, pages change at once. After turning it on, quit and reopen minitile. In System Settings > Desktop & Dock, keep **Displays have separate Spaces** on, which minitile needs, and turn off **Automatically rearrange Spaces based on most recent use**. If native tiling interferes with dragging, turn off the drag-to-tile options as well.
 4. Open a few windows. Use Control and the arrow keys to move around, and add Shift to take the focused window with you. Press Cmd+H to see every shortcut, and Esc to close it.
 
@@ -82,7 +82,7 @@ minitile takes over the system shortcuts listed below while active, including Mi
 | Cmd + Tab / Cmd + Shift + Tab | Switch windows: a ring across the grid from the top-left; hold Cmd to see the switcher, with apps that have no window in a row under the grid, and press Q to quit the chosen app |
 | Cmd + backtick / Cmd + Shift + backtick | Cycle windows on the current page |
 | Cmd + Option + backtick / Cmd + Option + Shift + backtick | Swap the focused window with the next / previous slot on its page |
-| Cmd + H | Show every shortcut while Cmd is held |
+| Cmd + H | Show every shortcut; press it again, Esc, or click elsewhere to close |
 | Cmd + Option + H | Nothing: Hide Others is blocked |
 
 No special modifier or Caps Lock remap. While a move or resize chord is held, minitile outlines the window it acts on. Bindings can be changed or unbound in `~/.config/minitile/minitile.toml`. Control+Option overlaps with VoiceOver's default modifier, so remap those bindings if you use VoiceOver.

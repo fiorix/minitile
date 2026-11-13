@@ -36,12 +36,10 @@ The page explains, in its own section and from the hero, that every display need
 
 ## Publication
 
-Serve the contents of `web/` as the website root. Asset paths are relative, so the site also works under a repository subpath on GitHub Pages. `.nojekyll` keeps the output static. Nothing in this worktree publishes or deploys automatically.
+The site is served at https://minitile.app from GitHub Pages. `.github/workflows/pages.yml` runs `npm test`, then publishes `index.html`, `style.css`, the browser modules and `assets/` whenever `main` changes under `web/`; `serve.mjs`, the tests and this file are not published. Asset paths are relative, so the site also works under a repository subpath. `.nojekyll` keeps the output static.
 
-Before a public release:
+The download button and the README badge point at the latest release's `minitile.dmg`, whose name stays the same across versions.
 
-- Replace the disabled download button and its release note with a real release URL and verified requirements. Update the matching README badge and download section.
-- Add the public repository link once the GitHub repository exists.
-- Set the canonical website URL and an absolute `og:image` URL for `assets/welcome.png` after the final host is known.
+Not yet set: a canonical URL and an absolute `og:image` URL for `assets/welcome.png`.
 
 See [BRAND.md](../BRAND.md) for the palette, identity, and reproducible asset exports.
