@@ -45,7 +45,7 @@ private func checkInvariants(_ e: Engine, _ out: Output, step: Int) {
         random = random &* 6364136223846793005 &+ 1
         let id = WindowID((random >> 32) % 20 + 1)
         let input: Input
-        switch step % 15 {
+        switch step % 16 {
         case 0, 1: input = .windowAppeared(window(id, frontmost: step % 2 == 0))
         case 2: input = .windowGone(id)
         case 3: input = .command(["window", "nudge", String(id), "right"])
@@ -59,6 +59,7 @@ private func checkInvariants(_ e: Engine, _ out: Output, step: Int) {
         case 11: input = .displaysChanged([testDisplay])
         case 12: input = .displaysChanged([testDisplay, secondDisplay])
         case 13: input = .command(["page", "ratio", "0.8", "0.2"])
+        case 14: input = .nativeTiled(id, frame: Rect(x: 120, y: 80, width: 500, height: 800))
         default:
             var info = window(id, frontmost: random & 1 == 0)
             info.orderedOut = (random >> 8) % 3 != 0

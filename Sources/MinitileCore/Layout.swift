@@ -121,6 +121,11 @@ extension Engine {
                 for p in state.displays[d].workspaces[w].pages.indices {
                     let at = Location(display: d, workspace: w, page: p)
                     let count = tiled(page(at), activeOnly: true).count
+                    if page(at).windows.contains(where: isFullscreen)
+                        || page(at).nativeLayout?.targets(windows: tiled(page(at), activeOnly: true),
+                                                     area: state.displays[d].info.visibleFrame, gaps: config.gaps, padding: config.padding) == nil {
+                        state.displays[d].workspaces[w].pages[p].nativeLayout = nil
+                    }
                     if page(at).layoutCount != count {
                         let (a, b) = Layout.defaults(count: count, variant: page(at).variant)
                         state.displays[d].workspaces[w].pages[p].r1 = a
@@ -139,12 +144,15 @@ extension Engine {
     func frames(_ at: Location) -> [WindowID: Rect] {
         let page = page(at)
         let ids = tiled(page, activeOnly: true)
+        if let targets = page.nativeLayout?.targets(windows: ids, area: state.displays[at.display].info.visibleFrame,
+                                                   gaps: config.gaps, padding: config.padding) { return targets }
         let frames = Layout.frames(frame: state.displays[at.display].info.visibleFrame, count: ids.count,
                                    variant: page.variant, r1: page.r1, r2: page.r2, gaps: config.gaps, padding: config.padding)
         return Dictionary(uniqueKeysWithValues: zip(ids, frames))
     }
 
     mutating func variant(_ at: Location) {
+        state.displays[at.display].workspaces[at.workspace].pages[at.page].nativeLayout = nil
         let count = tiled(page(at), activeOnly: true).count
         guard let value = Layout.next(page(at).variant, count: count) else { return }
         let (a, b) = Layout.defaults(count: count, variant: value)
@@ -153,6 +161,7 @@ extension Engine {
     }
 
     mutating func setRatios(_ at: Location, _ a: Double, _ b: Double, preserveFirst: Bool = false, preserveSecond: Bool = false) {
+        state.displays[at.display].workspaces[at.workspace].pages[at.page].nativeLayout = nil
         let count = tiled(page(at), activeOnly: true).count
         var a = a, b = b
         if Layout.sliced(count: count, variant: page(at).variant) {

@@ -156,6 +156,7 @@ extension Engine {
             throw CommandError("\(variant.rawValue) is not a layout for \(active.count) windows")
         }
         guard active.indices.contains(slot) else { throw CommandError("Expected a slot in 0...\(active.count - 1)") }
+        state.displays[at.display].workspaces[at.workspace].pages[at.page].nativeLayout = nil
         // A dropped window snaps to its tile even when nothing changes.
         output.rewrite.insert(id)
         let current = page(at)

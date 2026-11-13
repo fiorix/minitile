@@ -105,6 +105,7 @@ Configuration reloads automatically when the file changes. `mntl config open` op
 ## Mouse and trackpad
 
 - Drag a tiled window's inner edge to resize its shared divider. Drag a corner to adjust both dividers.
+- Choose a fill, half or quarter from macOS's green-button tiling menu to keep that shape with minitile's usual spacing. Other windows rearrange around it; any that no longer fit move to their own minitile workspaces.
 - Drop a window onto another tile on the same page to swap their positions.
 - While dragging, use the layout picker in the middle of the display: hover a tile to preview placement, then drop onto it to select that layout and position.
 - Press Control+arrows while dragging to nudge the window between pages or carry it between workspaces. Release the mouse to finish the move.

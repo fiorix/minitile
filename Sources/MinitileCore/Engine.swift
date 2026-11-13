@@ -28,6 +28,7 @@ public struct Engine: Sendable {
             self.config = config
             loadConfig(output: &output)
         case .dragEnded(let id, let frame, let cursor): dragEnded(id, frame: frame, cursor: cursor, output: &output)
+        case .nativeTiled(let id, let frame, let companions): nativeTiled(id, frame: frame, companions: companions, output: &output)
         case .displaysChanged(let displays): changeDisplays(displays, output: &output)
         }
         isolateFullscreen(output: &output)

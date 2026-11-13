@@ -82,7 +82,8 @@ struct GridMiniature: Equatable {
         let active = tiled.filter { windows[$0].map { !$0.info.minimized && !$0.info.appHidden } ?? false }
         let frames = Layout.frames(frame: area, count: active.count, variant: page.variant, r1: page.r1, r2: page.r2,
                                    gaps: config.gaps, padding: config.padding)
-        let targets = Dictionary(uniqueKeysWithValues: zip(active, frames))
+        let targets = page.nativeLayout?.targets(windows: active, area: area, gaps: config.gaps, padding: config.padding)
+            ?? Dictionary(uniqueKeysWithValues: zip(active, frames))
         slots = tiled.compactMap { id in windows[id].map { Slot(window: id, pid: $0.info.pid, frame: targets[id], focused: id == focus) } }
         floaters = page.windows.compactMap { id in
             windows[id].flatMap { $0.floating ? Floater(window: id, pid: $0.info.pid, active: !$0.info.minimized && !$0.info.appHidden) : nil }

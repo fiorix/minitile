@@ -26,6 +26,7 @@ public struct PageState: Codable, Sendable, Equatable {
     public var r2: Double = 0.5
     public var lastFocus: WindowID?
     public var layoutCount: Int = 0
+    public var nativeLayout: NativeLayout?
     public init(id: UInt64) { self.id = id }
 }
 

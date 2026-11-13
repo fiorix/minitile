@@ -222,6 +222,20 @@ Untested in minitile: how the slides onto and off a full screen window's page lo
 
 ### Layout
 
+#### Native desktop tiling
+
+Choices from macOS's green-button menu, Window > Move & Resize and native edge snapping are adopted from their settled frames. Fill, the four halves and the four quarters are recognized in physical screen coordinates on landscape and portrait displays. This is desktop tiling, separate from the fullscreen Space handling above. The selected windows keep their chosen shape and slots, with minitile's configured gaps and padding applied to every tile through the ordinary layout geometry. Other active tiles on the page fill the remaining slots; floating windows and reserved minimized/app-hidden slots stay in place. Native margins and small native edge overlaps are used only to recognize the shape.
+
+A half-screen selection with four active tiles keeps the selected window and the first two neighbours in page order, and moves the remaining window to a new minitile workspace immediately below the current one. Fill keeps just the selected tile and gives each displaced tile its own workspace. A native Arrange operation that moves several windows is coalesced per page and preserves those windows' selected slots: two halves keep two windows, for example, and displace any others. The view stays on the selected page and no focus action is sent. Sparse pages keep empty native slots instead of enlarging the selected window.
+
+The page saves its observed native frames and active window order in optional `nativeLayout` state. These identify the occupied slots; frame targets always use the configured spacing, including when restoring a layout saved with native margins. Ordinary observations, navigation and restart retain it. Changing the active tiles or their order, the display's usable frame, the layout variant or ratios, explicit placement, or reloading configuration returns the page to its ordinary window-count layout. Grid miniatures and the window switcher use the same targets. Older state files without the optional field still load.
+
+The shell holds frame writes while a move/resize notification burst settles for 250 ms, or until 50 ms after a recent write's 1.2 s echo interval, whichever is later. All pending observations on the same page settle before adoption. Targets changed by a command cancel their holds; explicit frame rewrites do too. Verification of an older write cannot overwrite a pending selection. Geometry matching allows native edge insets from 0 to 24 points with 2 points of edge rounding and 3 points of margin variation; unrelated frames retain the usual tile, with at most one corrective write for an app that refuses its size. Native notifications that arrive before mouse-up are also considered on release when they describe a resize or leave the pointer outside the moved window.
+
+Unit tested: fill, every half and quarter, sparse pages, multi-window Arrange, landscape/portrait coordinates, configured spacing, native edge rounding, overflow workspaces and focus, floating/reserved slots, persistence, command overrides, burst settling and echo suppression. Green-button selection has been tried on one display. Native zero-margin frames with a one-point overlap were observed there and are covered by the spacing regression; app-specific size constraints still need on-screen verification.
+
+#### Minitile layouts
+
 Each page holds an ordered list of windows, its slots. The layout is a fixed function of the window count and the page's variant. Ctrl+Option+Space (`mntl page variant`) cycles a page through its count's layouts in this order:
 
 | Windows | Layouts, in cycling order |

@@ -112,9 +112,11 @@ final class Reconciler {
     let discovery: Discovery
     let displays: DisplayCatalog
     var dragging: WindowID?
+    var geometry = GeometrySettlement()
     private(set) var scene = Scene()
     private var spaces: [WindowID: UInt64] = [:]
     private var frames: [WindowID: Rect] = [:]
+    private var correctedFrames: [WindowID: Rect] = [:]
     private var deferred: [WindowID: Rect] = [:]
     private var suppression: [WindowID: TimeInterval] = [:]
     private var ownFocus = FocusEchoes()
@@ -143,6 +145,8 @@ final class Reconciler {
     }
 
     func forget(_ id: WindowID) {
+        geometry.cancel(id)
+        correctedFrames.removeValue(forKey: id)
         spaces.removeValue(forKey: id); frames.removeValue(forKey: id)
         suppression.removeValue(forKey: id); deferred.removeValue(forKey: id)
         if dragging == id { dragging = nil }
@@ -158,6 +162,19 @@ final class Reconciler {
     }
 
     func externalMove(_ id: WindowID) { frames.removeValue(forKey: id) }
+
+    func observeGeometry(_ id: WindowID, pid: Int32, target: Rect) {
+        geometry.observe(id, pid: pid, target: target, now: ProcessInfo.processInfo.systemUptime,
+                         suppressedUntil: suppression[id, default: 0], mayRestore: !suppresses(id) || correctedFrames[id] != target)
+    }
+
+    func acceptNativeFrame(_ id: WindowID, frame: Rect) { frames[id] = frame }
+
+    func restoreGeometry(_ id: WindowID, target: Rect) {
+        guard discovery.windows[id] != nil, dragging != id,
+              scene.displays.values.contains(where: { $0.frames[id] == target }) else { return }
+        writeFrames([id: target], verify: false)
+    }
 
     func acceptsMove(_ id: WindowID, mouseDown: Bool) -> Bool {
         let suppressed = suppresses(id)
@@ -179,8 +196,10 @@ final class Reconciler {
             if case .setFrame(let id, let frame) = action { deferred[id] = frame }
         }
         targets.merge(deferred) { _, new in new }
+        for id in output.rewrite { geometry.cancel(id) }
         let writes = targets.filter { id, target in
-            id != dragging && discovery.windows[id] != nil && (frames[id] != target || output.rewrite.contains(id))
+            id != dragging && !geometry.holds(id, target: target) && discovery.windows[id] != nil
+                && (frames[id] != target || output.rewrite.contains(id))
         }
         writeFrames(writes, verify: true)
         for id in deferred.keys where id != dragging { deferred.removeValue(forKey: id) }
@@ -234,13 +253,15 @@ final class Reconciler {
             for id in ids {
                 guard let window = discovery.windows[id], let target = writes[id] else { continue }
                 frames[id] = target
+                if verify { correctedFrames.removeValue(forKey: id) }
+                else { correctedFrames[id] = target }
                 suppression[id] = ProcessInfo.processInfo.systemUptime + 1.2
                 discovery.wroteFrame(id)
                 AX.setFrame(window.element, target)
                 if verify {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.25) { [weak self] in
                         guard let self, !self.discovery.frozen, NSEvent.pressedMouseButtons & 1 == 0,
-                              self.dragging != id, self.frames[id] == target,
+                              self.dragging != id, self.geometry.pending[id] == nil, self.frames[id] == target,
                               let current = self.discovery.windows[id], CFEqual(current.element, window.element),
                               let actual = AX.frame(current.element) else { return }
                         if !Geometry.near(actual, target, tolerance: 20) { self.writeFrames([id: target], verify: false) }

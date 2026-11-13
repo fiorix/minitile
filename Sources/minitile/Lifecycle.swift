@@ -141,7 +141,7 @@ extension AppDelegate {
         let wasSuspended = !suspendedReasons.isEmpty
         let shouldResume = suspension.set(reason, enabled: enabled)
         discovery?.frozen = !suspendedReasons.isEmpty
-        if enabled { dropPanels.hide(); endGrab(); spaceSync = [] }
+        if enabled { dropPanels.hide(); endGrab(); cancelNativeTiling(); spaceSync = [] }
         if shouldResume { resume() }
         else if wasSuspended != !suspendedReasons.isEmpty { updateSwipes() }
         updateModalAvailability()
@@ -225,7 +225,12 @@ extension AppDelegate {
 
     func windowMoved(_ id: WindowID) {
         let mouseDown = NSEvent.pressedMouseButtons & 1 != 0
+        if !mouseDown, reconciler?.dragging != id, discovery?.frozen == false {
+            trackNativeTiling(id)
+            return
+        }
         guard let reconciler, discovery?.frozen == false, reconciler.acceptsMove(id, mouseDown: mouseDown) else { return }
+        reconciler.geometry.cancel(id)
         reconciler.externalMove(id)
         if mouseDown, reconciler.dragging == nil {
             reconciler.dragging = id
@@ -278,6 +283,15 @@ extension AppDelegate {
         updateDragTracking()
         let frame = discovery?.windows[id].flatMap { AX.frame($0.element) }
         let cursor = CGEvent(source: nil).map { Point(x: $0.location.x, y: $0.location.y) }
+        // A native menu selection or edge snap can finish while the button is still reported down. Its final
+        // resize follows the same settled path as a selection whose notifications arrive after mouse-up.
+        if let frame, let tile, !DragMove.isMove(frame, from: tile) || cursor.map({ !frame.contains($0) }) == true,
+           !Geometry.near(frame, tile, tolerance: 20),
+           let display = engine.savedState().displays.first(where: { $0.info.id == discovery?.windows[id]?.info.display }),
+           NativeTile(frame: frame, area: display.info.visibleFrame, windows: 1) != nil {
+            trackNativeTiling(id)
+            return
+        }
         let picker = DropPicker(state: engine.savedState(), config: engine.config, window: id)
         switch DropRoute.route(frame: frame, cursor: cursor, picker: picker, tile: tile) {
         case .place(let target):

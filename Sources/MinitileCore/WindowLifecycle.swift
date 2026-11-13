@@ -134,6 +134,7 @@ extension Engine {
         for d in state.displays.indices {
             for w in state.displays[d].workspaces.indices {
                 for p in state.displays[d].workspaces[w].pages.indices {
+                    state.displays[d].workspaces[w].pages[p].nativeLayout = nil
                     state.displays[d].workspaces[w].pages[p].windows.removeAll { removed.contains($0) }
                 }
             }

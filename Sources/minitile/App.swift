@@ -58,6 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var observers: [(NotificationCenter, NSObjectProtocol)] = []
     var healthTimer: Timer?
     var dragTimer: Timer?
+    var nativeTileTimer: Timer?
     /// The dragged window's tile when the drag began.
     var dragTile: Rect?
     var displayWork: DispatchWorkItem?
@@ -441,6 +442,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         grabPanel.stop()
         desktopNotice.stop()
         transitions.stop()
+        cancelNativeTiling()
         permissionTimer?.invalidate(); healthTimer?.invalidate(); dragTimer?.invalidate(); displayWork?.cancel(); activationFocusRead?.cancel()
         for (center, token) in observers { center.removeObserver(token) }
         signalSources.forEach { $0.cancel() }

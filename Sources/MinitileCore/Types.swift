@@ -98,6 +98,7 @@ public enum Input: Sendable {
     case focusChanged(WindowID?)
     case appActivated(pid: Int32)
     case dragEnded(WindowID, frame: Rect, cursor: Point)
+    case nativeTiled(WindowID, frame: Rect, companions: [WindowID: Rect] = [:])
     case command([String])
 }
 
