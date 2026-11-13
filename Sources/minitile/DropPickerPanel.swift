@@ -18,7 +18,7 @@ final class DropPickerPanels {
     /// `preview` is the hovered tile's frame on the page, in CG global points.
     func show(_ content: DropPickerContent, preview target: Rect?) {
         let height = NSScreen.screens.first?.frame.height ?? 0
-        let panel = picker ?? makePanel(level: Self.pickerLevel, shadow: true, view: DropPickerView(content: content), styled: true)
+        let panel = picker ?? Self.makePanel(level: Self.pickerLevel, shadow: true, view: DropPickerView(content: content), styled: true)
         picker = panel
         if let view = panel.styledContent as? DropPickerView {
             icons.prune(keeping: [content.picker.pid])
@@ -29,7 +29,7 @@ final class DropPickerPanels {
         let box = content.picker.frame
         place(panel, Geometry.cocoaFrame(Rect(x: box.minX, y: box.minY, width: box.width, height: box.height), primaryHeight: height))
         guard let target else { self.preview?.orderOut(nil); return }
-        let preview = self.preview ?? makePanel(level: Self.previewLevel, shadow: false, view: DropPreviewView(), styled: false)
+        let preview = self.preview ?? Self.makePanel(level: Self.previewLevel, shadow: false, view: DropPreviewView(), styled: false)
         self.preview = preview
         place(preview, DropPreviewView.frame(around: Geometry.cocoaFrame(target, primaryHeight: height)))
     }
@@ -52,7 +52,7 @@ final class DropPickerPanels {
     }
 
     /// `styled` puts the view over the panels' dark backdrop; the preview draws only its outline.
-    private func makePanel(level: NSWindow.Level, shadow: Bool, view: NSView, styled: Bool) -> NSPanel {
+    static func makePanel(level: NSWindow.Level, shadow: Bool, view: NSView, styled: Bool) -> NSPanel {
         let panel = GridPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.isReleasedWhenClosed = false
         panel.isFloatingPanel = true

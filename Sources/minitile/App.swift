@@ -34,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let helpPanel = HelpPanel()
     lazy var helpScreen = HelpScreen(presenter: helpPanel)
     let dropPanels = DropPickerPanels()
+    let edgePanels = EdgeDropPanels()
     let grabPanel = GrabPanel()
     lazy var grabHighlight = GrabHighlight(presenter: grabPanel)
     let desktopNotice = DesktopNotice()
@@ -51,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var reconciler: Reconciler?
     var keyboard: KeyboardTap?
     var swipes: SwipeTap?
+    var edgeDrops: EdgeDropTap?
     var server: Server?
     var configWatcher: ConfigWatcher?
     lazy var stateWriter = StateWriter(file: paths.state)
@@ -61,6 +63,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var nativeTileTimer: Timer?
     /// The dragged window's tile when the drag began.
     var dragTile: Rect?
+    /// The actual frame before the first move notification, including floating windows.
+    var dragOrigin: Rect?
+    var dragPress: UInt64?
     var displayWork: DispatchWorkItem?
     var wakeUntil: TimeInterval = 0
     var lastActivation: (pid: Int32, time: TimeInterval)?
@@ -207,6 +212,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateModalAvailability()
         keyboard.start()
         updateSwipes()
+        updateEdgeDrops()
         observeLifecycle()
         startupLog("Ready; \(displays.infos.count) displays, \(discovery.windows.count) windows")
         updateMenu()
@@ -237,6 +243,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func updateMenu() {
         updateModalAvailability()
+        updateEdgePolicy()
         let snapshot = engine.savedState()
         gridIndicator.update(state: snapshot, config: engine.config)
         if let closed = windowSwitcher.update(state: snapshot, config: engine.config) { keyboard?.close(closed) }
@@ -401,6 +408,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // A reload retries a swipe tap that could not be created.
             if swipes?.unavailable == true { swipes = nil }
             updateSwipes()
+            edgeDrops?.cancel()
+            if edgeDrops?.unavailable == true { edgeDrops?.stop(); edgeDrops = nil }
+            updateEdgeDrops()
             updateFrontmost()
             return Reply(text: "Config reloaded")
         } catch {
@@ -426,19 +436,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateModalAvailability()
         keyboard?.stop()
         updateSwipes()
+        updateEdgeDrops()
         // Let the background socket writer flush the quit reply before stopping it.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { NSApp.terminate(nil) }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         quitting = true
-        keyboard?.stop(); swipes?.stop(); server?.stop(); configWatcher?.stop(); discovery?.finishAdoption(restoreAll: true); discovery?.stop()
+        keyboard?.stop(); swipes?.stop(); edgeDrops?.stop(); server?.stop(); configWatcher?.stop(); discovery?.finishAdoption(restoreAll: true); discovery?.stop()
         gridIndicator.stop()
         windowSwitcher.cancel()
         switcherPanel.stop()
         helpScreen.close()
         helpPanel.stop()
         dropPanels.stop()
+        edgePanels.stop()
         grabPanel.stop()
         desktopNotice.stop()
         transitions.stop()

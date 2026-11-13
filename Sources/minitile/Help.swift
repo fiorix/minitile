@@ -131,12 +131,13 @@ struct HelpContent: Equatable {
             return Entry(keys: HelpKeys.caps(chord), text: Self.other.first { $0.command == command }?.text ?? command)
         }
         if !others.isEmpty { sections.append(Section(title: "Other", entries: others)) }
-        sections.append(Section(title: Self.gesturesTitle, entries: Self.gestures(swipes: config.trackpadSwipes)))
+        sections.append(Section(title: Self.gesturesTitle, entries: Self.gestures(swipes: config.trackpadSwipes, edges: config.edgeDrops)))
     }
 
-    static func gestures(swipes: Bool) -> [Entry] {
+    static func gestures(swipes: Bool, edges: Bool) -> [Entry] {
         let swipe = [Entry(keys: ["Swipe in any direction"], text: "Move around", chord: false)]
-        return (swipes ? swipe : []) + [
+        let edge = [Entry(keys: ["Drop at a screen edge"], text: "Move the window", chord: false)]
+        return (swipes ? swipe : []) + (edges ? edge : []) + [
             Entry(keys: ["Drag an edge or corner"], text: "Resize tiles", chord: false),
             Entry(keys: ["Drag onto a tile"], text: "Swap the two windows", chord: false),
             Entry(keys: ["Drop on the picker"], text: "Set the layout and tile", chord: false),

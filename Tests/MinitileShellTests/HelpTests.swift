@@ -76,7 +76,7 @@ import Testing
 }
 
 @Test func swipesAreListedOnlyWhileMinitileTakesThem() {
-    let on = HelpContent.gestures(swipes: true), off = HelpContent.gestures(swipes: false)
+    let on = HelpContent.gestures(swipes: true, edges: false), off = HelpContent.gestures(swipes: false, edges: false)
     #expect(on.count == 5 && off.count == 4)
     #expect(on.first == HelpContent.Entry(keys: ["Swipe in any direction"], text: "Move around", chord: false))
     #expect(Array(on.dropFirst()) == off)
@@ -84,13 +84,23 @@ import Testing
     #expect(on.allSatisfy { !$0.chord })
     var config = Config(bindings: [:])
     config.trackpadSwipes = false
+    config.edgeDrops = false
     #expect(HelpContent(config: config).sections == [HelpContent.Section(title: "Mouse and trackpad", entries: off)])
+}
+
+@Test func edgeDropsAreListedOnlyWhenEnabled() {
+    var config = Config.default
+    config.edgeDrops = false
+    let off = HelpContent(config: config).sections.last!.entries
+    let on = HelpContent(config: .default).sections.last!.entries
+    #expect(on.count == off.count + 1)
+    #expect(on.filter { !off.contains($0) } == [HelpContent.Entry(keys: ["Drop at a screen edge"], text: "Move the window", chord: false)])
 }
 
 @Test func helpFitsOneColumnWhenTheUsableAreaIsTallEnough() {
     let layout = HelpLayout(content: HelpContent(config: .default), bounds: CGSize(width: 1480, height: 913))
     #expect(layout.columns.count == 1)
-    #expect(layout.size == CGSize(width: 592, height: 654))
+    #expect(layout.size == CGSize(width: 592, height: 688))
     #expect(layout.origin(column: 0) == CGPoint(x: 16, y: 46))
 }
 

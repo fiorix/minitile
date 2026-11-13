@@ -49,10 +49,11 @@ private struct ConfigFields: Decodable {
     var bindings: [String: String]?
     var transitionMs: Double?
     var trackpadSwipes: Bool?
+    var edgeDrops: Bool?
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: ConfigKey.self)
-        let known = Set(["gaps", "padding", "float_apps", "only_apps", "bindings", "transition_ms", "trackpad_swipes"])
+        let known = Set(["gaps", "padding", "float_apps", "only_apps", "bindings", "transition_ms", "trackpad_swipes", "edge_drops"])
         for key in container.allKeys where !known.contains(key.stringValue) {
             throw ConfigError(key: key.stringValue, message: "Unknown config key")
         }
@@ -67,6 +68,7 @@ private struct ConfigFields: Decodable {
         bindings = try decode([String: String].self, "bindings")
         transitionMs = try decode(Double.self, "transition_ms")
         trackpadSwipes = try decode(Bool.self, "trackpad_swipes")
+        edgeDrops = try decode(Bool.self, "edge_drops")
     }
 }
 
@@ -89,6 +91,7 @@ extension Config {
             config.transitionMs = ms
         }
         config.trackpadSwipes = fields.trackpadSwipes ?? config.trackpadSwipes
+        config.edgeDrops = fields.edgeDrops ?? config.edgeDrops
         config.floatApps = fields.floatApps ?? []
         config.onlyApps = fields.onlyApps ?? []
         for (key, apps) in [("float_apps", config.floatApps), ("only_apps", config.onlyApps)] {

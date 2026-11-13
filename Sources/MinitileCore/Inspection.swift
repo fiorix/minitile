@@ -67,7 +67,7 @@ extension Engine {
         for (chord, argv) in config.bindings { bindings[chord.description] = .string(argv.joined(separator: " ")) }
         return .object(["gaps": json(config.gaps), "padding": json(config.padding), "float_apps": json(config.floatApps),
                         "only_apps": json(config.onlyApps), "transition_ms": json(config.transitionMs),
-                        "trackpad_swipes": .bool(config.trackpadSwipes), "bindings": .object(bindings)])
+                        "trackpad_swipes": .bool(config.trackpadSwipes), "edge_drops": .bool(config.edgeDrops), "bindings": .object(bindings)])
     }
 
     func field(_ value: JSONValue) -> String {

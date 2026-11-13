@@ -62,6 +62,7 @@ func invalidChordsNameBinding(_ text: String) {
     ("transition_ms = -1", "transition_ms"), ("transition_ms = 2001", "transition_ms"),
     ("transition_ms = nan", "transition_ms"), ("transition_ms = 'fast'", "transition_ms"),
     ("trackpad_swipes = 1", "trackpad_swipes"), ("trackpad_swipes = 'no'", "trackpad_swipes"),
+    ("edge_drops = 1", "edge_drops"), ("edge_drops = 'yes'", "edge_drops"),
     ("only_apps = ['']", "only_apps"), ("other = 3", "other"),
     ("[bindings]\n'ctrl+a' = 3", "bindings"),
     ("[bindings]\n'ctrl+a' = '   '", "bindings.ctrl+a"),
@@ -104,6 +105,20 @@ func configErrorsNameTheKey(_ test: (String, String)) {
     _ = e.handle(.configLoaded(off))
     guard case .object(let fields)? = command(&e, "config info").reply?.data else { Issue.record("Expected config object"); return }
     #expect(fields["trackpad_swipes"] == .bool(false))
+}
+
+@Test func edgeDropsDefaultOnAndShowInConfigInfo() throws {
+    #expect(Config.default.edgeDrops)
+    #expect(try Config.parse("gaps = 4").edgeDrops)
+    #expect(try Config.parse("edge_drops = true").edgeDrops)
+    let off = try Config.parse("edge_drops = false")
+    #expect(!off.edgeDrops)
+    var e = engine(1)
+    guard case .object(let on)? = command(&e, "config list").reply?.data else { Issue.record("Expected config object"); return }
+    #expect(on["edge_drops"] == .bool(true))
+    _ = e.handle(.configLoaded(off))
+    guard case .object(let fields)? = command(&e, "config info").reply?.data else { Issue.record("Expected config object"); return }
+    #expect(fields["edge_drops"] == .bool(false))
 }
 
 @Test func unbindingCmdTabLeavesTheOtherSwitcherBinding() throws {

@@ -35,6 +35,8 @@ extension AppDelegate {
         }
         observe(workspace, NSWorkspace.activeSpaceDidChangeNotification) { [weak self] _ in
             guard let self, self.discovery?.frozen == false else { return }
+            self.edgeDrops?.cancel()
+            self.edgePanels.hide()
             self.displays.bounceFromStash()
             // The model learns of windows entering or leaving full screen before the reconciler rereads where
             // windows stand, so no later reconcile pulls a full screen window back to the desktop.
@@ -79,9 +81,11 @@ extension AppDelegate {
                 self.checkModalModifiers()
                 self.checkGrabModifiers()
                 self.swipes?.checkHealth()
+                self.edgeDrops?.checkHealth()
                 self.warnings["secure-input"] = csl_secure_input_enabled() ? "Secure input is blocking keyboard shortcuts" : nil
                 self.warnings["keyboard"] = self.keyboard?.unavailable == true ? "Keyboard tap unavailable; check Accessibility and restart" : nil
                 self.warnings["swipes"] = self.swipes?.unavailable == true ? "Trackpad swipe tap unavailable; swipes stay with macOS until a config reload" : nil
+                self.warnings["edge-drops"] = self.edgeDrops?.unavailable == true ? "Edge drop tap unavailable; screen edges stay with macOS until a config reload" : nil
                 let session = CGSessionCopyCurrentDictionary() as? [String: Any]
                 self.suspend("locked", enabled: session?["CGSSessionScreenIsLocked"] as? Bool == true)
                 ticks += 1
@@ -141,7 +145,7 @@ extension AppDelegate {
         let wasSuspended = !suspendedReasons.isEmpty
         let shouldResume = suspension.set(reason, enabled: enabled)
         discovery?.frozen = !suspendedReasons.isEmpty
-        if enabled { dropPanels.hide(); endGrab(); cancelNativeTiling(); spaceSync = [] }
+        if enabled { dropPanels.hide(); edgeDrops?.cancel(); edgePanels.hide(); endGrab(); cancelNativeTiling(); spaceSync = [] }
         if shouldResume { resume() }
         else if wasSuspended != !suspendedReasons.isEmpty { updateSwipes() }
         updateModalAvailability()
@@ -235,6 +239,8 @@ extension AppDelegate {
         if mouseDown, reconciler.dragging == nil {
             reconciler.dragging = id
             dragTile = reconciler.scene.displays.values.lazy.compactMap { $0.frames[id] }.first
+            dragOrigin = discovery?.windows[id]?.info.frame
+            dragPress = edgeDrops?.sequence
             updateDragTracking()
             endGrab()
         }
@@ -247,6 +253,10 @@ extension AppDelegate {
             dragTimer?.invalidate()
             dragTimer = nil
             dragTile = nil
+            dragOrigin = nil
+            dragPress = nil
+            edgeDrops?.cancel()
+            edgePanels.hide()
             dropPanels.hide()
             return
         }
@@ -254,6 +264,7 @@ extension AppDelegate {
         let timer = Timer(timeInterval: 0.03, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.finishDragIfReleased()
+                self?.updateEdgePreview()
                 self?.updateDropPicker()
             }
         }
@@ -270,6 +281,7 @@ extension AppDelegate {
     }
 
     func updateDropPicker() {
+        guard edgeDrops?.preview?.edge == nil else { dropPanels.hide(); return }
         guard let picker = currentDropPicker() else { dropPanels.hide(); return }
         let target = CGEvent(source: nil).flatMap { picker.target(at: $0.location) }
         dropPanels.show(DropPickerContent(picker: picker, hovered: target), preview: target.flatMap(picker.preview))
@@ -278,11 +290,21 @@ extension AppDelegate {
     func finishDragIfReleased() {
         guard discovery?.frozen == false, let reconciler, let id = reconciler.dragging,
               NSEvent.pressedMouseButtons & 1 == 0 else { return }
+        updateEdgePolicy()
+        guard case .ready(let release) = edgeDrops?.finish() ?? .ready(nil) else { return }
+        let owner = edgeDropOwner()
         let tile = dragTile
         reconciler.dragging = nil
         updateDragTracking()
         let frame = discovery?.windows[id].flatMap { AX.frame($0.element) }
         let cursor = CGEvent(source: nil).map { Point(x: $0.location.x, y: $0.location.y) }
+        if let release, release.owner == owner, let edge = release.edge, let frame, DragMove.isMove(frame, from: release.owner.origin) {
+            // Clearing both dragging flags first permits the same cross-display carry as Ctrl+Shift+arrows.
+            let reply = command(edge.command(id))
+            endGrab()
+            if !reply.ok { logger.info("Edge drop \(id): \(reply.text, privacy: .public)") }
+            return
+        }
         // A native menu selection or edge snap can finish while the button is still reported down. Its final
         // resize follows the same settled path as a selection whose notifications arrive after mouse-up.
         if let frame, let tile, !DragMove.isMove(frame, from: tile) || cursor.map({ !frame.contains($0) }) == true,
