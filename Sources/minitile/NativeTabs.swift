@@ -63,12 +63,21 @@ struct NativeTabs {
     struct Selection {
         var previous: WindowID?
         var waiting = false
+        var leftBehind = false
+
+        /// AX focus can lag behind an ordinary new window, but a tab left by a detach follows the reappearance rule.
+        func takesFocus(_ id: WindowID, active: Bool, focus: () -> FocusObservation) -> Bool {
+            guard active else { return false }
+            return !leftBehind || OrderedOutChecks.takesFocus(id, active: active, focus: focus())
+        }
     }
     private struct Group {
         var element: AXRef
         var pid: Int32
         var selection: TabSelection
         var members: Set<WindowID>
+        /// A selection observed with this bar or confirmed by a tab switch. Prior focus alone is only a candidate.
+        var established: Bool
         /// The bar owner named as the selection's successor, and how often.
         var prompted: (owner: WindowID, count: Int)?
     }
@@ -121,7 +130,7 @@ struct NativeTabs {
                         && (entry.members.contains(id) || previous.map(entry.members.contains) == true)
                 }
                 groups.append(Group(element: group, pid: pid, selection: TabSelection(previous ?? id),
-                                    members: Set([id] + (previous.map { [$0] } ?? []))))
+                                    members: Set([id] + (previous.map { [$0] } ?? [])), established: previous == nil))
                 if previous != nil {
                     return select(id, pid: pid, group: group, previousFocus: nil, now: now, inactive: inactive)
                 }
@@ -136,19 +145,25 @@ struct NativeTabs {
         case .waiting: return Selection(waiting: true)
         case .selected(let previous):
             groups[index].members.insert(id)
+            groups[index].established = true
             groups[index].prompted = nil
             return Selection(previous: previous)
         case .detached:
-            if owner(groups[index].element) == nil {
+            let current = owner(groups[index].element)
+            let leftBehind = groups[index].established && (group != nil || current == id)
+            if current == nil {
                 // Two windows that both stay without a bar are independent, and so is every other tab they had.
                 groups.remove(at: index)
             } else {
                 groups[index].members.remove(previous)
                 groups[index].members.insert(id)
+                groups[index].established = true
                 groups[index].prompted = nil
             }
-            return Selection()
-        case nil: return nil
+            return Selection(leftBehind: leftBehind)
+        case nil:
+            if group != nil { groups[index].established = true }
+            return nil
         }
     }
 

@@ -410,7 +410,15 @@ final class Discovery {
         }
         recheckSoon(pids: [info.pid])
         guard let previous = selection.previous, let old = windows[previous], old.info.pid == info.pid else {
-            if appeared { input?(.windowAppeared(info)) }
+            if appeared {
+                var info = info
+                let active = selection.leftBehind ? NSRunningApplication(processIdentifier: info.pid)?.isActive == true : info.fromFrontmostApp
+                info.fromFrontmostApp = selection.takesFocus(info.id, active: active) {
+                    applications[info.pid].map { AX.focus($0.element) } ?? .unknown
+                }
+                windows[info.id]?.info = info
+                input?(.windowAppeared(info))
+            }
             return appeared
         }
         var info = info

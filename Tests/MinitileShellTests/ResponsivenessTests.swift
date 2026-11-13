@@ -1,6 +1,26 @@
 import Testing
 @testable import minitile
 
+@Test func timingCounterAccumulatesDurationsAndKeepsTheLongest() {
+    var timings = TimingCounter()
+    #expect(timings.count == 0 && timings.total == 0 && timings.longest == 0)
+    timings.record(12.5)
+    timings.record(200)
+    timings.record(0.5)
+    #expect(timings.count == 3)
+    #expect(timings.total == 213)
+    #expect(timings.longest == 200)
+}
+
+@Test func timingCounterCountsZeroDurationOperationsAndCopiesIndependently() {
+    var timings = TimingCounter()
+    timings.record(0)
+    var copy = timings
+    copy.record(25)
+    #expect(timings.count == 1 && timings.total == 0 && timings.longest == 0)
+    #expect(copy.count == 2 && copy.total == 25 && copy.longest == 25)
+}
+
 @Test func inputWaitsKeepTheLatestAndLongestAndFlagSlowOnes() {
     var waits = InputWaits()
     #expect(waits.latest == 0 && waits.longest == 0)

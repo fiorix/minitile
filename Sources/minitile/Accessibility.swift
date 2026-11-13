@@ -16,6 +16,8 @@ enum FocusObservation: Equatable {
 /// Reads are nonisolated so background discovery can use them; writes and focus reads stay on the main thread.
 @MainActor
 enum AX {
+    private(set) static var mainThreadTimings = TimingCounter()
+
     static func focus(_ app: AXUIElement) -> FocusObservation {
         let (value, error) = copy(app, kAXFocusedWindowAttribute)
         guard error == .success else { return .unknown }
@@ -74,6 +76,7 @@ enum AX {
         let start = ProcessInfo.processInfo.systemUptime
         let result = call()
         let milliseconds = (ProcessInfo.processInfo.systemUptime - start) * 1000
+        MainActor.assumeIsolated { mainThreadTimings.record(milliseconds) }
         if milliseconds > Slow.mainThreadAXCall {
             var pid: pid_t = 0
             AXUIElementGetPid(element, &pid)

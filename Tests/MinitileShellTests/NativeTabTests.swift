@@ -85,6 +85,10 @@ private struct TabGroups {
     #expect(groups.select(2, now: 0.1)?.waiting == true)
     let settled = groups.select(2, now: 0.2)
     #expect(settled?.previous == nil && settled?.waiting == false)
+    #expect(settled?.leftBehind == false)
+    var focusReads = 0
+    #expect(settled?.takesFocus(2, active: true, focus: { focusReads += 1; return .known(1) }) == true)
+    #expect(focusReads == 0) // A new window takes focus even before the app reports it.
     #expect(groups.select(2, now: 0.3) == nil)
     // Window 1 no longer shares the group, so it cannot inherit the slot when window 2 goes away.
     groups.bar = nil
@@ -120,6 +124,7 @@ private struct TabGroups {
     #expect(pair.select(1, barred: false, now: 2)?.waiting == true)
     let split = pair.select(1, barred: false, now: 2.2)
     #expect(split?.previous == nil && split?.waiting == false) // Both stayed, so window 1 is an ordinary window.
+    #expect(split?.leftBehind == false)
     #expect(!pair.tabs.hasGroups(pid: TabGroups.pid))
 
     var trio = TabGroups.threeTabs()
@@ -183,11 +188,67 @@ private struct TabGroups {
     #expect(groups.select(2, now: 2.05, gone: [1])?.waiting == true)
     let settled = groups.select(2, now: 2.25, gone: [1])
     #expect(settled?.previous == nil && settled?.waiting == false) // Both stayed: 3 keeps its slot, 2 is placed anew.
+    #expect(settled?.leftBehind == true)
     #expect(groups.tabs.changing.isEmpty)
     #expect(groups.tabs.successor(of: 3, pid: TabGroups.pid) == nil)
     // The group goes on with tabs 1 and 2.
     groups.bar = 1
     #expect(groups.select(1, now: 3, gone: [2])?.previous == 2)
+}
+
+@Test(arguments: [false, true], [false, true]) @MainActor
+func anUnseenTabLeftByADetachDoesNotTakeFocusFromTheDetachedWindow(readDetachedFirst: Bool, readBar: Bool) throws {
+    var groups = TabGroups()
+    groups.bar = 1
+    _ = groups.select(1, now: 0) // The other tabs have never been selected or discovered.
+    groups.bar = 2
+    if readDetachedFirst {
+        #expect(groups.select(1, barred: false, now: 2) == nil)
+        #expect(groups.tabs.successor(of: 1, pid: TabGroups.pid) == 2)
+    }
+    #expect(groups.select(2, barred: readBar, after: 1, now: 2.05)?.waiting == true)
+    #expect(groups.tabs.changing == [1, 2])
+    let selection = groups.select(2, barred: readBar, now: 2.25)
+    let settled = try #require(selection)
+    #expect(settled.previous == nil && !settled.waiting && settled.leftBehind)
+    #expect(!settled.takesFocus(2, active: true, focus: { .known(1) }))
+    #expect(settled.takesFocus(2, active: true, focus: { .known(2) }))
+    #expect(settled.takesFocus(2, active: true, focus: { .unknown }))
+    #expect(!settled.takesFocus(2, active: true, focus: { .known(nil) }))
+    var focusReads = 0
+    #expect(!settled.takesFocus(2, active: false, focus: { focusReads += 1; return .unknown }))
+    #expect(focusReads == 0)
+    var engine = Engine()
+    let display = DisplayInfo(id: "d", frame: Rect(x: 0, y: 0, width: 1200, height: 900))
+    let windows = [1, 4, 5, 6].map { WindowInfo(id: WindowID($0), pid: TabGroups.pid, display: "d") }
+    let before = engine.handle(.started(saved: nil, windows: windows, displays: [display], focus: 1))
+    let info = WindowInfo(id: 2, pid: TabGroups.pid,
+                          fromFrontmostApp: settled.takesFocus(2, active: true, focus: { .known(1) }), display: "d")
+    let after = engine.handle(.windowAppeared(info))
+    #expect(engine.savedState().windows[2] != nil)
+    #expect(engine.savedState().focus == 1)
+    #expect(after.scene.displays["d"]?.visible == before.scene.displays["d"]?.visible)
+    #expect(after.scene.displays["d"]?.frames[1] == before.scene.displays["d"]?.frames[1])
+    #expect(after.scene.displays["d"]?.stashed == [2])
+    #expect(groups.tabs.changing.isEmpty)
+    #expect(groups.tabs.successor(of: 1, pid: TabGroups.pid) == nil)
+    #expect(groups.select(4, barred: false, after: 1, now: 3) == nil) // An ordinary Cmd+N stays unrelated.
+    groups.bar = 3
+    #expect(groups.select(3, now: 4, gone: [2])?.previous == 2) // The remaining group can still switch tabs.
+}
+
+@Test @MainActor func observingACandidateWithItsBarEstablishesTheGroupBeforeADetach() throws {
+    var groups = TabGroups()
+    groups.bar = 2
+    #expect(groups.select(2, after: 1, now: 0)?.waiting == true)
+    groups.bar = 1
+    #expect(groups.select(1, now: 0.05) == nil) // WindowServer and the bar have returned to window 1.
+    groups.bar = 2
+    #expect(groups.select(2, now: 1)?.waiting == true)
+    let selection = groups.select(2, now: 1.2)
+    let settled = try #require(selection)
+    #expect(settled.leftBehind)
+    #expect(!settled.takesFocus(2, active: true, focus: { .known(1) }))
 }
 
 @Test @MainActor func aSelectionsSuccessorIsNamedOnlyAFewTimesAndOnlyForALostBar() {

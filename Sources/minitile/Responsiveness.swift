@@ -10,6 +10,19 @@ enum Slow {
     static let backgroundRead = 500.0
 }
 
+/// Number, total duration and longest duration of operations, in milliseconds, since creation.
+struct TimingCounter {
+    private(set) var count = 0
+    private(set) var total = 0.0
+    private(set) var longest = 0.0
+
+    mutating func record(_ milliseconds: Double) {
+        count += 1
+        total += milliseconds
+        longest = max(longest, milliseconds)
+    }
+}
+
 /// How long key bindings and swipes waited for the main thread: the latest wait and the longest since launch.
 struct InputWaits {
     private(set) var latest = 0.0
