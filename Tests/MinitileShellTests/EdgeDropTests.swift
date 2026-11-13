@@ -16,6 +16,78 @@ private func dropOwner(bounds: Rect = bounds, origin: Rect = origin, frame: Rect
     return EdgeDropOwner(window: window, display: display, origin: origin, frame: frame, currentSpace: 4, visible: true)
 }
 
+@Test func edgeDisplayCacheReadsSpaceOnceAcrossModelChangesAndRefreshesOnNotification() throws {
+    var cache = EdgeDropDisplayCache()
+    var display = NativeDisplay(info: DisplayInfo(id: "d", frame: bounds, visibleSpace: 4), identifier: "native-d", spaces: [], current: 0)
+    var resolves = 0, reads: [String] = []
+    var space: UInt64 = 4
+    func read(_ identifier: String) -> UInt64 { reads.append(identifier); return space }
+    func value(_ generation: UInt64 = 0) -> (info: DisplayInfo, currentSpace: UInt64)? {
+        cache.value(window: 42, generation: generation, resolve: { resolves += 1; return display }, readSpace: read)
+    }
+    for _ in 0..<30 {
+        let cached = try #require(value())
+        #expect(cached.info == display.info && cached.currentSpace == 4)
+    }
+    #expect(resolves == 1 && reads == ["native-d"])
+    display.info.visibleFrame.height -= 20
+    let changed = try #require(value(1))
+    #expect(changed.info == display.info)
+    #expect(resolves == 2 && reads == ["native-d"])
+    space = 6
+    cache.refreshSpaces(readSpace: read)
+    #expect(value(1)?.currentSpace == 6)
+    #expect(resolves == 2 && reads == ["native-d", "native-d"])
+    cache = EdgeDropDisplayCache()
+    #expect(value(1)?.currentSpace == 6)
+    #expect(resolves == 3 && reads == ["native-d", "native-d", "native-d"])
+}
+
+@Test func edgeDisplayCacheHandlesMissingAndReplacedDisplays() throws {
+    var cache = EdgeDropDisplayCache()
+    var reads: [String] = []
+    let read: (String) -> UInt64 = { reads.append($0); return 4 }
+    #expect(cache.value(window: 42, generation: 0, resolve: { nil }, readSpace: read) == nil)
+    cache.refreshSpaces(readSpace: read)
+    #expect(reads.isEmpty)
+    for (generation, identifier) in [(UInt64(1), "first"), (2, "second")] {
+        let display = NativeDisplay(info: DisplayInfo(id: "d", frame: bounds, visibleSpace: 4), identifier: identifier, spaces: [], current: 0)
+        let result = cache.value(window: 42, generation: generation, resolve: { display }, readSpace: read)
+        let cached = try #require(result)
+        #expect(cached.info == display.info && cached.currentSpace == 4)
+    }
+    #expect(reads == ["first", "second"])
+}
+
+@Test func cachedEdgeDisplayStillRevalidatesTheOwnerAtRelease() throws {
+    var cache = EdgeDropDisplayCache()
+    let display = NativeDisplay(info: DisplayInfo(id: "d", frame: bounds, visibleSpace: 4), identifier: "d", spaces: [], current: 0)
+    var space: UInt64 = 4
+    var window = WindowState(info: WindowInfo(id: 42, pid: 123, frame: moved, display: "d"), display: "d", floating: false)
+    func candidate() -> EdgeDropOwner? {
+        guard let cached = cache.value(window: 42, generation: 0, resolve: { display }, readSpace: { _ in space }) else { return nil }
+        return EdgeDropOwner(window: window, display: cached.info, origin: origin, frame: window.info.frame,
+                             currentSpace: cached.currentSpace, visible: true)
+    }
+    let owner = try #require(candidate())
+    var tracker = EdgeDropTracker()
+    tracker.begin(at: down)
+    tracker.update(owner, moved: true, press: tracker.sequence)
+    _ = tracker.end(at: Point(x: 999, y: 400))
+    window.info.minimized = true
+    #expect(candidate() == nil)
+    tracker.update(candidate(), moved: true, press: tracker.sequence)
+    #expect(tracker.finish(now: 1) == .ready(nil))
+    window.info.minimized = false
+    window.info.frame.width += 10
+    #expect(candidate() == nil)
+    window.info.frame = moved
+    #expect(candidate() == owner)
+    space = 6
+    cache.refreshSpaces { _ in space }
+    #expect(candidate() == nil)
+}
+
 @Test(arguments: [
     (DropEdge.left, Point(x: 0, y: 400), Point(x: 60, y: 400), ["window", "nudge", "42", "left"]),
     (.right, Point(x: 999, y: 400), Point(x: 940, y: 400), ["window", "nudge", "42", "right"]),

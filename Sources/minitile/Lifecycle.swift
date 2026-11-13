@@ -34,9 +34,11 @@ extension AppDelegate {
             }
         }
         observe(workspace, NSWorkspace.activeSpaceDidChangeNotification) { [weak self] _ in
-            guard let self, self.discovery?.frozen == false else { return }
+            guard let self else { return }
             self.edgeDrops?.cancel()
             self.edgePanels.hide()
+            self.edgeDisplayCache.refreshSpaces { csl_current_space($0 as CFString) }
+            guard self.discovery?.frozen == false else { return }
             self.displays.bounceFromStash()
             // The model learns of windows entering or leaving full screen before the reconciler rereads where
             // windows stand, so no later reconcile pulls a full screen window back to the desktop.
@@ -167,7 +169,7 @@ extension AppDelegate {
             if try paths.configContents() != lastConfig { _ = reloadConfig() }
         } catch { warnings["config"] = "Config: \(error)" }
         discovery.recheckSoon()
-        finishDragIfReleased()
+        finishDragIfReleased(cursor: CGEvent(source: nil)?.location)
         discovery.refreshFocus()
         let applyStart = ProcessInfo.processInfo.systemUptime
         reconciler.apply(Output(scene: reconciler.scene))
@@ -255,6 +257,8 @@ extension AppDelegate {
             dragTile = nil
             dragOrigin = nil
             dragPress = nil
+            dropPickerCache = DragCache()
+            edgeDisplayCache = EdgeDropDisplayCache()
             edgeDrops?.cancel()
             edgePanels.hide()
             dropPanels.hide()
@@ -263,9 +267,11 @@ extension AppDelegate {
         guard dragTimer == nil else { return }
         let timer = Timer(timeInterval: 0.03, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.finishDragIfReleased()
-                self?.updateEdgePreview()
-                self?.updateDropPicker()
+                guard let self else { return }
+                let cursor = CGEvent(source: nil)?.location
+                self.finishDragIfReleased(cursor: cursor)
+                self.updateEdgePreview()
+                self.updateDropPicker(cursor: cursor)
             }
         }
         dragTimer = timer
@@ -277,26 +283,33 @@ extension AppDelegate {
     func currentDropPicker() -> DropPicker? {
         guard !quitting, discovery?.frozen == false, let id = reconciler?.dragging, let tile = dragTile,
               let frame = discovery?.windows[id]?.info.frame, DragMove.isMove(frame, from: tile) else { return nil }
-        return DropPicker(state: engine.savedState(), config: engine.config, window: id)
+        return cachedDropPicker(for: id)
     }
 
-    func updateDropPicker() {
+    func cachedDropPicker(for id: WindowID) -> DropPicker? {
+        dropPickerCache.value(window: id, generation: dragGeneration.value) {
+            DropPicker(state: engine.savedState(), config: engine.config, window: id)
+        }
+    }
+
+    func updateDropPicker(cursor: CGPoint?) {
         guard edgeDrops?.preview?.edge == nil else { dropPanels.hide(); return }
         guard let picker = currentDropPicker() else { dropPanels.hide(); return }
-        let target = CGEvent(source: nil).flatMap { picker.target(at: $0.location) }
+        let target = cursor.flatMap(picker.target)
         dropPanels.show(DropPickerContent(picker: picker, hovered: target), preview: target.flatMap(picker.preview))
     }
 
-    func finishDragIfReleased() {
+    func finishDragIfReleased(cursor: CGPoint?) {
         guard discovery?.frozen == false, let reconciler, let id = reconciler.dragging,
               NSEvent.pressedMouseButtons & 1 == 0 else { return }
         let owner = updateEdgePolicy()
         guard case .ready(let release) = edgeDrops?.finish() ?? .ready(nil) else { return }
         let tile = dragTile
+        let picker = cachedDropPicker(for: id)
         reconciler.dragging = nil
         updateDragTracking()
         let frame = discovery?.windows[id].flatMap { AX.frame($0.element) }
-        let cursor = CGEvent(source: nil).map { Point(x: $0.location.x, y: $0.location.y) }
+        let cursor = cursor.map { Point(x: $0.x, y: $0.y) }
         if let release, release.owner == owner, let edge = release.edge, let frame, DragMove.isMove(frame, from: release.owner.origin) {
             // Clearing both dragging flags first permits the same cross-display carry as Ctrl+Shift+arrows.
             let reply = command(edge.command(id))
@@ -313,7 +326,6 @@ extension AppDelegate {
             trackNativeTiling(id)
             return
         }
-        let picker = DropPicker(state: engine.savedState(), config: engine.config, window: id)
         switch DropRoute.route(frame: frame, cursor: cursor, picker: picker, tile: tile) {
         case .place(let target):
             let reply = command(target.command(id))

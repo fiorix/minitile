@@ -1,6 +1,34 @@
 import CoreGraphics
 import MinitileCore
 
+/// Every engine input passes through this rule, including changes whose reconcile is held for a transition.
+struct DragGeneration {
+    private(set) var value: UInt64 = 0
+    private var scene = Scene()
+
+    mutating func update(_ input: Input, output: Output) {
+        let invalidates: Bool
+        switch input {
+        case .configLoaded, .displaysChanged: invalidates = true
+        default: invalidates = output.stateChanged || output.scene != scene
+        }
+        if invalidates { value &+= 1 }
+        scene = output.scene
+    }
+}
+
+/// A missing value is cached too: a one-window page has no picker, but needs no more layout work until it changes.
+struct DragCache<Value> {
+    private var entry: (window: WindowID, generation: UInt64, value: Value?)?
+
+    mutating func value(window: WindowID, generation: UInt64, build: () -> Value?) -> Value? {
+        if let entry, entry.window == window, entry.generation == generation { return entry.value }
+        let value = build()
+        entry = (window, generation, value)
+        return value
+    }
+}
+
 /// A tile of one of the picker's layouts.
 struct DropTarget: Equatable, Hashable {
     var variant: Variant

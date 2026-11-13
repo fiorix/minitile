@@ -161,6 +161,63 @@ func previewIsTheFrameWindowPlaceLaysOut(_ count: Int) throws {
     #expect(moved.options[0].frames.count == 3)
 }
 
+@Test func cachedPickerFollowsCtrlArrowAndReusesUnchangedTicks() throws {
+    var e = engine(6)
+    e.dragging = 1
+    var generation = DragGeneration(), cache = DragCache<DropPicker>()
+    let query = Input.command(["state"])
+    generation.update(query, output: e.handle(query))
+    var builds = 0
+    func picker() -> DropPicker? {
+        cache.value(window: 1, generation: generation.value) { builds += 1; return dropPicker(e) }
+    }
+    func carry() {
+        let input = Input.command(["window", "nudge", "1", "right"])
+        let output = e.handle(input)
+        #expect(output.reply?.ok == true)
+        generation.update(input, output: output)
+    }
+    for _ in 0..<30 { #expect(picker()?.options.map(\.variant) == [.standard]) }
+    #expect(builds == 1)
+    generation.update(query, output: e.handle(query))
+    _ = picker()
+    #expect(builds == 1)
+    carry()
+    for _ in 0..<30 { #expect(picker() == nil) }
+    #expect(builds == 2)
+    carry()
+    let moved = try #require(picker())
+    #expect(moved == dropPicker(e))
+    #expect(moved.options[0].frames.count == 3)
+    #expect(builds == 3)
+}
+
+@Test func cachedPickerRefreshesRatiosConfigAndDisplayGeometry() throws {
+    var e = engine(2)
+    var generation = DragGeneration(), cache = DragCache<DropPicker>()
+    var builds = 0
+    func picker() throws -> DropPicker {
+        try #require(cache.value(window: 1, generation: generation.value) { builds += 1; return dropPicker(e) })
+    }
+    func handle(_ input: Input) { generation.update(input, output: e.handle(input)) }
+    let first = try picker()
+    handle(.command(["page", "ratio", "0.65"]))
+    let ratio = try picker()
+    #expect(ratio != first && ratio == dropPicker(e))
+    var config = e.config; config.gaps += 10; config.padding += 10
+    handle(.configLoaded(config))
+    let configured = try picker()
+    #expect(configured != ratio && configured == dropPicker(e))
+    var resized = display; resized.visibleFrame.width = 600
+    handle(.displaysChanged([resized]))
+    let fitted = try picker()
+    #expect(fitted.area == resized.visibleFrame && fitted == dropPicker(e))
+    #expect(fitted != configured && builds == 4)
+    handle(.command(["state"]))
+    #expect(try picker() == fitted)
+    #expect(builds == 4)
+}
+
 @Test func dragIsAMoveWhenTheSizeHoldsAndThePositionLeavesTheTolerance() {
     let tile = Rect(x: 100, y: 50, width: 600, height: 400)
     func moved(_ dx: Double, _ dy: Double, _ dw: Double = 0, _ dh: Double = 0) -> Bool {

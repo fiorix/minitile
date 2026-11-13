@@ -66,6 +66,24 @@ final class SettledFrame {
     func origin(reported: Rect) -> Rect { frame ?? reported }
 }
 
+/// Display geometry follows model generations; native Space reads survive them and refresh on Space notifications.
+struct EdgeDropDisplayCache {
+    private var display = DragCache<NativeDisplay>()
+    private var spaces: [String: UInt64] = [:]
+
+    mutating func value(window: WindowID, generation: UInt64, resolve: () -> NativeDisplay?,
+                        readSpace: (String) -> UInt64) -> (info: DisplayInfo, currentSpace: UInt64)? {
+        guard let display = display.value(window: window, generation: generation, build: resolve) else { return nil }
+        let current = spaces[display.identifier] ?? readSpace(display.identifier)
+        spaces[display.identifier] = current
+        return (display.info, current)
+    }
+
+    mutating func refreshSpaces(readSpace: (String) -> UInt64) {
+        for identifier in spaces.keys { spaces[identifier] = readSpace(identifier) }
+    }
+}
+
 /// The source display owns all four bands for the duration of a window move. Coordinates are CG global points.
 struct EdgeDropOwner: Equatable, Sendable {
     var window: WindowID

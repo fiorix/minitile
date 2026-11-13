@@ -121,10 +121,12 @@ extension AppDelegate {
         guard started, !quitting, engine.config.edgeDrops, discovery?.frozen == false, suspendedReasons.isEmpty,
               let id = reconciler?.dragging, let origin = dragOrigin,
               let observed = discovery?.windows[id]?.info, observed.pid == NSWorkspace.shared.frontmostApplication?.processIdentifier,
-              let window = engine.savedState().windows[id], window.info.pid == observed.pid,
-              let display = displays.displays.first(where: { $0.info.id == window.display }) else { return nil }
+              let window = engine.savedState().windows[id], window.info.pid == observed.pid else { return nil }
+        guard let display = edgeDisplayCache.value(window: id, generation: dragGeneration.value, resolve: {
+            displays.displays.first(where: { $0.info.id == window.display })
+        }, readSpace: { csl_current_space($0 as CFString) }) else { return nil }
         return EdgeDropOwner(window: window, display: display.info, origin: origin, frame: observed.frame,
-                             currentSpace: csl_current_space(display.identifier as CFString),
+                             currentSpace: display.currentSpace,
                              visible: reconciler?.scene.displays[window.display]?.visible.contains(id) == true)
     }
 

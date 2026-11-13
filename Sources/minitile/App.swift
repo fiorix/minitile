@@ -69,6 +69,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var dragOrigin: Rect?
     /// The edge drop tap's button-press sequence when the drag began, so a later press cannot inherit this drag.
     var dragPress: UInt64?
+    var dragGeneration = DragGeneration()
+    var dropPickerCache = DragCache<DropPicker>()
+    var edgeDisplayCache = EdgeDropDisplayCache()
     var displayWork: DispatchWorkItem?
     var wakeUntil: TimeInterval = 0
     var lastActivation: (pid: Int32, time: TimeInterval)?
@@ -312,6 +315,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var grabbing: (argv: [String], focus: WindowID?)?
         if let argv, GrabCommand.grabs(argv) { grabbing = (argv, before?.focus) }
         let output = engine.handle(input)
+        dragGeneration.update(input, output: output)
         let grab = grabbing.flatMap { GrabCommand(argv: $0.argv, focus: $0.focus, output: output) }
         // The pointer already holds a dragged window, so nothing grabs it, Ctrl+arrow during the drag included.
         if let grab, grab.window != reconciler?.dragging {
