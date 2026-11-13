@@ -187,3 +187,20 @@ func hidingFocusedAppWaitsForNativeFocus(_ order: [WindowID]) {
     #expect(e.savedState().focus == 2)
     #expect(out.events.contains(Event(type: "window_moved", data: .number(2))))
 }
+
+@Test func aWindowShownAgainBesideItsAppsFocusIsPlacedWithoutTakingTheViewOrTheFocus() {
+    var e = engine(5)
+    var info = window(5)
+    info.orderedOut = true
+    _ = e.handle(.windowUpdated(info))
+    _ = e.handle(.focusChanged(1))
+    #expect(grid(e) == [[[1, 2, 3, 4]]])
+    // The shell reports a window that is not its app's focus, as the tab a detach leaves behind, with this flag off.
+    info.orderedOut = false
+    info.fromFrontmostApp = false
+    let out = e.handle(.windowUpdated(info))
+    #expect(grid(e) == [[[1, 2, 3, 4], [5]]])
+    #expect(out.scene.displays["primary"]?.visible == [1, 2, 3, 4])
+    #expect(e.savedState().focus == 1)
+    #expect(out.actions.isEmpty)
+}

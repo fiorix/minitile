@@ -33,6 +33,27 @@ enum DropEdge: String, CaseIterable, Sendable {
     }
 }
 
+/// The frame a window rests at after minitile's own write. Discovery keeps the echoes of that write from the core, so
+/// the frame it reports stays the one before the write until an unsuppressed observation replaces it. A drag that
+/// begins sooner starts from here.
+struct SettledFrame: Equatable, Sendable {
+    private(set) var frame: Rect?
+
+    /// A new write makes the frame an earlier one settled at wrong.
+    mutating func wrote() { frame = nil }
+
+    /// `suppressed` marks an observation that is taken for the echo of minitile's write and not reported. With the
+    /// left button down a changing frame is the start of the user's drag instead, which begins from the frame seen
+    /// before it. An unsuppressed observation is reported, so nothing is kept. A failed read changes nothing.
+    mutating func observe(_ observed: Rect?, suppressed: Bool, buttonDown: Bool) {
+        guard let observed else { return }
+        if !suppressed { frame = nil } else if !buttonDown { frame = observed }
+    }
+
+    /// Where a drag begins, given the frame discovery reports.
+    func origin(reported: Rect) -> Rect { frame ?? reported }
+}
+
 /// The source display owns all four bands for the duration of a window move. Coordinates are CG global points.
 struct EdgeDropOwner: Equatable, Sendable {
     var window: WindowID
@@ -147,8 +168,9 @@ struct EdgeDropTracker {
     /// losing it cancels the edge action rather than committing whichever edge happened to be hovered last.
     mutating func finish(now: TimeInterval) -> EdgeDropFinish {
         if owner != nil {
-            if releaseWait == nil { releaseWait = now }
-            if now - releaseWait! < 0.1 { return .waiting }
+            let since = releaseWait ?? now
+            releaseWait = since
+            if now - since < 0.1 { return .waiting }
         }
         let result = release
         cancel()

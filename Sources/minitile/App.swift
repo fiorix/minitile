@@ -65,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var dragTile: Rect?
     /// The actual frame before the first move notification, including floating windows.
     var dragOrigin: Rect?
+    /// The edge drop tap's button-press sequence when the drag began, so a later press cannot inherit this drag.
     var dragPress: UInt64?
     var displayWork: DispatchWorkItem?
     var wakeUntil: TimeInterval = 0
@@ -293,9 +294,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard started, !quitting else { return nil }
         if case .windowGone(let id) = input { reconciler?.forget(id); updateDragTracking() }
         if case .windowTabSelected(let previous, let info) = input {
-            if ProcessInfo.processInfo.environment["MINITILE_TRACE_FOCUS"] == "1" {
-                startupLog("Tab handoff \(previous)->\(info.id) pages=\(engine.savedState().displays.flatMap(\.workspaces).flatMap(\.pages).map(\.windows))")
-            }
+            // Both physical windows' cached geometry is stale once the slot changes hands.
             reconciler?.forget(previous)
             reconciler?.forget(info.id)
             updateDragTracking()

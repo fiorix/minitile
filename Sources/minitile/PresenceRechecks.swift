@@ -60,6 +60,15 @@ struct OrderedOutChecks {
 
     private(set) var counts: [WindowID: Int] = [:]
 
+    /// A window its app shows again takes the view and the focus while the app is active, unless the app names
+    /// another window as its focus: the tab a detach leaves behind reappears beside the focused one. A focus that
+    /// cannot be read counts for the window.
+    static func takesFocus(_ id: WindowID, active: Bool, focus: FocusObservation) -> Bool {
+        guard active else { return false }
+        if case .known(let focused) = focus { return focused == id }
+        return true
+    }
+
     /// Checks the windows of `pids` against a snapshot taken at ledger stamp `taken`, in which `offScreen` are those
     /// off screen on a shown desktop or no Space. Returns changed ordered-out states. Minimized, app-hidden and
     /// fullscreen windows tell nothing about whether their app ordered them out.

@@ -31,6 +31,8 @@ final class Discovery {
         /// The ledger stamp when the window became known.
         var added = 0
         var fullscreen = FullscreenSigns()
+        /// Where minitile's last write left the window, while `info.frame` still holds the frame before it.
+        var settled = SettledFrame()
     }
 
     @MainActor final class Application {
@@ -55,9 +57,11 @@ final class Discovery {
     private var misses = PresenceMisses()
     private var orderedOutChecks = OrderedOutChecks()
     private var nativeTabs = NativeTabs()
-    private var tabRechecks: Set<Int32> = []
+    /// Windows whose tab selection is settling, by app. They are reread until WindowServer shows what became of the
+    /// previous selection.
+    private var tabRechecks: [Int32: Set<WindowID>] = [:]
     private var tabAppearances: Set<WindowID> = []
-    private var lastFocused: [Int32: WindowID] = [:]
+    private var lastFocused = FocusMemory()
     private var rechecks = PresenceRechecks()
     private var recheckWork: DispatchWorkItem?
     /// A recheck pass is waiting for its snapshot; the next pass is scheduled once it arrives.
@@ -130,7 +134,7 @@ final class Discovery {
             return
         }
         applications[context.pid] = context
-        lastFocused[context.pid] = AX.focus(context.element).window
+        if let id = AX.focus(context.element).window { lastFocused.focused(id, pid: context.pid, discovered: windows[id] != nil) }
         CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .commonModes)
     }
 
@@ -144,7 +148,7 @@ final class Discovery {
         nativeTabs = NativeTabs()
         tabRechecks.removeAll()
         tabAppearances.removeAll()
-        lastFocused.removeAll()
+        lastFocused = FocusMemory()
     }
 
     func pruneIgnored() {
@@ -155,7 +159,7 @@ final class Discovery {
             applications.removeValue(forKey: pid)
             ledger.forget(pid)
             nativeTabs.forget(pid: pid)
-            lastFocused.removeValue(forKey: pid)
+            lastFocused.forget(pid: pid)
         }
     }
 
@@ -295,7 +299,11 @@ final class Discovery {
             if traceFocus { startupLog("Ordered out id=\(id) value=\(value)") }
             guard var info = windows[id]?.info else { continue }
             info.orderedOut = value
-            if !value { info.fromFrontmostApp = NSRunningApplication(processIdentifier: info.pid)?.isActive == true }
+            if !value {
+                let active = NSRunningApplication(processIdentifier: info.pid)?.isActive == true
+                let focus = active ? applications[info.pid].map { AX.focus($0.element) } ?? .unknown : .unknown
+                info.fromFrontmostApp = OrderedOutChecks.takesFocus(id, active: active, focus: focus)
+            }
             windows[id]?.info = info
             input?(.windowUpdated(info))
         }
@@ -329,6 +337,7 @@ final class Discovery {
             startupLog("Window appeared id=\(id) pid=\(info.pid) app_active=\(info.fromFrontmostApp) frontmost=\(NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0)")
         }
         if !selectTab(info, group: read.tabGroup, isNew: true) { input?(.windowAppeared(info)) }
+        lastFocused.discovered(id, pid: info.pid)
     }
 
     private func reread(_ read: WindowRead, app: NSRunningApplication, register: Bool) {
@@ -345,9 +354,11 @@ final class Discovery {
         if smokeScope.directory != nil, let document = attributes.document, !smokeScope.allows(document: document) { remove(id); return }
         var info = old.info, signs = old.fullscreen
         signs.observe(attribute: attributes.fullscreen, space: attributes.spaces.map { displays.onFullscreenSpace($0) })
-        info.apply(attributes, appHidden: app.isHidden, geometry: suppressGeometry?(id) != true, fullscreen: signs.fullscreen)
+        let suppressed = suppressGeometry?(id) == true
+        info.apply(attributes, appHidden: app.isHidden, geometry: !suppressed, fullscreen: signs.fullscreen)
         windows[id]?.info = info
         windows[id]?.fullscreen = signs
+        windows[id]?.settled.observe(attributes.frame, suppressed: suppressed, buttonDown: NSEvent.pressedMouseButtons & 1 != 0)
         // Entering or leaving full screen, a window stands on no Space for a moment; it is reread until it lands.
         if transit.reread(id, inTransit: signs.fullscreen && attributes.spaces == nil) {
             DispatchQueue.main.asyncAfter(deadline: .now() + TransitRereads.interval) { [weak self] in
@@ -362,26 +373,33 @@ final class Discovery {
     }
 
     private func selectTab(_ info: WindowInfo, group: AXRef?, isNew: Bool = false) -> Bool {
-        let previous = isNew ? lastFocused[info.pid].flatMap { id -> WindowID? in
+        let previous = isNew ? lastFocused.last(pid: info.pid).flatMap { id -> WindowID? in
             guard let old = windows[id]?.info, old.pid == info.pid, !old.orderedOut, !old.minimized,
                   !old.appHidden, !old.fullscreen else { return nil }
             return id
         } : nil
+        // One WindowServer snapshot answers every question of this selection, and none is taken unless one is asked.
+        var snapshot: [WindowID: CGWindowRecord]??
         guard let selection = nativeTabs.select(info.id, pid: info.pid, group: group, previousFocus: previous,
                                                now: ProcessInfo.processInfo.systemUptime, inactive: { previous in
-            guard let snapshot = CGWindowRecord.snapshot() else { return false }
-            guard let record = snapshot[previous] else { return true }
+            if snapshot == nil { snapshot = .some(CGWindowRecord.snapshot()) }
+            guard case .some(.some(let records)) = snapshot else { return false }
+            guard let record = records[previous] else { return true }
             guard record.pid == info.pid, !record.onScreen, let spaces = DisplayCatalog.readWindowSpaces(previous) else { return false }
             return spaces.isEmpty
-        }) else { return false }
+        }) else {
+            // A selection that lost its bar to another window leaves that window to be read: nothing else does.
+            if group == nil, let next = nativeTabs.successor(of: info.id, pid: info.pid), windows[next] != nil {
+                rereadTabs(next, pid: info.pid)
+            }
+            // An appearance held back for a settling selection is still owed once its group stops answering for it.
+            guard tabAppearances.remove(info.id) != nil else { return false }
+            input?(.windowAppeared(info))
+            return true
+        }
         if selection.waiting {
             if isNew { tabAppearances.insert(info.id) }
-            if tabRechecks.insert(info.pid).inserted {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-                    guard let self, self.tabRechecks.remove(info.pid) != nil else { return }
-                    self.scan(pids: [info.pid])
-                }
-            }
+            rereadTabs(info.id, pid: info.pid)
             return true
         }
         let appeared = tabAppearances.remove(info.id) != nil
@@ -407,6 +425,19 @@ final class Discovery {
         orderedOutChecks.forget(info.id)
         input?(.windowTabSelected(previous: previous, info))
         return true
+    }
+
+    /// Rereads the window's tabs after one settling step, together with its app's other waiting windows. A background
+    /// read can be skipped or go stale under a new tab's first notifications, which would leave a selection waiting
+    /// for the next scan, so the reread runs here.
+    private func rereadTabs(_ id: WindowID, pid: Int32) {
+        let scheduled = tabRechecks[pid] != nil
+        tabRechecks[pid, default: []].insert(id)
+        guard !scheduled else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self, let waiting = self.tabRechecks.removeValue(forKey: pid) else { return }
+            for id in waiting.sorted() { self.update(id, tabsRead: true) }
+        }
     }
 
     private func registerWindow(_ id: WindowID) {
@@ -439,7 +470,15 @@ final class Discovery {
     }
 
     /// minitile wrote the window's frame, so background reads begun earlier are stale.
-    func wroteFrame(_ id: WindowID) { ledger.touch(id) }
+    func wroteFrame(_ id: WindowID) {
+        ledger.touch(id)
+        windows[id]?.settled.wrote()
+    }
+
+    /// The frame a drag of the window begins from: where minitile's last write left it, if nothing observed since
+    /// was reported, else the reported frame. Notifications call `moved` before they reread the window, so at the
+    /// first move of a drag this is still the frame before it.
+    func dragOrigin(_ id: WindowID) -> Rect? { windows[id].map { $0.settled.origin(reported: $0.info.frame) } }
 
     /// Hiding changes no attribute read through AX, so the app's windows update at once; the app is then read in the
     /// background.
@@ -473,7 +512,8 @@ final class Discovery {
         creations.removeValue(forKey: pid)
         ledger.forget(pid)
         nativeTabs.forget(pid: pid)
-        lastFocused.removeValue(forKey: pid)
+        lastFocused.forget(pid: pid)
+        tabRechecks.removeValue(forKey: pid)
         recheckSoon(pids: [pid])
     }
 
@@ -608,7 +648,7 @@ final class Discovery {
         guard !frozen else { return }
         if let pid, let context = applications[pid], let app = NSRunningApplication(processIdentifier: pid),
            let element = AX.element(context.element, kAXFocusedWindowAttribute), let id = AX.id(element) {
-            defer { if windows[id] != nil { lastFocused[pid] = id } }
+            defer { lastFocused.focused(id, pid: pid, discovered: windows[id] != nil) }
             let group = NativeTabs.group(element)
             if windows[id] != nil, group != nil || nativeTabs.hasGroups(pid: pid) {
                 ledger.touch(id)

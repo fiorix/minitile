@@ -106,6 +106,8 @@ extension AppDelegate {
                                 "recheck_requests": .number(Double(discovery?.recheckRequests ?? 0)),
                                 "recheck_passes": .number(Double(discovery?.recheckPasses ?? 0))])
             case "health":
+                // One read, so the window and its hovered edge belong to the same moment of the drag.
+                let edgeDrop = edgeDrops?.preview
                 data = .object(["started": .bool(started), "pid": .number(Double(ProcessInfo.processInfo.processIdentifier)), "suspended": .bool(discovery?.frozen == true),
                                 "suspended_reasons": .array(suspendedReasons.sorted().map(JSONValue.string)),
                                 "secure_input": .bool(csl_secure_input_enabled()), "tap_unavailable": .bool(keyboard?.unavailable == true),
@@ -114,8 +116,8 @@ extension AppDelegate {
                                 "edge_drops": .bool(engine.config.edgeDrops),
                                 "edge_drop_tap_running": .bool(edgeDrops?.running == true),
                                 "edge_drop_tap_unavailable": .bool(edgeDrops?.unavailable == true),
-                                "edge_drop_window": edgeDrops?.preview.map { .number(Double($0.owner.window)) } ?? .null,
-                                "edge_drop_hovered": edgeDrops?.preview?.edge.map { .string($0.rawValue) } ?? .null,
+                                "edge_drop_window": edgeDrop.map { .number(Double($0.owner.window)) } ?? .null,
+                                "edge_drop_hovered": edgeDrop?.edge.map { .string($0.rawValue) } ?? .null,
                                 "swipe_tap_running": .bool(swipes?.running == true),
                                 "swipe_tap_unavailable": .bool(swipes?.unavailable == true),
                                 "last_swipe": try swipes?.last.map { last in

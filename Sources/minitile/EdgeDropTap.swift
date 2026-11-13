@@ -111,11 +111,13 @@ extension AppDelegate {
         updateEdgePolicy()
     }
 
-    func updateEdgePolicy() {
-        guard edgeDrops != nil else { return }
+    /// Gives the tap the dragged window's current eligibility and returns it; nil without a tap or an eligible drag.
+    @discardableResult func updateEdgePolicy() -> EdgeDropOwner? {
+        guard let edgeDrops else { return nil }
         let owner = edgeDropOwner()
         let moved = owner.flatMap { owner in discovery?.windows[owner.window].map { DragMove.isMove($0.info.frame, from: owner.origin) } } ?? false
-        edgeDrops?.update(owner, moved: moved, press: dragPress)
+        edgeDrops.update(owner, moved: moved, press: dragPress)
+        return owner
     }
 
     func edgeDropOwner() -> EdgeDropOwner? {

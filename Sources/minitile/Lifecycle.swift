@@ -239,7 +239,7 @@ extension AppDelegate {
         if mouseDown, reconciler.dragging == nil {
             reconciler.dragging = id
             dragTile = reconciler.scene.displays.values.lazy.compactMap { $0.frames[id] }.first
-            dragOrigin = discovery?.windows[id]?.info.frame
+            dragOrigin = discovery?.dragOrigin(id)
             dragPress = edgeDrops?.sequence
             updateDragTracking()
             endGrab()
@@ -290,9 +290,8 @@ extension AppDelegate {
     func finishDragIfReleased() {
         guard discovery?.frozen == false, let reconciler, let id = reconciler.dragging,
               NSEvent.pressedMouseButtons & 1 == 0 else { return }
-        updateEdgePolicy()
+        let owner = updateEdgePolicy()
         guard case .ready(let release) = edgeDrops?.finish() ?? .ready(nil) else { return }
-        let owner = edgeDropOwner()
         let tile = dragTile
         reconciler.dragging = nil
         updateDragTracking()

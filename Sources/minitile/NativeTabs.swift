@@ -12,6 +12,8 @@ struct TabSelection {
 
     private(set) var selected: WindowID
     private var pending: (id: WindowID, until: TimeInterval)?
+    /// The window waiting to replace the selection, while that is undecided.
+    var settling: WindowID? { pending?.id }
 
     init(_ selected: WindowID) { self.selected = selected }
 
@@ -23,12 +25,35 @@ struct TabSelection {
             pending = nil
             return .selected(previous: previous)
         }
-        if pending?.id != id { pending = (id, now + 0.15) }
-        guard now >= pending!.until else { return .waiting }
+        let until = pending.flatMap { $0.id == id ? $0.until : nil } ?? now + 0.15
+        pending = (id, until)
+        guard now >= until else { return .waiting }
         selected = id
         pending = nil
         return .detached
     }
+}
+
+/// Each app's last focused window that discovery knows: the one whose slot a new tab may take. A window focused
+/// before it is discovered takes that place only when it is discovered, after its own tab selection was decided, so
+/// a new tab never names itself and a window opened a moment ago still counts.
+struct FocusMemory {
+    private var known: [Int32: WindowID] = [:]
+    private var awaited: [Int32: WindowID] = [:]
+
+    func last(pid: Int32) -> WindowID? { known[pid] }
+
+    mutating func focused(_ id: WindowID, pid: Int32, discovered: Bool) {
+        if discovered { known[pid] = id; awaited[pid] = nil } else { awaited[pid] = id }
+    }
+
+    mutating func discovered(_ id: WindowID, pid: Int32) {
+        guard awaited[pid] == id else { return }
+        known[pid] = id
+        awaited[pid] = nil
+    }
+
+    mutating func forget(pid: Int32) { known[pid] = nil; awaited[pid] = nil }
 }
 
 /// AppKit moves the same accessibility tab bar between the group's selected windows. Its identity survives a
@@ -44,9 +69,15 @@ struct NativeTabs {
         var pid: Int32
         var selection: TabSelection
         var members: Set<WindowID>
+        /// The bar owner named as the selection's successor, and how often.
+        var prompted: (owner: WindowID, count: Int)?
     }
 
+    /// How often one window is named as a selection's successor before the periodic scan is left to read it.
+    static let successorPrompts = 3
     private var groups: [Group] = []
+    /// The window a tab bar currently belongs to, or nil once the bar is gone.
+    var owner: (AXRef) -> WindowID? = { AX.id($0.element) }
 
     func hasGroups(pid: Int32) -> Bool { groups.contains { $0.pid == pid } }
 
@@ -66,13 +97,9 @@ struct NativeTabs {
                          inactive: (WindowID) -> Bool) -> Selection? {
         guard group != nil || hasGroups(pid: pid) else { return nil }
         if group == nil, !inactive(id) {
-            // An invalid bar with two surviving independent windows belongs to a dissolved group.
-            groups.removeAll { entry in
-                entry.pid == pid && entry.members.contains(id) && AX.id(entry.element.element) == nil
-                    && entry.members.contains { $0 != id && !inactive($0) }
-            }
+            // A window shown without the bar, while the bar stays on another shown window, was detached.
             for index in groups.indices where groups[index].pid == pid && groups[index].selection.selected != id {
-                if let current = AX.id(groups[index].element.element), current != id, !inactive(current) {
+                if let current = owner(groups[index].element), current != id, !inactive(current) {
                     groups[index].members.remove(id)
                 }
             }
@@ -80,14 +107,17 @@ struct NativeTabs {
         let index = groups.firstIndex { entry in
             guard entry.pid == pid else { return false }
             if let group { return CFEqual(entry.element.element, group.element) }
-            if AX.id(entry.element.element) == id { return true }
-            return entry.members.contains(id) && !inactive(id) && inactive(entry.selection.selected)
+            if owner(entry.element) == id { return true }
+            // A bar that is gone left with a closed selection or with a split of its last two tabs. WindowServer
+            // drops a closed selection a moment after the other window shows, so the selection settles that too.
+            return entry.members.contains(id) && !inactive(id)
+                && (owner(entry.element) == nil || inactive(entry.selection.selected))
         }
         guard let index else {
             if let group {
                 let previous = previousFocus.flatMap { $0 == id ? nil : $0 }
                 groups.removeAll { entry in
-                    entry.pid == pid && AX.id(entry.element.element) == nil
+                    entry.pid == pid && owner(entry.element) == nil
                         && (entry.members.contains(id) || previous.map(entry.members.contains) == true)
                 }
                 groups.append(Group(element: group, pid: pid, selection: TabSelection(previous ?? id),
@@ -100,28 +130,57 @@ struct NativeTabs {
             return nil
         }
         let previous = groups[index].selection.selected
+        // Without a bar, the selected window says nothing about a window waiting to replace it.
+        if group == nil, previous == id { return nil }
         switch groups[index].selection.select(id, now: now, previousInactive: previous != id && inactive(previous)) {
         case .waiting: return Selection(waiting: true)
         case .selected(let previous):
             groups[index].members.insert(id)
+            groups[index].prompted = nil
             return Selection(previous: previous)
         case .detached:
-            groups[index].members.remove(previous)
-            groups[index].members.insert(id)
+            if owner(groups[index].element) == nil {
+                // Two windows that both stay without a bar are independent, and so is every other tab they had.
+                groups.remove(at: index)
+            } else {
+                groups[index].members.remove(previous)
+                groups[index].members.insert(id)
+                groups[index].prompted = nil
+            }
             return Selection()
         case nil: return nil
         }
     }
 
+    /// The window that took the bar from `id`, a group's recorded selection that now stands without it, as the
+    /// selected tab does once it is detached from three or more. No notification reads that window's tabs, so
+    /// discovery rereads it and its selection settles. Each owner is named `successorPrompts` times at most: an app
+    /// whose accessibility tree never agrees with itself costs that many rereads and then waits for the scan.
+    mutating func successor(of id: WindowID, pid: Int32) -> WindowID? {
+        for index in groups.indices where groups[index].pid == pid && groups[index].selection.selected == id {
+            guard let current = owner(groups[index].element), current != id else { continue }
+            let count = groups[index].prompted.flatMap { $0.owner == current ? $0.count : nil } ?? 0
+            guard count < Self.successorPrompts else { continue }
+            groups[index].prompted = (current, count + 1)
+            return current
+        }
+        return nil
+    }
+
     var changing: Set<WindowID> {
         var ids: Set<WindowID> = []
         for group in groups {
-            guard let current = AX.id(group.element.element), current != group.selection.selected else { continue }
+            if let settling = group.selection.settling { ids.formUnion([group.selection.selected, settling]) }
+            guard let current = owner(group.element), current != group.selection.selected else { continue }
             ids.formUnion([group.selection.selected, current])
         }
         return ids
     }
 
-    mutating func forget(_ id: WindowID) { groups.removeAll { $0.selection.selected == id } }
+    /// A closed selection ends its group. Any other closed tab leaves it, so a reused window ID never inherits a slot.
+    mutating func forget(_ id: WindowID) {
+        groups.removeAll { $0.selection.selected == id }
+        for index in groups.indices { groups[index].members.remove(id) }
+    }
     mutating func forget(pid: Int32) { groups.removeAll { $0.pid == pid } }
 }
