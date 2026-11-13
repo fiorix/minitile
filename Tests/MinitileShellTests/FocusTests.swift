@@ -1,3 +1,4 @@
+import ApplicationServices
 import MinitileCore
 import Testing
 @testable import minitile
@@ -15,6 +16,41 @@ import Testing
 @Test func unreadableFocusIsDistinctFromNoFocusedWindow() {
     #expect(FocusObservation.unknown != .known(nil))
     #expect(FocusObservation.known(42).window == 42)
+}
+
+@Test func oneFocusReadSuppliesBothTheElementAndObservation() {
+    let element = AXUIElementCreateApplication(9001)
+    var copies = 0, ids = 0
+    let read = FocusRead.read(copy: { copies += 1; return (element, .success) }, identify: { _ in ids += 1; return 42 })
+    #expect(read.element.map { CFEqual($0, element) } == true)
+    #expect(read.observation == .known(42))
+    #expect(copies == 1 && ids == 1)
+}
+
+@Test func focusReadsPreserveFailureAndAbsenceWithoutReadingAnID() {
+    for (error, expected) in [(AXError.cannotComplete, FocusObservation.unknown), (.success, .known(nil)), (.noValue, .unknown)] {
+        var copies = 0, ids = 0
+        let read = FocusRead.read(copy: { copies += 1; return (nil, error) }, identify: { _ in ids += 1; return 42 })
+        #expect(read.observation == expected && read.element == nil)
+        #expect(copies == 1 && ids == 0)
+    }
+    let unidentified = FocusRead.read(copy: { (AXUIElementCreateApplication(9001), .success) }, identify: { _ in nil })
+    #expect(unidentified.observation == .unknown)
+    let invalid = FocusRead.read(copy: { ("invalid" as CFString, .success) }, identify: { _ in Issue.record("Not an element"); return 42 })
+    #expect(invalid.observation == .unknown && invalid.element == nil)
+}
+
+@Test func reappearingWindowsShareOneFocusReadPerAppInThePass() {
+    var cache = FocusReads()
+    var reads: [Int32] = []
+    for pid: Int32 in [7, 7, 8, 7, 8] {
+        let focus = cache.read(pid) { reads.append(pid); return pid == 7 ? .unknown : .known(42) }
+        #expect(focus == (pid == 7 ? .unknown : .known(42)))
+    }
+    #expect(reads == [7, 8])
+    var nextPass = FocusReads()
+    #expect(nextPass.read(7) { reads.append(7); return .known(nil) } == .known(nil))
+    #expect(reads == [7, 8, 7])
 }
 
 @Test func activationDropsFocusOwnedByAnotherApp() {

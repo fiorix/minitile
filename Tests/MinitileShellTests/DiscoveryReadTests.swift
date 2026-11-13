@@ -1,3 +1,4 @@
+import ApplicationServices
 import MinitileCore
 import Testing
 @testable import minitile
@@ -149,6 +150,89 @@ private func snapshot(_ records: CGWindowRecord...) -> [WindowID: CGWindowRecord
     #expect(settling.title == "New" && settling.minimized && !settling.tileable && !settling.appHidden)
     info.apply(read, appHidden: false, geometry: true, fullscreen: false)
     #expect(info.frame == Rect(x: 5, y: 5, width: 20, height: 20))
+}
+
+@Test func notificationsReadOnlyTheirAttributesAndAlwaysReadSpaces() {
+    #expect(WindowAttribute.reads(for: kAXMovedNotification) == [.frame, .spaces])
+    #expect(WindowAttribute.reads(for: kAXResizedNotification) == [.frame, .fullscreen, .spaces])
+    #expect(WindowAttribute.reads(for: kAXTitleChangedNotification) == [.title, .document, .spaces])
+    #expect(WindowAttribute.reads(for: kAXWindowMiniaturizedNotification) == [.minimized, .spaces])
+    #expect(WindowAttribute.reads(for: kAXWindowDeminiaturizedNotification) == [.minimized, .spaces])
+    for name in [kAXFocusedWindowChangedNotification, kAXMainWindowChangedNotification, kAXWindowCreatedNotification, "unknown"] {
+        #expect(WindowAttribute.reads(for: name) == Set(WindowAttribute.allCases))
+    }
+    #expect(WindowAttribute.all.contains(.popup) && WindowAttribute.all.contains(.tileable))
+}
+
+@Test func partialAttributeReadersSkipUnrequestedAXCallsAndKeepTheSpacesRead() {
+    let cases: [(String, [String], Int)] = [
+        (kAXMovedNotification, [], 1), (kAXResizedNotification, ["AXFullScreen"], 1),
+        (kAXTitleChangedNotification, [kAXDocumentAttribute, kAXTitleAttribute], 0),
+        (kAXWindowMiniaturizedNotification, [kAXMinimizedAttribute], 0),
+        (kAXWindowDeminiaturizedNotification, [kAXMinimizedAttribute], 0),
+    ]
+    for (name, expectedCopies, expectedFrames) in cases {
+        var copies: [String] = [], frames = 0, spaces = 0, settability = 0
+        let attributes = DiscoveryReader.attributes(reading: WindowAttribute.reads(for: name), documents: true,
+            copy: { copies.append($0); return (nil, .cannotComplete) },
+            frame: { frames += 1; return nil }, settable: { settability += 1; return true },
+            spaces: { spaces += 1; return [4] })
+        #expect(copies == expectedCopies && frames == expectedFrames)
+        #expect(spaces == 1 && settability == 0)
+        #expect(attributes == WindowAttributes(spaces: [4]))
+    }
+}
+
+@Test func fullAttributeReadsStillClassifyPopupsAndNoSpaceForFullscreenTransit() {
+    var copies: [String] = []
+    var spaces = 0, frames = 0, settability = 0
+    let frame = Rect(x: 1, y: 2, width: 100, height: 80)
+    let attributes = DiscoveryReader.attributes(reading: WindowAttribute.all, documents: true, copy: { name in
+        copies.append(name)
+        switch name {
+        case "AXFullScreen": return (kCFBooleanTrue, .success)
+        case kAXSubroleAttribute: return (kAXUnknownSubrole as CFString, .success)
+        case kAXModalAttribute: return (kCFBooleanFalse, .success)
+        case kAXCloseButtonAttribute: return (nil, .noValue)
+        default: return (nil, .cannotComplete)
+        }
+    }, frame: { frames += 1; return frame }, settable: { settability += 1; return true }, spaces: { spaces += 1; return [] })
+    #expect(copies == ["AXFullScreen", kAXDocumentAttribute, kAXTitleAttribute, kAXMinimizedAttribute,
+                       kAXSubroleAttribute, kAXCloseButtonAttribute, kAXModalAttribute])
+    #expect(spaces == 1 && frames == 1 && settability == 1)
+    #expect(attributes.popup == true && attributes.tileable == false && attributes.fullscreen == true)
+    #expect(attributes.spaces == nil && attributes.frame == frame)
+}
+
+@Test func partialWindowAttributesKeepEveryUnrequestedValue() {
+    let before = WindowInfo(id: 1, pid: 10, title: "Old", frame: Rect(x: 1, y: 2, width: 100, height: 80),
+                            tileable: true, minimized: true, appHidden: true, orderedOut: true, display: "d")
+    var title = before
+    title.apply(WindowAttributes(title: "New"), appHidden: true, geometry: true, fullscreen: false)
+    var expected = before
+    expected.title = "New"
+    #expect(title == expected)
+
+    var minimized = before
+    minimized.apply(WindowAttributes(minimized: false), appHidden: true, geometry: true, fullscreen: false)
+    expected = before
+    expected.minimized = false
+    #expect(minimized == expected)
+
+    let frame = Rect(x: 10, y: 20, width: 200, height: 160)
+    var moved = before
+    moved.apply(WindowAttributes(frame: frame), appHidden: true, geometry: true, fullscreen: false)
+    expected = before
+    expected.frame = frame
+    #expect(moved == expected)
+
+    var suppressed = before
+    suppressed.apply(WindowAttributes(frame: frame), appHidden: true, geometry: false, fullscreen: false)
+    #expect(suppressed == before)
+    var fullscreen = before
+    fullscreen.apply(WindowAttributes(frame: frame, fullscreen: true), appHidden: true, geometry: true, fullscreen: true)
+    expected.fullscreen = true
+    #expect(fullscreen == expected)
 }
 
 @Test func scanWallTimeRunsToTheLastAppliedRead() {

@@ -56,6 +56,35 @@ struct FocusMemory {
     mutating func forget(pid: Int32) { known[pid] = nil; awaited[pid] = nil }
 }
 
+/// Resize bursts need one tab probe after the last event, while echoes of minitile's frame writes need none.
+struct ResizeTabReads {
+    static let interval: TimeInterval = 0.05
+    enum Action: Equatable {
+        case none
+        case wait(TimeInterval)
+        case read
+    }
+    private var deadlines: [WindowID: TimeInterval] = [:]
+
+    /// True when the window needs its first timer; later events extend that timer's deadline.
+    mutating func request(_ id: WindowID, now: TimeInterval, suppressed: Bool) -> Bool {
+        guard !suppressed else { return false }
+        let scheduled = deadlines[id] != nil
+        deadlines[id] = now + Self.interval
+        return !scheduled
+    }
+
+    mutating func fired(_ id: WindowID, now: TimeInterval, suppressed: Bool) -> Action {
+        guard let deadline = deadlines[id] else { return .none }
+        if suppressed { deadlines.removeValue(forKey: id); return .none }
+        guard now >= deadline else { return .wait(deadline - now) }
+        deadlines.removeValue(forKey: id)
+        return .read
+    }
+
+    mutating func forget(_ id: WindowID) { deadlines.removeValue(forKey: id) }
+}
+
 /// AppKit moves the same accessibility tab bar between the group's selected windows. Its identity survives a
 /// selection even though the window ID changes. Window titles and frames do not identify a tab group.
 @MainActor
@@ -105,6 +134,12 @@ struct NativeTabs {
     mutating func select(_ id: WindowID, pid: Int32, group: AXRef?, previousFocus: WindowID?, now: TimeInterval,
                          inactive: (WindowID) -> Bool) -> Selection? {
         guard group != nil || hasGroups(pid: pid) else { return nil }
+        if group == nil, let index = groups.firstIndex(where: {
+            $0.pid == pid && $0.selection.selected == id && $0.members == [id] && $0.selection.settling == nil
+        }), owner(groups[index].element) == nil {
+            groups.remove(at: index)
+            return nil
+        }
         if group == nil, !inactive(id) {
             // A window shown without the bar, while the bar stays on another shown window, was detached.
             for index in groups.indices where groups[index].pid == pid && groups[index].selection.selected != id {
@@ -182,10 +217,11 @@ struct NativeTabs {
         return nil
     }
 
-    var changing: Set<WindowID> {
+    func changing(pids: Set<Int32>, answers: (Int32) -> Bool) -> Set<WindowID> {
         var ids: Set<WindowID> = []
-        for group in groups {
+        for group in groups where pids.contains(group.pid) {
             if let settling = group.selection.settling { ids.formUnion([group.selection.selected, settling]) }
+            guard answers(group.pid) else { continue }
             guard let current = owner(group.element), current != group.selection.selected else { continue }
             ids.formUnion([group.selection.selected, current])
         }

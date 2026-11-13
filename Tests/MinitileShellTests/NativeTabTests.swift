@@ -29,6 +29,47 @@ import Testing
     #expect(tabs.select(2, now: 0.25, previousInactive: true) == .selected(previous: 1))
 }
 
+@Test func resizeTabProbesCoalescePerWindowAtTheTrailingEdge() {
+    var reads = ResizeTabReads()
+    var probes: [WindowID] = []
+    func request(_ id: WindowID, now: TimeInterval, suppressed: Bool) -> Bool {
+        reads.request(id, now: now, suppressed: suppressed)
+    }
+    func fire(_ id: WindowID, at time: TimeInterval) -> ResizeTabReads.Action {
+        let action = reads.fired(id, now: time, suppressed: false)
+        if action == .read { probes.append(id) }
+        return action
+    }
+    #expect(request(1, now: 0, suppressed: false))
+    for time in [0.01, 0.02, 0.04] { #expect(!request(1, now: time, suppressed: false)) }
+    #expect(request(2, now: 0.02, suppressed: false))
+    if case .wait(let delay) = fire(1, at: 0.05) { #expect(abs(delay - 0.04) < 0.0001) }
+    else { Issue.record("The burst has not reached its trailing edge") }
+    #expect(probes.isEmpty)
+    #expect(fire(2, at: 0.071) == .read)
+    #expect(fire(1, at: 0.091) == .read)
+    #expect(fire(1, at: 0.1) == .none)
+    #expect(probes == [2, 1])
+    #expect(request(1, now: 0.11, suppressed: false))
+    #expect(fire(1, at: 0.161) == .read)
+    #expect(probes == [2, 1, 1])
+}
+
+@Test func resizeTabProbesSkipWriteEchoesAndWindowsForgottenWhileWaiting() {
+    var reads = ResizeTabReads()
+    func request(_ id: WindowID, now: TimeInterval, suppressed: Bool) -> Bool {
+        reads.request(id, now: now, suppressed: suppressed)
+    }
+    #expect(!request(1, now: 0, suppressed: true))
+    #expect(reads.fired(1, now: 0.1, suppressed: false) == .none)
+    #expect(request(1, now: 1, suppressed: false))
+    #expect(reads.fired(1, now: 1.1, suppressed: true) == .none)
+    #expect(reads.fired(1, now: 1.2, suppressed: false) == .none)
+    #expect(request(1, now: 2, suppressed: false))
+    reads.forget(1)
+    #expect(reads.fired(1, now: 2.1, suppressed: false) == .none)
+}
+
 /// Drives tab groups without a live app: any distinct AX element stands for a tab bar, `bar` names the window that
 /// holds it now, and `gone` lists the windows WindowServer no longer shows on any Space.
 @MainActor
@@ -38,14 +79,20 @@ private struct TabGroups {
     let element = AXRef(AXUIElementCreateApplication(9001))
     private let holder = Holder()
 
-    private final class Holder { var window: WindowID? }
+    private final class Holder {
+        var window: WindowID?
+        var ownerReads = 0
+    }
+
+    var ownerReads: Int { holder.ownerReads }
+    var changing: Set<WindowID> { tabs.changing(pids: [Self.pid], answers: { _ in true }) }
 
     var bar: WindowID? {
         get { holder.window }
         nonmutating set { holder.window = newValue }
     }
 
-    init() { tabs.owner = { [holder] _ in holder.window } }
+    init() { tabs.owner = { [holder] _ in holder.ownerReads += 1; return holder.window } }
 
     mutating func select(_ id: WindowID, barred: Bool = true, after focus: WindowID? = nil, now: TimeInterval,
                          gone: Set<WindowID> = []) -> NativeTabs.Selection? {
@@ -68,10 +115,10 @@ private struct TabGroups {
     #expect(groups.select(2, barred: false, now: 0) == nil) // No group in this app yet.
     groups.bar = 2
     #expect(groups.select(2, after: 1, now: 0)?.waiting == true)
-    #expect(groups.tabs.changing == [1, 2]) // Presence checks leave both alone meanwhile.
+    #expect(groups.changing == [1, 2]) // Presence checks leave both alone meanwhile.
     let created = groups.select(2, now: 0.05, gone: [1])
     #expect(created?.previous == 1 && created?.waiting == false)
-    #expect(groups.tabs.changing.isEmpty)
+    #expect(groups.changing.isEmpty)
     #expect(groups.select(2, now: 0.1, gone: [1]) == nil) // The settled selection is an ordinary window update.
     groups.bar = 1
     #expect(groups.select(1, now: 1, gone: [2])?.previous == 2)
@@ -101,6 +148,75 @@ private struct TabGroups {
     _ = groups.select(2, after: 1, now: 0, gone: [1])
     groups.bar = nil
     #expect(groups.select(1, barred: false, now: 2, gone: [2])?.previous == 2)
+    groups.tabs.forget(2)
+    #expect(groups.select(1, barred: false, now: 2.1) == nil)
+    #expect(!groups.tabs.hasGroups(pid: TabGroups.pid))
+    groups.bar = 3
+    #expect(groups.select(3, after: 1, now: 3, gone: [1])?.previous == 1)
+}
+
+@Test @MainActor func presenceReadsOnlyTabGroupsOfTheAppsInItsPass() {
+    var groups = TabGroups.threeTabs()
+    let other = AXRef(AXUIElementCreateApplication(9002))
+    _ = groups.tabs.select(8, pid: 8, group: other, previousFocus: nil, now: 1, inactive: { _ in false })
+    groups.bar = 2
+    let before = groups.ownerReads
+    #expect(groups.tabs.changing(pids: [TabGroups.pid], answers: { _ in true }) == [2, 3])
+    #expect(groups.ownerReads == before + 1)
+    #expect(groups.tabs.changing(pids: [9], answers: { _ in true }).isEmpty)
+    #expect(groups.ownerReads == before + 1)
+    #expect(groups.tabs.changing(pids: [TabGroups.pid, 8], answers: { _ in true }) == [2, 3, 8])
+    #expect(groups.ownerReads == before + 3)
+}
+
+@Test @MainActor func presenceSkipsOwnerReadsForAppsWhoseLatestBackgroundReadDidNotAnswer() {
+    var groups = TabGroups.threeTabs()
+    var ledger = DiscoveryLedger()
+    groups.bar = 2
+    let before = groups.ownerReads
+    #expect(groups.tabs.changing(pids: [TabGroups.pid], answers: ledger.answers).isEmpty)
+    #expect(groups.ownerReads == before)
+    ledger.record(TabGroups.pid, answered: true)
+    #expect(groups.tabs.changing(pids: [TabGroups.pid], answers: ledger.answers) == [2, 3])
+    #expect(groups.ownerReads == before + 1)
+    #expect(groups.select(2, now: 2, gone: [1])?.waiting == true)
+    ledger.record(TabGroups.pid, answered: false)
+    let waiting = groups.ownerReads
+    #expect(groups.tabs.changing(pids: [TabGroups.pid], answers: ledger.answers) == [2, 3])
+    #expect(groups.ownerReads == waiting) // An unresolved pair stays protected without a live read.
+    ledger.record(TabGroups.pid, answered: true)
+    #expect(groups.tabs.changing(pids: [TabGroups.pid], answers: ledger.answers) == [2, 3])
+    #expect(groups.ownerReads == waiting + 1)
+}
+
+@Test @MainActor func aLoneSelectionWithoutABarEndsItsGroupAndANewTabCanStillTakeItsSlot() {
+    var groups = TabGroups()
+    groups.bar = 2
+    _ = groups.select(2, after: 1, now: 0, gone: [1])
+    groups.tabs.forget(1)
+    groups.bar = nil
+    #expect(groups.select(2, barred: false, now: 1) == nil)
+    #expect(!groups.tabs.hasGroups(pid: TabGroups.pid))
+    let before = groups.ownerReads
+    #expect(groups.select(2, barred: false, now: 1.1) == nil)
+    #expect(groups.tabs.successor(of: 2, pid: TabGroups.pid) == nil)
+    #expect(groups.ownerReads == before)
+    groups.bar = 3
+    #expect(groups.select(3, after: 2, now: 2, gone: [2])?.previous == 2)
+}
+
+@Test @MainActor func aLoneRecordedMemberKeepsItsGroupWhileASuccessorIsSettling() {
+    var groups = TabGroups()
+    groups.bar = 1
+    _ = groups.select(1, now: 0)
+    groups.bar = 2
+    #expect(groups.select(2, now: 1)?.waiting == true)
+    groups.bar = nil
+    #expect(groups.select(1, barred: false, now: 1.02) == nil)
+    #expect(groups.tabs.hasGroups(pid: TabGroups.pid))
+    #expect(groups.changing == [1, 2])
+    groups.bar = 2
+    #expect(groups.select(2, now: 1.05, gone: [1])?.previous == 1)
 }
 
 @Test @MainActor func aClosingSelectionStillOnScreenDoesNotDissolveItsGroup() {
@@ -110,10 +226,10 @@ private struct TabGroups {
     // Window 1 shows and the bar goes before WindowServer drops the closed window 2.
     groups.bar = nil
     #expect(groups.select(1, barred: false, now: 2)?.waiting == true)
-    #expect(groups.tabs.changing == [1, 2]) // Neither is taken for an ordinary reappearance meanwhile.
+    #expect(groups.changing == [1, 2]) // Neither is taken for an ordinary reappearance meanwhile.
     #expect(groups.select(2, barred: false, now: 2.02) == nil) // A read of the closing window changes nothing.
     #expect(groups.select(1, barred: false, now: 2.05, gone: [2])?.previous == 2)
-    #expect(groups.tabs.changing.isEmpty)
+    #expect(groups.changing.isEmpty)
 }
 
 @Test @MainActor func aDetachedTabStopsSharingItsGroup() {
@@ -183,13 +299,13 @@ private struct TabGroups {
     // Tab 3 moved to a window of its own; the group's window now shows tab 2 under the bar.
     groups.bar = 2
     #expect(groups.select(3, barred: false, now: 2, gone: [1]) == nil) // The detached selection decides nothing.
-    #expect(groups.tabs.changing == [2, 3]) // Window 2 is shielded from the ordinary reappearance check meanwhile.
+    #expect(groups.changing == [2, 3]) // Window 2 is shielded from the ordinary reappearance check meanwhile.
     #expect(groups.tabs.successor(of: 3, pid: TabGroups.pid) == 2)
     #expect(groups.select(2, now: 2.05, gone: [1])?.waiting == true)
     let settled = groups.select(2, now: 2.25, gone: [1])
     #expect(settled?.previous == nil && settled?.waiting == false) // Both stayed: 3 keeps its slot, 2 is placed anew.
     #expect(settled?.leftBehind == true)
-    #expect(groups.tabs.changing.isEmpty)
+    #expect(groups.changing.isEmpty)
     #expect(groups.tabs.successor(of: 3, pid: TabGroups.pid) == nil)
     // The group goes on with tabs 1 and 2.
     groups.bar = 1
@@ -207,7 +323,7 @@ func anUnseenTabLeftByADetachDoesNotTakeFocusFromTheDetachedWindow(readDetachedF
         #expect(groups.tabs.successor(of: 1, pid: TabGroups.pid) == 2)
     }
     #expect(groups.select(2, barred: readBar, after: 1, now: 2.05)?.waiting == true)
-    #expect(groups.tabs.changing == [1, 2])
+    #expect(groups.changing == [1, 2])
     let selection = groups.select(2, barred: readBar, now: 2.25)
     let settled = try #require(selection)
     #expect(settled.previous == nil && !settled.waiting && settled.leftBehind)
@@ -230,7 +346,7 @@ func anUnseenTabLeftByADetachDoesNotTakeFocusFromTheDetachedWindow(readDetachedF
     #expect(after.scene.displays["d"]?.visible == before.scene.displays["d"]?.visible)
     #expect(after.scene.displays["d"]?.frames[1] == before.scene.displays["d"]?.frames[1])
     #expect(after.scene.displays["d"]?.stashed == [2])
-    #expect(groups.tabs.changing.isEmpty)
+    #expect(groups.changing.isEmpty)
     #expect(groups.tabs.successor(of: 1, pid: TabGroups.pid) == nil)
     #expect(groups.select(4, barred: false, after: 1, now: 3) == nil) // An ordinary Cmd+N stays unrelated.
     groups.bar = 3

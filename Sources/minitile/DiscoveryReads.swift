@@ -9,7 +9,24 @@ struct AXRef: @unchecked Sendable {
     init(_ element: AXUIElement) { self.element = element }
 }
 
-/// The window attributes discovery reads. Nil means the read failed, and the window keeps its prior value.
+enum WindowAttribute: CaseIterable, Sendable {
+    case title, minimized, frame, tileable, document, popup, fullscreen, spaces
+
+    static let all = Set(allCases)
+
+    static func reads(for notification: String) -> Set<Self> {
+        switch notification {
+        case kAXMovedNotification: [.frame, .spaces]
+        case kAXResizedNotification: [.frame, .fullscreen, .spaces]
+        // A document read only happens in a smoke run, where Save As changes the document with the title.
+        case kAXTitleChangedNotification: [.title, .document, .spaces]
+        case kAXWindowMiniaturizedNotification, kAXWindowDeminiaturizedNotification: [.minimized, .spaces]
+        default: all
+        }
+    }
+}
+
+/// Nil means not read or failed, so the prior value stays; Spaces are read on every attribute pass, with nil for no Space.
 struct WindowAttributes: Equatable, Sendable {
     var title: String?
     var minimized: Bool?
@@ -381,28 +398,45 @@ enum DiscoveryReader {
         return result
     }
 
-    static func attributes(_ element: AXUIElement, id: WindowID, documents: Bool) -> WindowAttributes {
+    static func attributes(_ element: AXUIElement, id: WindowID, documents: Bool,
+                           reading: Set<WindowAttribute> = WindowAttribute.all) -> WindowAttributes {
+        attributes(reading: reading, documents: documents, copy: { AX.copy(element, $0) },
+                   frame: { AX.frame(element) }, settable: { AX.settable(element, kAXSizeAttribute) },
+                   spaces: { DisplayCatalog.windowSpaces(id) })
+    }
+
+    static func attributes(reading: Set<WindowAttribute>, documents: Bool,
+                           copy: (String) -> (value: CFTypeRef?, error: AXError), frame: () -> Rect?,
+                           settable: () -> Bool?, spaces: () -> [UInt64]) -> WindowAttributes {
         var result = WindowAttributes()
-        let spaces = DisplayCatalog.windowSpaces(id)
-        if !spaces.isEmpty { result.spaces = spaces }
-        // A window whose app has no such attribute is never full screen by its word.
-        let (fullscreen, error) = AX.copy(element, "AXFullScreen")
-        result.fullscreen = fullscreen as? Bool ?? (error == .attributeUnsupported || error == .noValue ? false : nil)
-        if documents { result.document = AX.value(element, kAXDocumentAttribute) as? String }
-        result.title = AX.value(element, kAXTitleAttribute) as? String
-        result.minimized = AX.value(element, kAXMinimizedAttribute) as? Bool
-        result.frame = AX.frame(element)
-        let subrole = AX.value(element, kAXSubroleAttribute) as? String
-        var closeButton: Bool?
-        if subrole == kAXUnknownSubrole {
-            let (button, error) = AX.copy(element, kAXCloseButtonAttribute)
-            if error == .success { closeButton = button != nil }
-            else if error == .noValue || error == .attributeUnsupported { closeButton = false }
+        if reading.contains(.spaces) {
+            let spaces = spaces()
+            if !spaces.isEmpty { result.spaces = spaces }
         }
-        result.popup = WindowAttributes.popup(subrole: subrole, closeButton: closeButton)
-        if let settable = AX.settable(element, kAXSizeAttribute), let subrole,
-           let modal = AX.value(element, kAXModalAttribute) as? Bool {
-            result.tileable = subrole == kAXStandardWindowSubrole && !modal && settable
+        if reading.contains(.fullscreen) {
+            // A window whose app has no such attribute is never full screen by its word.
+            let (fullscreen, error) = copy("AXFullScreen")
+            result.fullscreen = fullscreen as? Bool ?? (error == .attributeUnsupported || error == .noValue ? false : nil)
+        }
+        if documents && reading.contains(.document) { result.document = copy(kAXDocumentAttribute).value as? String }
+        if reading.contains(.title) { result.title = copy(kAXTitleAttribute).value as? String }
+        if reading.contains(.minimized) { result.minimized = copy(kAXMinimizedAttribute).value as? Bool }
+        if reading.contains(.frame) { result.frame = frame() }
+        if reading.contains(.popup) || reading.contains(.tileable) {
+            let subrole = copy(kAXSubroleAttribute).value as? String
+            if reading.contains(.popup) {
+                var closeButton: Bool?
+                if subrole == kAXUnknownSubrole {
+                    let (button, error) = copy(kAXCloseButtonAttribute)
+                    if error == .success { closeButton = button != nil }
+                    else if error == .noValue || error == .attributeUnsupported { closeButton = false }
+                }
+                result.popup = WindowAttributes.popup(subrole: subrole, closeButton: closeButton)
+            }
+            if reading.contains(.tileable), let settable = settable(), let subrole,
+               let modal = copy(kAXModalAttribute).value as? Bool {
+                result.tileable = subrole == kAXStandardWindowSubrole && !modal && settable
+            }
         }
         return result
     }

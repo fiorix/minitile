@@ -13,17 +13,43 @@ enum FocusObservation: Equatable {
     }
 }
 
+struct FocusRead {
+    var element: AXUIElement?
+    var observation: FocusObservation
+
+    static func read(copy: () -> (value: CFTypeRef?, error: AXError), identify: (AXUIElement) -> WindowID?) -> Self {
+        let (value, error) = copy()
+        guard error == .success else { return Self(observation: .unknown) }
+        guard let value else { return Self(observation: .known(nil)) }
+        guard CFGetTypeID(value) == AXUIElementGetTypeID() else { return Self(observation: .unknown) }
+        let element = value as! AXUIElement
+        return Self(element: element, observation: identify(element).map { .known($0) } ?? .unknown)
+    }
+}
+
+/// Reappearing windows in one presence pass share the same focus observation, including a failed read.
+struct FocusReads {
+    private var observations: [Int32: FocusObservation] = [:]
+
+    mutating func read(_ pid: Int32, using read: () -> FocusObservation) -> FocusObservation {
+        if let observation = observations[pid] { return observation }
+        let observation = read()
+        observations[pid] = observation
+        return observation
+    }
+}
+
 /// Reads are nonisolated so background discovery can use them; writes and focus reads stay on the main thread.
 @MainActor
 enum AX {
     private(set) static var mainThreadTimings = TimingCounter()
 
     static func focus(_ app: AXUIElement) -> FocusObservation {
-        let (value, error) = copy(app, kAXFocusedWindowAttribute)
-        guard error == .success else { return .unknown }
-        guard let value else { return .known(nil) }
-        guard CFGetTypeID(value) == AXUIElementGetTypeID(), let id = id(value as! AXUIElement) else { return .unknown }
-        return .known(id)
+        focusedWindow(app).observation
+    }
+
+    static func focusedWindow(_ app: AXUIElement) -> FocusRead {
+        FocusRead.read(copy: { copy(app, kAXFocusedWindowAttribute) }, identify: id)
     }
 
     nonisolated static func copy(_ element: AXUIElement, _ attribute: String) -> (value: CFTypeRef?, error: AXError) {
