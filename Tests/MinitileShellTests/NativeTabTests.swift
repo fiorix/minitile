@@ -36,7 +36,7 @@ import Testing
         reads.request(id, now: now, suppressed: suppressed)
     }
     func fire(_ id: WindowID, at time: TimeInterval) -> ResizeTabReads.Action {
-        let action = reads.fired(id, now: time, suppressed: false)
+        let action = reads.fired(id, now: time, frozen: false)
         if action == .read { probes.append(id) }
         return action
     }
@@ -55,19 +55,29 @@ import Testing
     #expect(probes == [2, 1, 1])
 }
 
-@Test func resizeTabProbesSkipWriteEchoesAndWindowsForgottenWhileWaiting() {
+@Test func resizeTabProbesSkipWriteEchoesAndKeepPendingReadsAcrossLaterWrites() {
     var reads = ResizeTabReads()
     func request(_ id: WindowID, now: TimeInterval, suppressed: Bool) -> Bool {
         reads.request(id, now: now, suppressed: suppressed)
     }
     #expect(!request(1, now: 0, suppressed: true))
-    #expect(reads.fired(1, now: 0.1, suppressed: false) == .none)
+    #expect(reads.fired(1, now: 0.1, frozen: false) == .none)
     #expect(request(1, now: 1, suppressed: false))
-    #expect(reads.fired(1, now: 1.1, suppressed: true) == .none)
-    #expect(reads.fired(1, now: 1.2, suppressed: false) == .none)
+    #expect(!request(1, now: 1.02, suppressed: true))
+    #expect(reads.fired(1, now: 1.051, frozen: false) == .read)
+    #expect(reads.fired(1, now: 1.2, frozen: false) == .none)
     #expect(request(1, now: 2, suppressed: false))
     reads.forget(1)
-    #expect(reads.fired(1, now: 2.1, suppressed: false) == .none)
+    #expect(reads.fired(1, now: 2.1, frozen: false) == .none)
+}
+
+@Test func resizeTabProbesDiscardPendingReadsWhileDiscoveryIsFrozen() {
+    var reads = ResizeTabReads()
+    #expect(reads.request(1, now: 0, suppressed: false) == true)
+    #expect(reads.fired(1, now: 0.1, frozen: true) == .none)
+    #expect(reads.fired(1, now: 0.2, frozen: false) == .none)
+    #expect(reads.request(1, now: 1, suppressed: false) == true)
+    #expect(reads.fired(1, now: 1.1, frozen: false) == .read)
 }
 
 /// Drives tab groups without a live app: any distinct AX element stands for a tab bar, `bar` names the window that
@@ -76,11 +86,13 @@ import Testing
 private struct TabGroups {
     static let pid: Int32 = 7
     var tabs = NativeTabs()
+    var answered = true
     let element = AXRef(AXUIElementCreateApplication(9001))
     private let holder = Holder()
 
     private final class Holder {
         var window: WindowID?
+        var ownerFails = false
         var ownerReads = 0
     }
 
@@ -92,11 +104,16 @@ private struct TabGroups {
         nonmutating set { holder.window = newValue }
     }
 
-    init() { tabs.owner = { [holder] _ in holder.ownerReads += 1; return holder.window } }
+    var ownerFails: Bool {
+        get { holder.ownerFails }
+        nonmutating set { holder.ownerFails = newValue }
+    }
+
+    init() { tabs.owner = { [holder] _ in holder.ownerReads += 1; return holder.ownerFails ? nil : holder.window } }
 
     mutating func select(_ id: WindowID, barred: Bool = true, after focus: WindowID? = nil, now: TimeInterval,
                          gone: Set<WindowID> = []) -> NativeTabs.Selection? {
-        tabs.select(id, pid: Self.pid, group: barred ? element : nil, previousFocus: focus, now: now, inactive: gone.contains)
+        tabs.select(id, pid: Self.pid, group: barred ? element : nil, answered: answered, previousFocus: focus, now: now, inactive: gone.contains)
     }
 
     /// Windows 1, 2 and 3 as one group with 3 selected.
@@ -122,7 +139,7 @@ private struct TabGroups {
     #expect(groups.select(2, now: 0.1, gone: [1]) == nil) // The settled selection is an ordinary window update.
     groups.bar = 1
     #expect(groups.select(1, now: 1, gone: [2])?.previous == 2)
-    #expect(groups.tabs.select(9, pid: 8, group: nil, previousFocus: nil, now: 1, inactive: { _ in false }) == nil)
+    #expect(groups.tabs.select(9, pid: 8, group: nil, answered: true, previousFocus: nil, now: 1, inactive: { _ in false }) == nil)
 }
 
 @Test @MainActor func aNewWindowThatStaysBesideThePreviousFocusKeepsItsOwnSlot() {
@@ -158,7 +175,7 @@ private struct TabGroups {
 @Test @MainActor func presenceReadsOnlyTabGroupsOfTheAppsInItsPass() {
     var groups = TabGroups.threeTabs()
     let other = AXRef(AXUIElementCreateApplication(9002))
-    _ = groups.tabs.select(8, pid: 8, group: other, previousFocus: nil, now: 1, inactive: { _ in false })
+    _ = groups.tabs.select(8, pid: 8, group: other, answered: true, previousFocus: nil, now: 1, inactive: { _ in false })
     groups.bar = 2
     let before = groups.ownerReads
     #expect(groups.tabs.changing(pids: [TabGroups.pid], answers: { _ in true }) == [2, 3])
@@ -189,20 +206,54 @@ private struct TabGroups {
     #expect(groups.ownerReads == waiting + 1)
 }
 
-@Test @MainActor func aLoneSelectionWithoutABarEndsItsGroupAndANewTabCanStillTakeItsSlot() {
+@Test @MainActor func anAnsweredAppEndsALoneGroupWithoutABarAndANewTabCanStillTakeItsSlot() {
     var groups = TabGroups()
     groups.bar = 2
     _ = groups.select(2, after: 1, now: 0, gone: [1])
     groups.tabs.forget(1)
     groups.bar = nil
+    let beforeCleanup = groups.ownerReads
     #expect(groups.select(2, barred: false, now: 1) == nil)
     #expect(!groups.tabs.hasGroups(pid: TabGroups.pid))
+    #expect(groups.ownerReads == beforeCleanup + 1)
     let before = groups.ownerReads
     #expect(groups.select(2, barred: false, now: 1.1) == nil)
     #expect(groups.tabs.successor(of: 2, pid: TabGroups.pid) == nil)
     #expect(groups.ownerReads == before)
     groups.bar = 3
     #expect(groups.select(3, after: 2, now: 2, gone: [2])?.previous == 2)
+}
+
+@Test @MainActor func aFailedOwnerReadKeepsALoneGroupWhenTheAppDidNotAnswer() {
+    var groups = TabGroups()
+    groups.bar = 2
+    _ = groups.select(2, after: 1, now: 0, gone: [1])
+    groups.tabs.forget(1)
+    groups.answered = false
+    groups.ownerFails = true
+    let before = groups.ownerReads
+    #expect(groups.select(2, barred: false, now: 1) == nil)
+    #expect(groups.ownerReads == before + 1)
+    #expect(groups.bar == 2)
+    #expect(groups.tabs.hasGroups(pid: TabGroups.pid))
+    groups.ownerFails = false
+    groups.answered = true
+    groups.bar = 3
+    #expect(groups.changing == [2, 3])
+    #expect(groups.tabs.successor(of: 2, pid: TabGroups.pid) == 3)
+    #expect(groups.select(3, now: 2, gone: [2])?.previous == 2)
+}
+
+@Test @MainActor func aLoneSelectionWithALiveBarReadsItsOwnerOncePerSelect() {
+    var groups = TabGroups()
+    groups.bar = 2
+    _ = groups.select(2, now: 0)
+    let before = groups.ownerReads
+    #expect(groups.select(2, barred: false, now: 1) == nil)
+    #expect(groups.ownerReads == before + 1)
+    #expect(groups.tabs.successor(of: 2, pid: TabGroups.pid) == nil)
+    #expect(groups.ownerReads == before + 2)
+    #expect(groups.tabs.hasGroups(pid: TabGroups.pid))
 }
 
 @Test @MainActor func aLoneRecordedMemberKeepsItsGroupWhileASuccessorIsSettling() {

@@ -410,8 +410,8 @@ enum DiscoveryReader {
                            settable: () -> Bool?, spaces: () -> [UInt64]) -> WindowAttributes {
         var result = WindowAttributes()
         if reading.contains(.spaces) {
-            let spaces = spaces()
-            if !spaces.isEmpty { result.spaces = spaces }
+            let windowSpaces = spaces()
+            if !windowSpaces.isEmpty { result.spaces = windowSpaces }
         }
         if reading.contains(.fullscreen) {
             // A window whose app has no such attribute is never full screen by its word.

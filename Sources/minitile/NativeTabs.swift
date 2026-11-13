@@ -74,9 +74,9 @@ struct ResizeTabReads {
         return !scheduled
     }
 
-    mutating func fired(_ id: WindowID, now: TimeInterval, suppressed: Bool) -> Action {
+    mutating func fired(_ id: WindowID, now: TimeInterval, frozen: Bool) -> Action {
         guard let deadline = deadlines[id] else { return .none }
-        if suppressed { deadlines.removeValue(forKey: id); return .none }
+        if frozen { deadlines.removeValue(forKey: id); return .none }
         guard now >= deadline else { return .wait(deadline - now) }
         deadlines.removeValue(forKey: id)
         return .read
@@ -114,7 +114,7 @@ struct NativeTabs {
     /// How often one window is named as a selection's successor before the periodic scan is left to read it.
     static let successorPrompts = 3
     private var groups: [Group] = []
-    /// The window a tab bar currently belongs to, or nil once the bar is gone.
+    /// The window a tab bar currently belongs to, or nil when its owner could not be read.
     var owner: (AXRef) -> WindowID? = { AX.id($0.element) }
 
     func hasGroups(pid: Int32) -> Bool { groups.contains { $0.pid == pid } }
@@ -131,15 +131,9 @@ struct NativeTabs {
 
     /// The bar identifies an existing group. A new tab can establish its first group from the previous focus only
     /// once that window leaves all Spaces. Known membership survives closing the bar with its penultimate tab.
-    mutating func select(_ id: WindowID, pid: Int32, group: AXRef?, previousFocus: WindowID?, now: TimeInterval,
-                         inactive: (WindowID) -> Bool) -> Selection? {
+    mutating func select(_ id: WindowID, pid: Int32, group: AXRef?, answered: Bool,
+                         previousFocus: WindowID?, now: TimeInterval, inactive: (WindowID) -> Bool) -> Selection? {
         guard group != nil || hasGroups(pid: pid) else { return nil }
-        if group == nil, let index = groups.firstIndex(where: {
-            $0.pid == pid && $0.selection.selected == id && $0.members == [id] && $0.selection.settling == nil
-        }), owner(groups[index].element) == nil {
-            groups.remove(at: index)
-            return nil
-        }
         if group == nil, !inactive(id) {
             // A window shown without the bar, while the bar stays on another shown window, was detached.
             for index in groups.indices where groups[index].pid == pid && groups[index].selection.selected != id {
@@ -148,14 +142,20 @@ struct NativeTabs {
                 }
             }
         }
+        var endGroup = false
         let index = groups.firstIndex { entry in
             guard entry.pid == pid else { return false }
             if let group { return CFEqual(entry.element.element, group.element) }
-            if owner(entry.element) == id { return true }
+            let current = owner(entry.element)
+            if current == id { return true }
+            if answered, current == nil, entry.selection.selected == id, entry.members == [id], entry.selection.settling == nil {
+                endGroup = true
+                return true
+            }
             // A bar that is gone left with a closed selection or with a split of its last two tabs. WindowServer
             // drops a closed selection a moment after the other window shows, so the selection settles that too.
             return entry.members.contains(id) && !inactive(id)
-                && (owner(entry.element) == nil || inactive(entry.selection.selected))
+                && (current == nil || inactive(entry.selection.selected))
         }
         guard let index else {
             if let group {
@@ -167,12 +167,13 @@ struct NativeTabs {
                 groups.append(Group(element: group, pid: pid, selection: TabSelection(previous ?? id),
                                     members: Set([id] + (previous.map { [$0] } ?? [])), established: previous == nil))
                 if previous != nil {
-                    return select(id, pid: pid, group: group, previousFocus: nil, now: now, inactive: inactive)
+                    return select(id, pid: pid, group: group, answered: answered, previousFocus: nil, now: now, inactive: inactive)
                 }
                 return Selection()
             }
             return nil
         }
+        if endGroup { groups.remove(at: index); return nil }
         let previous = groups[index].selection.selected
         // Without a bar, the selected window says nothing about a window waiting to replace it.
         if group == nil, previous == id { return nil }

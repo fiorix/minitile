@@ -386,7 +386,8 @@ final class Discovery {
         } : nil
         // One WindowServer snapshot answers every question of this selection, and none is taken unless one is asked.
         var snapshot: [WindowID: CGWindowRecord]??
-        guard let selection = nativeTabs.select(info.id, pid: info.pid, group: group, previousFocus: previous,
+        guard let selection = nativeTabs.select(info.id, pid: info.pid, group: group,
+                                               answered: ledger.answers(info.pid), previousFocus: previous,
                                                now: ProcessInfo.processInfo.systemUptime, inactive: { previous in
             if snapshot == nil { snapshot = .some(CGWindowRecord.snapshot()) }
             guard case .some(.some(let records)) = snapshot else { return false }
@@ -469,7 +470,7 @@ final class Discovery {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self else { return }
             switch self.resizeTabReads.fired(id, now: ProcessInfo.processInfo.systemUptime,
-                                             suppressed: self.frozen || self.suppressGeometry?(id) == true) {
+                                             frozen: self.frozen) {
             case .none: break
             case .wait(let delay): self.readResizedTabs(id, after: delay)
             case .read: self.updateTabs(id)
