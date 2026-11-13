@@ -268,10 +268,12 @@ extension AppDelegate {
         let timer = Timer(timeInterval: 0.03, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
+                let start = ProcessInfo.processInfo.systemUptime
                 let cursor = CGEvent(source: nil)?.location
                 self.finishDragIfReleased(cursor: cursor)
                 self.updateEdgePreview()
                 self.updateDropPicker(cursor: cursor)
+                self.dragTicks.record((ProcessInfo.processInfo.systemUptime - start) * 1000)
             }
         }
         dragTimer = timer

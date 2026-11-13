@@ -82,6 +82,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The display the latest command crossed into, if it did; a swipe that crosses moves the pointer there.
     var lastCrossed: DisplayID?
     var inputWaits = InputWaits()
+    /// Main-thread time spent in each 30 ms drag-timer tick since launch.
+    var dragTicks = TimingCounter()
     var viewEchoUntil: TimeInterval = 0
     /// Displays a command acted on, which the next reconcile puts onto their pages' native Spaces.
     var spaceSync: Set<DisplayID> = []
