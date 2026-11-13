@@ -292,6 +292,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @discardableResult func handle(_ input: Input, grab session: Int? = nil) -> Reply? {
         guard started, !quitting else { return nil }
         if case .windowGone(let id) = input { reconciler?.forget(id); updateDragTracking() }
+        if case .windowTabSelected(let previous, let info) = input {
+            if ProcessInfo.processInfo.environment["MINITILE_TRACE_FOCUS"] == "1" {
+                startupLog("Tab handoff \(previous)->\(info.id) pages=\(engine.savedState().displays.flatMap(\.workspaces).flatMap(\.pages).map(\.windows))")
+            }
+            reconciler?.forget(previous)
+            reconciler?.forget(info.id)
+            updateDragTracking()
+        }
         var argv: [String]?
         if case .command(let command) = input { argv = command }
         let before = argv.map { _ in engine.savedState() }

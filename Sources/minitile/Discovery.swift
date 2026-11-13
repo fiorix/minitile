@@ -54,6 +54,10 @@ final class Discovery {
     private(set) var applications: [Int32: Application] = [:]
     private var misses = PresenceMisses()
     private var orderedOutChecks = OrderedOutChecks()
+    private var nativeTabs = NativeTabs()
+    private var tabRechecks: Set<Int32> = []
+    private var tabAppearances: Set<WindowID> = []
+    private var lastFocused: [Int32: WindowID] = [:]
     private var rechecks = PresenceRechecks()
     private var recheckWork: DispatchWorkItem?
     /// A recheck pass is waiting for its snapshot; the next pass is scheduled once it arrives.
@@ -126,6 +130,7 @@ final class Discovery {
             return
         }
         applications[context.pid] = context
+        lastFocused[context.pid] = AX.focus(context.element).window
         CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .commonModes)
     }
 
@@ -136,6 +141,10 @@ final class Discovery {
         creations.removeAll()
         applications.values.forEach { $0.stop() }
         applications.removeAll()
+        nativeTabs = NativeTabs()
+        tabRechecks.removeAll()
+        tabAppearances.removeAll()
+        lastFocused.removeAll()
     }
 
     func pruneIgnored() {
@@ -145,6 +154,8 @@ final class Discovery {
             context.stop()
             applications.removeValue(forKey: pid)
             ledger.forget(pid)
+            nativeTabs.forget(pid: pid)
+            lastFocused.removeValue(forKey: pid)
         }
     }
 
@@ -269,14 +280,19 @@ final class Discovery {
     }
 
     private func checkPresence(_ cg: [WindowID: CGWindowRecord], offScreen: Set<WindowID>, pids: Set<Int32>, taken: Int) {
-        let known = windows.map { PresenceMisses.Known(id: $0.key, pid: $0.value.info.pid, added: $0.value.added) }
+        let changing = nativeTabs.changing
+        let known = windows.filter { !changing.contains($0.key) }
+            .map { PresenceMisses.Known(id: $0.key, pid: $0.value.info.pid, added: $0.value.added) }
         for id in misses.check(known, pids: pids, snapshot: cg, taken: taken) { remove(id) }
-        checkOrderedOut(cg, offScreen: offScreen, pids: pids, taken: taken)
+        checkOrderedOut(cg, offScreen: offScreen, pids: pids, taken: taken, changing: changing)
     }
 
-    private func checkOrderedOut(_ cg: [WindowID: CGWindowRecord], offScreen: Set<WindowID>, pids: Set<Int32>, taken: Int) {
-        let known = windows.values.map { OrderedOutChecks.Known(info: $0.info, added: $0.added) }
+    private func checkOrderedOut(_ cg: [WindowID: CGWindowRecord], offScreen: Set<WindowID>, pids: Set<Int32>, taken: Int,
+                                 changing: Set<WindowID>) {
+        let known = windows.values.filter { !changing.contains($0.info.id) }
+            .map { OrderedOutChecks.Known(info: $0.info, added: $0.added) }
         for (id, value) in orderedOutChecks.check(known, pids: pids, snapshot: cg, offScreen: offScreen, taken: taken) {
+            if traceFocus { startupLog("Ordered out id=\(id) value=\(value)") }
             guard var info = windows[id]?.info else { continue }
             info.orderedOut = value
             if !value { info.fromFrontmostApp = NSRunningApplication(processIdentifier: info.pid)?.isActive == true }
@@ -312,17 +328,18 @@ final class Discovery {
         if traceFocus {
             startupLog("Window appeared id=\(id) pid=\(info.pid) app_active=\(info.fromFrontmostApp) frontmost=\(NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0)")
         }
-        input?(.windowAppeared(info))
+        if !selectTab(info, group: read.tabGroup, isNew: true) { input?(.windowAppeared(info)) }
     }
 
     private func reread(_ read: WindowRead, app: NSRunningApplication, register: Bool) {
         // A window removed meanwhile, or replaced under the same ID, is ignored.
         guard let window = windows[read.id], CFEqual(window.element, read.element.element) else { return }
         if register { registerWindow(read.id) }
-        applyAttributes(read.attributes, to: read.id, app: app)
+        applyAttributes(read.attributes, to: read.id, app: app, tabGroup: read.tabGroup, tabsRead: true)
     }
 
-    private func applyAttributes(_ attributes: WindowAttributes, to id: WindowID, app: NSRunningApplication) {
+    private func applyAttributes(_ attributes: WindowAttributes, to id: WindowID, app: NSRunningApplication,
+                                 tabGroup: AXRef? = nil, tabsRead: Bool = false) {
         guard let old = windows[id] else { return }
         if attributes.popup == true { remove(id); return }
         if smokeScope.directory != nil, let document = attributes.document, !smokeScope.allows(document: document) { remove(id); return }
@@ -340,7 +357,56 @@ final class Discovery {
                 }
             }
         }
+        if tabsRead, selectTab(info, group: tabGroup) { return }
         if info != old.info { input?(.windowUpdated(info)) }
+    }
+
+    private func selectTab(_ info: WindowInfo, group: AXRef?, isNew: Bool = false) -> Bool {
+        let previous = isNew ? lastFocused[info.pid].flatMap { id -> WindowID? in
+            guard let old = windows[id]?.info, old.pid == info.pid, !old.orderedOut, !old.minimized,
+                  !old.appHidden, !old.fullscreen else { return nil }
+            return id
+        } : nil
+        guard let selection = nativeTabs.select(info.id, pid: info.pid, group: group, previousFocus: previous,
+                                               now: ProcessInfo.processInfo.systemUptime, inactive: { previous in
+            guard let snapshot = CGWindowRecord.snapshot() else { return false }
+            guard let record = snapshot[previous] else { return true }
+            guard record.pid == info.pid, !record.onScreen, let spaces = DisplayCatalog.readWindowSpaces(previous) else { return false }
+            return spaces.isEmpty
+        }) else { return false }
+        if selection.waiting {
+            if isNew { tabAppearances.insert(info.id) }
+            if tabRechecks.insert(info.pid).inserted {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                    guard let self, self.tabRechecks.remove(info.pid) != nil else { return }
+                    self.scan(pids: [info.pid])
+                }
+            }
+            return true
+        }
+        let appeared = tabAppearances.remove(info.id) != nil
+        if traceFocus {
+            let spaces = selection.previous.map { DisplayCatalog.windowSpaces($0) } ?? []
+            let shown = selection.previous.flatMap { CGWindowRecord.snapshot()?[$0]?.onScreen }
+            startupLog("Tab selection id=\(info.id) previous=\(selection.previous.map(String.init) ?? "none") spaces=\(spaces) shown=\(String(describing: shown)) group=\(group.map { CFHash($0.element) } ?? 0)")
+        }
+        recheckSoon(pids: [info.pid])
+        guard let previous = selection.previous, let old = windows[previous], old.info.pid == info.pid else {
+            if appeared { input?(.windowAppeared(info)) }
+            return appeared
+        }
+        var info = info
+        info.orderedOut = false
+        info.fromFrontmostApp = NSRunningApplication(processIdentifier: info.pid)?.isActive == true
+            && applications[info.pid].map { AX.focus($0.element).window == info.id } == true
+        windows[previous]?.info.orderedOut = true
+        windows[info.id]?.info = info
+        ledger.touch(previous)
+        ledger.touch(info.id)
+        orderedOutChecks.forget(previous)
+        orderedOutChecks.forget(info.id)
+        input?(.windowTabSelected(previous: previous, info))
+        return true
     }
 
     private func registerWindow(_ id: WindowID) {
@@ -355,10 +421,11 @@ final class Discovery {
     }
 
     /// Rereads a window on the main thread, as its notifications ask. Background reads begun earlier become stale.
-    func update(_ id: WindowID) {
+    func update(_ id: WindowID, tabsRead: Bool = false) {
         guard !frozen, let old = windows[id], let app = NSRunningApplication(processIdentifier: old.info.pid) else { return }
         ledger.touch(id)
-        applyAttributes(DiscoveryReader.attributes(old.element, id: id, documents: smokeScope.directory != nil), to: id, app: app)
+        applyAttributes(DiscoveryReader.attributes(old.element, id: id, documents: smokeScope.directory != nil), to: id, app: app,
+                        tabGroup: tabsRead ? NativeTabs.group(old.element) : nil, tabsRead: tabsRead)
     }
 
     /// A window enters and leaves full screen with a native Space change, which no window notification is sure to
@@ -396,6 +463,8 @@ final class Discovery {
         misses.forget(id)
         orderedOutChecks.forget(id)
         transit.forget(id)
+        nativeTabs.forget(id)
+        tabAppearances.remove(id)
         input?(.windowGone(id))
     }
 
@@ -403,6 +472,8 @@ final class Discovery {
         applications.removeValue(forKey: pid)?.stop()
         creations.removeValue(forKey: pid)
         ledger.forget(pid)
+        nativeTabs.forget(pid: pid)
+        lastFocused.removeValue(forKey: pid)
         recheckSoon(pids: [pid])
     }
 
@@ -493,7 +564,7 @@ final class Discovery {
         if name == kAXUIElementDestroyedNotification { recheckSoon(pids: [pid]); return }
         if let id, windows[id] != nil {
             if name == kAXMovedNotification || name == kAXResizedNotification { moved?(id) }
-            update(id)
+            update(id, tabsRead: name == kAXResizedNotification)
         } else { recheckSoon(pids: [pid]) }
     }
 
@@ -534,6 +605,22 @@ final class Discovery {
     }
 
     func refreshFocus(pid: Int32? = nil) {
+        guard !frozen else { return }
+        if let pid, let context = applications[pid], let app = NSRunningApplication(processIdentifier: pid),
+           let element = AX.element(context.element, kAXFocusedWindowAttribute), let id = AX.id(element) {
+            defer { if windows[id] != nil { lastFocused[pid] = id } }
+            let group = NativeTabs.group(element)
+            if windows[id] != nil, group != nil || nativeTabs.hasGroups(pid: pid) {
+                ledger.touch(id)
+                applyAttributes(DiscoveryReader.attributes(element, id: id, documents: smokeScope.directory != nil),
+                                to: id, app: app, tabGroup: group, tabsRead: true)
+            } else if let group, let record = CGWindowRecord.snapshot()?[id] {
+                let read = WindowRead(id: id, element: AXRef(element), listed: true,
+                                      attributes: DiscoveryReader.attributes(element, id: id, documents: smokeScope.directory != nil),
+                                      tabGroup: group)
+                discover(read, app: app, record: record, register: true)
+            }
+        }
         if case .known(let id) = acceptedFocus(pid: pid) { focused?(id) }
     }
 

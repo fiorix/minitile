@@ -94,6 +94,8 @@ public enum Input: Sendable {
     case displaysChanged([DisplayInfo])
     case windowAppeared(WindowInfo)
     case windowUpdated(WindowInfo)
+    /// The same native tab group selected another physical window; retain the group's slot and overrides.
+    case windowTabSelected(previous: WindowID, WindowInfo)
     case windowGone(WindowID)
     case focusChanged(WindowID?)
     case appActivated(pid: Int32)

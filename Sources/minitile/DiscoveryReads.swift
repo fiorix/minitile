@@ -209,19 +209,24 @@ struct ScanPasses {
     }
 }
 
-/// Finds the windows a snapshot shows off screen on a desktop their display is showing, as an app's `orderOut:` leaves
-/// them. It runs right after the snapshot on the same thread, so a page change rarely falls between the two.
+/// Finds windows off screen on a shown desktop, or on no Space as inactive native tabs are. It runs right after the
+/// snapshot on the same thread, so a page change rarely falls between the two.
 struct OffScreenProbe: Sendable {
     var windows: [WindowID]
     /// Each managed display's identifier and visible desktop.
     var desktops: [(display: String, space: UInt64)]
+
+    static func orderedOut(onScreen: Bool, spaces: [UInt64]?, shown: Set<UInt64>) -> Bool {
+        guard !onScreen, let spaces else { return false }
+        return spaces.isEmpty || spaces.contains(where: shown.contains)
+    }
 
     func run(_ snapshot: [WindowID: CGWindowRecord]) -> Set<WindowID> {
         let shown = Set(desktops.compactMap { csl_current_space($0.display as CFString) == $0.space ? $0.space : nil })
         guard !shown.isEmpty else { return [] }
         return Set(windows.filter { id in
             guard let record = snapshot[id], !record.onScreen else { return false }
-            return DisplayCatalog.windowSpaces(id).contains(where: shown.contains)
+            return Self.orderedOut(onScreen: record.onScreen, spaces: DisplayCatalog.readWindowSpaces(id), shown: shown)
         })
     }
 }
@@ -254,6 +259,7 @@ struct WindowRead: Sendable {
     /// Not yet known when the read began: listed by the app or a creation candidate.
     var listed: Bool
     var attributes: WindowAttributes
+    var tabGroup: AXRef? = nil
 }
 
 struct CandidateRead: Sendable {
@@ -324,14 +330,16 @@ enum DiscoveryReader {
         var result = AppRead(pid: request.pid, answered: error != .cannotComplete)
         guard result.answered == true else { return result }
         var listed = Set<WindowID>()
+        var tabGroups: [WindowID: AXRef] = [:]
         for element in value as? [AXUIElement] ?? [] {
             guard let id = AX.id(element) else { continue }
             listed.insert(id)
+            tabGroups[id] = NativeTabs.group(element)
             guard let record = request.records[id], record.real,
                   !request.known.contains(where: { $0.id == id && CFEqual($0.element.element, element) }),
                   AX.value(element, kAXRoleAttribute) as? String == kAXWindowRole else { continue }
             result.windows.append(WindowRead(id: id, element: AXRef(element), listed: true,
-                                             attributes: attributes(element, id: id, documents: request.documents)))
+                                             attributes: attributes(element, id: id, documents: request.documents), tabGroup: tabGroups[id]))
         }
         result.searched = unlisted(request, listed: listed)
         for (id, element) in ElementSearch.elements(Set(result.searched), pid: request.pid) {
@@ -340,7 +348,8 @@ enum DiscoveryReader {
         }
         for known in request.known {
             result.windows.append(WindowRead(id: known.id, element: known.element, listed: false,
-                                             attributes: attributes(known.element.element, id: known.id, documents: request.documents)))
+                                             attributes: attributes(known.element.element, id: known.id, documents: request.documents),
+                                             tabGroup: tabGroups[known.id]))
         }
         return result
     }
@@ -366,7 +375,8 @@ enum DiscoveryReader {
             if result.answered == nil { result.answered = error != .cannotComplete }
             guard result.answered == true, role as? String == kAXWindowRole else { continue }
             result.windows.append(WindowRead(id: id, element: candidate, listed: true,
-                                             attributes: attributes(candidate.element, id: id, documents: request.documents)))
+                                             attributes: attributes(candidate.element, id: id, documents: request.documents),
+                                             tabGroup: NativeTabs.group(candidate.element)))
         }
         return result
     }

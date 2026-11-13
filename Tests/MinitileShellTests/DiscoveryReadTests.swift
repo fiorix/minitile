@@ -221,12 +221,22 @@ private func offScreen(_ id: WindowID, pid: Int32 = 10) -> CGWindowRecord {
     minimized.info.minimized = true
     var appHidden = known(2)
     appHidden.info.appHidden = true
-    let windows = [minimized, appHidden, known(3, added: 9), known(4, pid: 20), known(5)]
-    let records = snapshot(offScreen(1), offScreen(2), offScreen(3), offScreen(4), offScreen(5, pid: 11))
+    var fullscreen = known(6)
+    fullscreen.info.fullscreen = true
+    let windows = [minimized, appHidden, known(3, added: 9), known(4, pid: 20), known(5), fullscreen]
+    let records = snapshot(offScreen(1), offScreen(2), offScreen(3), offScreen(4), offScreen(5, pid: 11), offScreen(6))
     for _ in 0..<3 {
-        #expect(checks.check(windows, pids: [10], snapshot: records, offScreen: [1, 2, 3, 4, 5], taken: 5).isEmpty)
+        #expect(checks.check(windows, pids: [10], snapshot: records, offScreen: [1, 2, 3, 4, 5, 6], taken: 5).isEmpty)
     }
     #expect(checks.counts.isEmpty)
+}
+
+@Test func orderedOutIncludesInactiveNativeTabsButExcludesOtherDesktops() {
+    #expect(OffScreenProbe.orderedOut(onScreen: false, spaces: [], shown: [4]))
+    #expect(OffScreenProbe.orderedOut(onScreen: false, spaces: [4], shown: [4]))
+    #expect(!OffScreenProbe.orderedOut(onScreen: false, spaces: [6], shown: [4]))
+    #expect(!OffScreenProbe.orderedOut(onScreen: true, spaces: [], shown: [4]))
+    #expect(!OffScreenProbe.orderedOut(onScreen: false, spaces: nil, shown: [4]))
 }
 
 @Test func eitherSignMakesAWindowFullScreenAndUnreadOnesStay() {

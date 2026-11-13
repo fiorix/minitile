@@ -8,6 +8,38 @@ extension Engine {
         !info.tileable || (override ?? (info.bundleID.map(config.floatApps.contains) == true))
     }
 
+    mutating func selectWindowTab(previous: WindowID, info: WindowInfo, output: inout Output) {
+        guard previous != info.id, let old = state.windows[previous], old.info.pid == info.pid,
+              allows(info), !info.orderedOut, location(previous) != nil || old.hidden else {
+            if state.windows[info.id] == nil { appeared(info, output: &output) }
+            else { updateWindow(info, output: &output) }
+            return
+        }
+        let added = state.windows[info.id] == nil
+        removeFromPage(info.id)
+        let at = location(previous)
+        var replacement = old
+        replacement.info = info
+        replacement.floating = floating(info, override: old.floatingOverride)
+        state.windows[info.id] = replacement
+        state.windows[previous]?.info.orderedOut = true
+        state.windows[previous]?.hidden = false
+        state.windows[previous]?.hiddenHome = nil
+        if let at {
+            var page = page(at)
+            page.windows[at.slot] = info.id
+            if page.lastFocus == previous { page.lastFocus = info.id }
+            if let index = page.nativeLayout?.windows.firstIndex(of: previous) { page.nativeLayout?.windows[index] = info.id }
+            state.displays[at.display].workspaces[at.workspace].pages[at.page] = page
+        }
+        if state.focus == previous || info.fromFrontmostApp {
+            if let at, info.fromFrontmostApp { show(at, focusWindow: false, output: &output) }
+            focus(info.id, action: false, output: &output)
+        }
+        output.events.append(Event(type: added ? "window_added" : "window_moved", data: .number(Double(info.id))))
+        output.events.append(Event(type: "window_moved", data: .number(Double(previous))))
+    }
+
     mutating func updateWindow(_ info: WindowInfo, output: inout Output) {
         guard let old = state.windows[info.id] else { return }
         if old.info.pid != info.pid {

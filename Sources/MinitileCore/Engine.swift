@@ -17,6 +17,7 @@ public struct Engine: Sendable {
         case .windowAppeared(let info): appeared(info, output: &output)
         case .windowGone(let id): gone(id, output: &output)
         case .windowUpdated(let info): updateWindow(info, output: &output)
+        case .windowTabSelected(let previous, let info): selectWindowTab(previous: previous, info: info, output: &output)
         case .focusChanged(let id):
             if let id, let at = location(id) { show(at, focusWindow: false, output: &output); focus(id, action: false, output: &output) }
             else { focus(nil, action: false, output: &output) }
