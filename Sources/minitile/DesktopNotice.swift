@@ -104,8 +104,7 @@ final class DesktopNotice {
         panels.removeAll()
     }
 
-    /// The shell updates the notice on every model change and every second, so the text is measured again only when
-    /// the display's name changes.
+    /// Model and screen changes can leave the notice's text unchanged; measure it only when the display's name changes.
     private func show(on screen: NSScreen, id: DisplayID) {
         let name = screen.localizedName
         let panel = panels[id] ?? makePanel(DesktopNoticeLayout(name: name))

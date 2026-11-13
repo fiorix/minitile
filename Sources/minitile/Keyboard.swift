@@ -296,6 +296,19 @@ struct KeyRouter {
     }
 }
 
+/// The layout translation is reused independently of the configurable window-cycling keycode.
+struct KeyNameCache {
+    private var names: [UInt16: String]?
+
+    mutating func value(hotkey: UInt16?, read: () -> [UInt16: String]) -> [UInt16: String] {
+        let names = self.names ?? read()
+        self.names = names
+        return CycleKey.named(names, hotkey: hotkey)
+    }
+
+    mutating func invalidate() { names = nil }
+}
+
 final class KeyboardTap: @unchecked Sendable {
     // All shared state is under lock. The callback only matches a value snapshot;
     // AX, commands and WindowServer operations run on the main thread.
@@ -307,6 +320,7 @@ final class KeyboardTap: @unchecked Sendable {
     private var stopping = false
     private var failed = false
     private var dragEscape: (@Sendable () -> Void)?
+    @MainActor private var keyNameCache = KeyNameCache()
     let traceEnabled: Bool
     /// Every dispatched decision carries the uptime its event reached the tap, so the main thread can tell how long it
     /// waited.
@@ -331,9 +345,11 @@ final class KeyboardTap: @unchecked Sendable {
         }
         var key: UInt16 = 0, modifiers: UInt32 = 0, enabled = false
         let cycle = csl_symbolic_hotkey(CycleKey.hotkey, &key, &modifiers, &enabled) ? key : nil
-        let names = CycleKey.named(Self.keyNames(), hotkey: cycle)
+        let names = keyNameCache.value(hotkey: cycle, read: Self.keyNames)
         lock.withLock { router.bindings = config.bindings; router.names = names; router.blocked = blocked; router.dragged = dragged }
     }
+
+    @MainActor func invalidateKeyNames() { keyNameCache.invalidate() }
 
     func drag(_ id: WindowID?) { lock.withLock { router.dragged = id } }
 

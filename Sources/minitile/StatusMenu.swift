@@ -1,6 +1,28 @@
 import AppKit
 import MinitileIPC
 
+/// Requests made before the queued refresh runs share its read of the latest state.
+@MainActor
+final class MenuRefresh {
+    typealias Work = @MainActor @Sendable () -> Void
+    private let schedule: (@escaping Work) -> Void
+    private var pending = false
+
+    init(schedule: @escaping (@escaping Work) -> Void = { DispatchQueue.main.async(execute: $0) }) {
+        self.schedule = schedule
+    }
+
+    func request(_ refresh: @escaping Work) {
+        guard !pending else { return }
+        pending = true
+        schedule { [weak self] in
+            guard let self else { return }
+            self.pending = false
+            refresh()
+        }
+    }
+}
+
 @MainActor
 final class StatusMenu: NSObject {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)

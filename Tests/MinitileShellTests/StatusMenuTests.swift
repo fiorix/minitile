@@ -2,6 +2,58 @@ import AppKit
 import Testing
 @testable import minitile
 
+@MainActor private final class MenuRefreshState {
+    var value = 0
+    var rendered: [Int] = []
+}
+
+@Test @MainActor func menuRefreshCoalescesABurstAndReadsTheLatestState() {
+    var queued: [MenuRefresh.Work] = []
+    let refresh = MenuRefresh { queued.append($0) }
+    let state = MenuRefreshState()
+    for next in 1...100 {
+        state.value = next
+        refresh.request { state.rendered.append(state.value) }
+    }
+    #expect(queued.count == 1 && state.rendered.isEmpty)
+    queued.removeFirst()()
+    #expect(state.rendered == [100])
+    state.value = 101
+    refresh.request { state.rendered.append(state.value) }
+    #expect(queued.count == 1)
+    queued.removeFirst()()
+    #expect(state.rendered == [100, 101] && queued.isEmpty)
+}
+
+@Test @MainActor func menuRefreshDuringRenderingQueuesTheNextTurn() {
+    var queued: [MenuRefresh.Work] = []
+    let refresh = MenuRefresh { queued.append($0) }
+    var renders = 0
+    refresh.request {
+        renders += 1
+        refresh.request { renders += 1 }
+        refresh.request { renders += 1 }
+    }
+    queued.removeFirst()()
+    #expect(renders == 1 && queued.count == 1)
+    queued.removeFirst()()
+    #expect(renders == 2 && queued.isEmpty)
+}
+
+@Test func statusWarningsTrackAppearanceRemovalAndDisplayNames() {
+    let empty = StatusWarnings([], advice: [])
+    let secure = "Secure input is blocking keyboard shortcuts"
+    let keyboard = "Keyboard tap unavailable; check Accessibility and restart"
+    #expect(StatusWarnings([secure], advice: []) != empty)
+    #expect(StatusWarnings([secure, keyboard], advice: []) == StatusWarnings([keyboard, secure], advice: []))
+    #expect(StatusWarnings([secure, keyboard], advice: []) != StatusWarnings([keyboard], advice: []))
+    let first = StatusWarnings([keyboard], advice: [.secondDesktop(name: "Studio")])
+    let renamed = StatusWarnings([keyboard], advice: [.secondDesktop(name: "Office")])
+    #expect(first != renamed)
+    #expect(renamed.titles == ["Office needs a second desktop", keyboard])
+    #expect(StatusWarnings([], advice: []).isEmpty)
+}
+
 @Test @MainActor func statusMenuKeepsWarningsAndOnlyHelpAndQuitCommands() throws {
     let menu = StatusMenu.menu(warnings: StatusWarnings(["Config: invalid"], advice: []), state: "Starting")
     #expect(menu.items.map(\.title) == ["Starting", "Config: invalid", "", "Help", "Quit Minitile"])

@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import CSkyLight
 import MinitileCore
 
@@ -49,7 +50,15 @@ extension AppDelegate {
             self.keyboard?.update(config: self.engine.config, displays: self.displays, dragged: self.reconciler?.dragging)
             self.updateSwipes()
         }
-        observe(.default, NSApplication.didChangeScreenParametersNotification) { [weak self] _ in self?.scheduleDisplays() }
+        observe(.default, NSApplication.didChangeScreenParametersNotification) { [weak self] _ in
+            self?.scheduleDisplays()
+            self?.updateMenu()
+        }
+        observe(DistributedNotificationCenter.default(), Notification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String)) { [weak self] _ in
+            guard let self, !self.quitting else { return }
+            self.keyboard?.invalidateKeyNames()
+            self.keyboard?.update(config: self.engine.config, displays: self.displays, dragged: self.reconciler?.dragging)
+        }
         observe(workspace, NSWorkspace.accessibilityDisplayOptionsDidChangeNotification) { [weak self] _ in
             self?.updateTransitions(); self?.updateMenu()
         }
@@ -100,9 +109,9 @@ extension AppDelegate {
                         self.updateSwipes()
                     }
                 }
-                self.updateMenu()
             }
         }
+        healthTimer?.tolerance = 0.1
         for number in [SIGTERM, SIGINT] {
             signal(number, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: number, queue: .main)
@@ -127,6 +136,8 @@ extension AppDelegate {
             let deliver: @MainActor @Sendable () -> Void = { [weak self] in
                 self?.activate(pid, received: received, source: "workspace")
                 self?.updateFrontmost(pid)
+                // An app that gains a Dock icon without launching activates, which brings the switcher's apps row up to date.
+                self?.updateMenu()
             }
             if Thread.isMainThread { MainActor.assumeIsolated { deliver() } }
             else { DispatchQueue.main.async(execute: deliver) }
@@ -142,6 +153,7 @@ extension AppDelegate {
     }
 
     func suspend(_ reason: String, enabled: Bool) {
+        guard suspendedReasons.contains(reason) != enabled else { return }
         // A reconcile held for a transition goes out before freezing, which would skip it.
         if enabled { transitions.flush() }
         let wasSuspended = !suspendedReasons.isEmpty

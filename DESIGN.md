@@ -48,6 +48,8 @@ When a display's shown page or workspace changes, that display shows a read-only
 
 The first managed view after startup or display attachment also shows the indicator. Changes to focus, window counts or page indices alone do not restart it: the comparison uses workspace and page identities. A command that crosses into another display (see "Crossing displays") shows it on that display for 1.5 s even when its position stays the same. Unmanaged-display warnings remain in the menu.
 
+Position changes are recorded before UI refreshes coalesce, so a burst that returns to the original page still shows its indicator. Each display's hide work is scheduled separately for the last change's deadline; unrelated refreshes neither extend the deadline nor provide the hide timer.
+
 - The header names the display and the current workspace and page.
 - Workspaces are rows labeled W1, W2, and so on; pages are columns labeled P1, P2, and so on.
 - Each cell is a miniature of its page, about 128x80 pt in the proportions of the display's usable area, so portrait displays get tall cells. Its tiles are the core's layout of the page, shown or not (window count, variant and ratios, with gaps and padding scaled down), each holding its app's icon at 20-28 pt, smaller only when the tile is. Minimized and app-hidden windows have no tile, since their page re-tiles without them; their reserved slots show as dimmed app icons along the cell's bottom-left corner. Floating windows show as a count badge on the cell's top-right corner. An empty page is an empty outline.
@@ -823,6 +825,8 @@ Responsiveness:
 
 - Set `AXUIElementSetMessagingTimeout` to about 1 s system-wide; the default of about 6 s freezes the manager on a hung app.
 - The keyboard event tap runs on its own thread. Re-enable it on `tapDisabledByTimeout` and `tapDisabledByUserInput`, reset modifier state, and check periodically that it is still alive. Secure input silently stops it; show that in the menu bar (`IsSecureEventInputEnabled`).
+- The one-second health timer has 0.1 s tolerance. It checks tap health, missed modifier releases, secure input and the session dictionary's lock state. A lock-state change suspends or resumes lifecycle work; an unchanged state does no suspension work. Every third tick while active probes native desktop topology and, when no display refresh is needed, starts the scan and refreshes keyboard blockers and swipe policy.
+- Menu, tooltip and overlay refresh requests share one pending main-queue block, which reads the latest state. Model, config, warning, app and screen changes request a refresh; the health timer has no unconditional UI refresh. App launch, termination and activation request a refresh, which keeps the switcher's apps row current; an app that changes its Dock presence without activating, launching or quitting is picked up at the next refresh. Screen-parameter notifications refresh display names and setup advice as well as scheduling display settling. Indicator, grab and second-desktop notice expiry have their own scheduled work.
 - Swallow the key-up of every swallowed key-down.
 - Opt out of App Nap: hold a user-initiated activity (`ProcessInfo.beginActivity`, allowing idle system sleep) for the app's lifetime, and set `NSAppSleepDisabled` in Info.plist. A windowless accessory app otherwise looks idle and gets napped, and a napping app runs its main thread at low priority and delays its timers, so the first keys and gestures after a break are handled late.
 - After sleep, a session switch or a lock ends, reload screen capture content and take a throwaway capture, so the first slide afterwards is not slowed by a cold capture.
@@ -861,7 +865,7 @@ Focus and closing:
 
   If hung apps still stall the main thread through command AX calls in practice, those move to per-app threads, as AeroSpace does.
 
-The shell uses the Swift 6 language mode. AX observer callbacks run on the main run loop; the keyboard tap owns a separate run loop and locks its small command-matching state, and the swipe tap does the same for its swipe decision and policy snapshot. Letter and digit bindings use the current keyboard layout, with function and navigation keys matched by native keycode. Stash Desktop N blockers use user-desktop order from the native display-space enumeration; their numbering with multiple displays is unverified. State writes are atomic and serialized off the main thread, and quit flushes pending writes.
+The shell uses the Swift 6 language mode. AX observer callbacks run on the main run loop; the keyboard tap owns a separate run loop and locks its small command-matching state, and the swipe tap does the same for its swipe decision and policy snapshot. Letter and digit bindings use the current keyboard layout, with function and navigation keys matched by native keycode. The translated key-name table is cached and rebuilt on `kTISNotifySelectedKeyboardInputSourceChanged` from the distributed notification center; the window-cycling key's symbolic hotkey is applied separately on each keyboard policy refresh. Stash Desktop N blockers use user-desktop order from the native display-space enumeration; their numbering with multiple displays is unverified. State writes are atomic and serialized off the main thread, and quit flushes pending writes.
 
 ## Development and testing
 

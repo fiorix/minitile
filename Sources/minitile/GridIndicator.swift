@@ -200,27 +200,40 @@ final class GridIndicator {
     private var hideWork: [DisplayID: DispatchWorkItem] = [:]
     private var icons = AppIconCache<NSImage>()
     private var requested: Set<DisplayID> = []
+    private var changedPositions: Set<DisplayID> = []
     var displayCount: Int { timing.count }
     var visibleCount: Int { panels.values.filter(\.isVisible).count }
 
     /// Shows the indicator on a display at the next update although its position did not change.
     func show(on id: DisplayID) { requested.insert(id) }
 
-    func update(state: SavedState, config: Config) {
-        icons.prune(keeping: Set(state.windows.values.map(\.info.pid)))
-        var present = Set<DisplayID>()
+    /// Record every position before redraws coalesce, including a burst that returns to its starting page.
+    func recordPositions(state: SavedState) {
         let now = ProcessInfo.processInfo.systemUptime
-        let requested = requested
-        self.requested = []
-        let names = DisplayCatalog.names()
-        for screen in NSScreen.screens {
-            guard let id = DisplayCatalog.id(for: screen), let display = state.displays.first(where: { $0.info.id == id }) else { continue }
-            present.insert(id)
+        for display in state.displays {
+            let id = display.info.id
             var clock = timing[id] ?? GridIndicatorTiming()
             var changed = clock.update(GridPosition(display: display), now: now)
             if !changed, requested.contains(id) { changed = clock.restart(now: now) }
             timing[id] = clock
-            if changed {
+            if changed { changedPositions.insert(id) }
+        }
+        requested = []
+    }
+
+    func update(state: SavedState, config: Config) {
+        recordPositions(state: state)
+        icons.prune(keeping: Set(state.windows.values.map(\.info.pid)))
+        var present = Set<DisplayID>()
+        let now = ProcessInfo.processInfo.systemUptime
+        let changedPositions = changedPositions
+        self.changedPositions = []
+        let names = DisplayCatalog.names()
+        for screen in NSScreen.screens {
+            guard let id = DisplayCatalog.id(for: screen), let display = state.displays.first(where: { $0.info.id == id }) else { continue }
+            present.insert(id)
+            let clock = timing[id] ?? GridIndicatorTiming()
+            if changedPositions.contains(id) {
                 hideWork.removeValue(forKey: id)?.cancel()
                 if clock.visible(now: now) {
                     let until = clock.visibleUntil
@@ -232,7 +245,7 @@ final class GridIndicator {
                         }
                     }
                     hideWork[id] = work
-                    DispatchQueue.main.asyncAfter(deadline: .now() + GridIndicatorTiming.duration, execute: work)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + (until - now), execute: work)
                 }
             }
             guard clock.visible(now: now) else { panels[id]?.orderOut(nil); continue }
@@ -279,6 +292,8 @@ final class GridIndicator {
         hideWork.values.forEach { $0.cancel() }
         hideWork.removeAll()
         timing.removeAll()
+        requested.removeAll()
+        changedPositions.removeAll()
         panels.values.forEach { $0.close() }
         panels.removeAll()
     }

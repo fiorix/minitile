@@ -28,6 +28,7 @@ enum MinitileMain {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let paths = ShellPaths()
     let status = StatusMenu()
+    let menuRefresh = MenuRefresh()
     let gridIndicator = GridIndicator()
     let switcherPanel = SwitcherPanel()
     lazy var windowSwitcher = WindowSwitcher(presenter: switcherPanel)
@@ -46,7 +47,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var starting = false
     var startupStashCount = 0
     var startupImmediateHandles = 0
-    var warnings: [String: String] = [:]
+    var warnings: [String: String] = [:] {
+        didSet { if warnings != oldValue { updateMenu() } }
+    }
     let displays = DisplayCatalog()
     var discovery: Discovery?
     var reconciler: Reconciler?
@@ -254,6 +257,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func updateMenu() {
+        guard !quitting else { return }
+        gridIndicator.recordPositions(state: engine.savedState())
+        menuRefresh.request { [weak self] in
+            guard let self, !self.quitting else { return }
+            self.refreshMenu()
+        }
+    }
+
+    private func refreshMenu() {
         updateModalAvailability()
         updateEdgePolicy()
         let snapshot = engine.savedState()

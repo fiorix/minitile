@@ -3,6 +3,19 @@ import MinitileCore
 import Testing
 @testable import minitile
 
+@Test func indicatorRoundTripBeforeRedrawKeepsTheLastChangesDeadline() {
+    var clock = GridIndicatorTiming()
+    let first = GridPosition(workspace: 1, page: 2)
+    _ = clock.update(first, now: 10)
+    _ = clock.update(GridPosition(workspace: 1, page: 3), now: 20)
+    _ = clock.update(first, now: 20.01)
+    // A delayed redraw at the original position does not replace the last change's deadline.
+    let changed = clock.update(first, now: 20.1)
+    #expect(!changed && clock.visibleUntil == 21.51)
+    #expect(clock.visible(now: 21.5))
+    #expect(!clock.visible(now: 21.51))
+}
+
 @Test func indicatorExpiresAndOnlyPositionChangesRestartIt() {
     var clock = GridIndicatorTiming()
     let first = GridPosition(workspace: 1, page: 2)
