@@ -138,6 +138,17 @@ private func snapshot(_ records: CGWindowRecord...) -> [WindowID: CGWindowRecord
     #expect(misses.counts[1] == nil)
 }
 
+@Test func destroyedNotificationConfirmsRemovalOnFirstMissingSnapshot() {
+    var misses = PresenceMisses()
+    let known = [PresenceMisses.Known(id: 1, pid: 10, added: 0), PresenceMisses.Known(id: 2, pid: 10, added: 0)]
+    misses.destroyed(1)
+    let gone = misses.check(known, pids: [10], snapshot: [:], taken: 0)
+    #expect(gone == [1])
+    #expect(misses.counts == [1: 1, 2: 1])
+    misses.forget(1)
+    #expect(misses.destroyedIDs.isEmpty && misses.counts == [2: 1])
+}
+
 @Test func failedAttributeReadsKeepPriorValues() {
     var info = WindowInfo(id: 1, pid: 10, title: "Old", frame: Rect(x: 0, y: 0, width: 10, height: 10), tileable: true, minimized: false)
     info.apply(WindowAttributes(), appHidden: true, geometry: true, fullscreen: false)

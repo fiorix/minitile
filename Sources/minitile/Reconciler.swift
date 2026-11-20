@@ -73,10 +73,17 @@ enum ActivationFocus {
 /// macOS picks the focus after a window closes, and minitile follows it, but macOS can also leave no window focused.
 /// When the closed window had focus, just lost focus to an activation that still has not focused a window (as when its
 /// app quit), or nothing had focus while its app is frontmost, the shell reads the frontmost app's focus a moment
-/// later; a focus macOS reported meanwhile wins.
+/// later; a focus macOS reported meanwhile wins. An explicit user navigation or focus command always wins over both
+/// this fallback and late post-close activations from macOS.
 struct CloseFocus {
     static let clearedInterval: TimeInterval = 1.2
+    static let handoffInterval: TimeInterval = 0.4
     private(set) var cleared: (id: WindowID, until: TimeInterval)?
+    private(set) var target: (window: WindowID, pid: Int32, until: TimeInterval)?
+    /// Set when a command leaves the view on an empty page (`focus == nil`), so a later close does not pull the user
+    /// off the empty page they chose. Cleared once a window gets focus.
+    private(set) var holdsUnfocusedView = false
+    private(set) var closeEchoUntil: TimeInterval = 0
 
     enum Step: Equatable {
         case none
@@ -86,25 +93,68 @@ struct CloseFocus {
         case fallback
     }
 
+    enum Activation: Equatable {
+        case accept
+        case ignore
+        case skipPageShow
+        case refocus(WindowID)
+    }
+
+    mutating func noteClose(now: TimeInterval) {
+        closeEchoUntil = max(closeEchoUntil, now + ViewChangeEcho.interval)
+    }
+
     mutating func activationCleared(_ id: WindowID?, now: TimeInterval) {
         cleared = id.map { ($0, now + Self.clearedInterval) }
     }
 
+    mutating func command(focus: WindowID?, owner: Int32?, changedView: Bool, now: TimeInterval) {
+        cleared = nil
+        if changedView { holdsUnfocusedView = focus == nil }
+        if let focus, let owner { target = (focus, owner, now + Self.handoffInterval) }
+        else if changedView { target = nil }
+    }
+
+    mutating func extendHandoff(focus: WindowID?, now: TimeInterval) {
+        if let current = target, current.window == focus {
+            target = (current.window, current.pid, max(current.until, now + Self.handoffInterval))
+        }
+    }
+
     mutating func focused(_ id: WindowID?) {
-        if id != nil { cleared = nil }
+        if let id {
+            cleared = nil
+            holdsUnfocusedView = false
+            if target?.window != id { target = nil }
+        } else {
+            target = nil
+        }
     }
 
     /// `owner` is the closed window's pid, nil when the model did not know the window.
-    func checks(closed id: WindowID, owner: Int32?, focus: WindowID?, frontmost: Int32?, now: TimeInterval) -> Bool {
-        guard let owner else { return false }
+    func checks(closed id: WindowID, owner: Int32?, focus: WindowID?, frontmost: Int32?, now: TimeInterval,
+                echoUntil: TimeInterval = 0) -> Bool {
+        guard let owner, !holdsUnfocusedView, now >= echoUntil else { return false }
         let recentlyCleared = focus == nil && cleared.map { $0.id == id && now < $0.until } == true
         return focus == id || recentlyCleared || (focus == nil && owner == frontmost)
     }
 
     /// `read` is the frontmost app's focus, unknown when minitile does not manage that app.
-    static func step(focus: WindowID?, read: FocusObservation) -> Step {
-        guard focus == nil, case .known(let id) = read else { return .none }
+    static func step(focus: WindowID?, read: FocusObservation, holdsUnfocusedView: Bool = false,
+                     now: TimeInterval = 0, echoUntil: TimeInterval = 0) -> Step {
+        guard focus == nil, !holdsUnfocusedView, now >= echoUntil, case .known(let id) = read else { return .none }
         return id.map(Step.follow) ?? .fallback
+    }
+
+    /// Guards user navigation against macOS's delayed app activation after a window or app closes.
+    func activation(pid: Int32, focus: WindowID?, holding: Bool, now: TimeInterval, echoUntil: TimeInterval) -> Activation {
+        let postCloseEcho = now < echoUntil && now < closeEchoUntil
+        if let target, focus == target.window, holding || now < target.until || postCloseEcho {
+            if pid == target.pid { return .ignore }
+            return holding ? .ignore : .refocus(target.window)
+        }
+        if postCloseEcho { return focus.map(Activation.refocus) ?? .skipPageShow }
+        return .accept
     }
 
     /// An app with no focused window answers the AX read with no value. Other focus reads keep that as unknown, but a
@@ -319,6 +369,12 @@ final class Reconciler {
             }
             if enhanced == true { AX.set(app, "AXEnhancedUserInterface", kCFBooleanTrue) }
         }
+    }
+
+    /// Suppresses echoes from `id`'s app while a slide capture holds back the actual focus call.
+    func expectFocus(_ id: WindowID) {
+        guard let window = discovery.windows[id] else { return }
+        ownFocus.add(window.info.pid, now: ProcessInfo.processInfo.systemUptime)
     }
 
     /// The echo starts now, but the Accessibility calls run once per main-loop turn for the latest target only, so a

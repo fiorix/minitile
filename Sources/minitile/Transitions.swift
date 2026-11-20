@@ -43,6 +43,7 @@ final class Transitions {
 
     var reason: String? { gate ?? capture.problem }
     var enabled: Bool { reason == nil }
+    var isHolding: Bool { pending != nil }
 
     func configure(milliseconds: Double, reduceMotion: Bool, screenRecording: Bool) {
         let wasOpen = gate == nil

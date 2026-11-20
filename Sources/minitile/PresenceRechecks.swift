@@ -23,7 +23,8 @@ struct PresenceRechecks {
     }
 }
 
-/// Disappearance is confirmed after three snapshots in a row without the window's ID and pid.
+/// Disappearance is confirmed after three snapshots in a row without the window's ID and pid, or on the first missing
+/// snapshot once the app's AX observer has already reported the window element destroyed.
 struct PresenceMisses {
     struct Known: Equatable {
         var id: WindowID
@@ -33,6 +34,10 @@ struct PresenceMisses {
     }
 
     private(set) var counts: [WindowID: Int] = [:]
+    private(set) var destroyedIDs: Set<WindowID> = []
+
+    /// Records a window whose AX element reported destruction outside native tab groups.
+    mutating func destroyed(_ id: WindowID) { destroyedIDs.insert(id) }
 
     /// Checks the windows of `pids` against a snapshot taken at ledger stamp `taken`, and returns those confirmed gone.
     /// A window that became known after the snapshot was taken is not counted, since the snapshot may predate it.
@@ -41,12 +46,16 @@ struct PresenceMisses {
         for window in known where pids.contains(window.pid) && window.added <= taken {
             if snapshot[window.id]?.pid == window.pid { counts.removeValue(forKey: window.id); continue }
             counts[window.id, default: 0] += 1
-            if counts[window.id, default: 0] >= 3 { gone.append(window.id) }
+            let needed = destroyedIDs.contains(window.id) ? 1 : 3
+            if counts[window.id, default: 0] >= needed { gone.append(window.id) }
         }
         return gone.sorted()
     }
 
-    mutating func forget(_ id: WindowID) { counts.removeValue(forKey: id) }
+    mutating func forget(_ id: WindowID) {
+        counts.removeValue(forKey: id)
+        destroyedIDs.remove(id)
+    }
 }
 
 /// A window is ordered out after three snapshots show it off screen on a shown desktop or on no Space (an inactive

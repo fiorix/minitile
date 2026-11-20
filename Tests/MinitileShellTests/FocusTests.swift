@@ -151,3 +151,34 @@ import Testing
     #expect(CloseFocus.step(focus: 3, read: .known(nil)) == .none)
     #expect(CloseFocus.step(focus: 3, read: .known(7)) == .none)
 }
+
+@Test func userNavigationSuppressesPostCloseFallbackAndLateMacOSActivations() {
+    var close = CloseFocus()
+    close.noteClose(now: 1.0)
+    // User moves onto an empty workspace right after closing a window: neither checks nor step may pull them away,
+    // even after the echo window expires, and macOS's post-close app activation skips showing another page.
+    close.command(focus: nil, owner: nil, changedView: true, now: 1.1)
+    let echoUntil = 1.1 + ViewChangeEcho.interval
+    #expect(close.holdsUnfocusedView)
+    #expect(!close.checks(closed: 1, owner: 10, focus: nil, frontmost: 10, now: 1.5, echoUntil: echoUntil))
+    #expect(!close.checks(closed: 1, owner: 10, focus: nil, frontmost: 10, now: 5.0, echoUntil: echoUntil))
+    #expect(CloseFocus.step(focus: nil, read: .known(nil), holdsUnfocusedView: close.holdsUnfocusedView, now: 5.0, echoUntil: echoUntil) == .none)
+    #expect(close.activation(pid: 20, focus: nil, holding: false, now: 1.3, echoUntil: echoUntil) == .skipPageShow)
+    #expect(close.activation(pid: 20, focus: nil, holding: false, now: 3.0, echoUntil: echoUntil) == .accept)
+
+    // Without a recent close, moving to an empty workspace still lets an explicit external activation show its page.
+    var noClose = CloseFocus()
+    noClose.command(focus: nil, owner: nil, changedView: true, now: 1.1)
+    #expect(noClose.activation(pid: 20, focus: nil, holding: false, now: 1.3, echoUntil: echoUntil) == .accept)
+
+    // User moves onto a workspace with window 2 (pid 20): a held slide ignores foreign activations without flushing,
+    // and after commit a foreign post-close activation refocuses window 2 instead of switching pages.
+    close.focused(2)
+    #expect(!close.holdsUnfocusedView)
+    close.command(focus: 2, owner: 20, changedView: true, now: 1.2)
+    #expect(close.activation(pid: 30, focus: 2, holding: true, now: 1.25, echoUntil: 2.4) == .ignore)
+    #expect(close.activation(pid: 20, focus: 2, holding: false, now: 1.3, echoUntil: 2.4) == .ignore)
+    #expect(close.activation(pid: 30, focus: 2, holding: false, now: 1.3, echoUntil: 2.4) == .refocus(2))
+    #expect(close.activation(pid: 30, focus: 2, holding: false, now: 1.9, echoUntil: 2.4) == .refocus(2))
+    #expect(close.activation(pid: 30, focus: 2, holding: false, now: 3.0, echoUntil: 2.4) == .accept)
+}

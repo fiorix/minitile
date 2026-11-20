@@ -89,6 +89,7 @@ final class Discovery {
     var focused: ((WindowID?) -> Void)?
     var acceptsFocus: ((Int32) -> Bool)?
     var moved: ((WindowID) -> Void)?
+    var closed: (() -> Void)?
     var suppressGeometry: ((WindowID) -> Bool)?
     var fullScans: Int { passes.count }
     var fullScanMilliseconds: Double { passes.milliseconds }
@@ -547,14 +548,23 @@ final class Discovery {
         input?(.windowGone(id))
     }
 
+    func hasTerminatedApplication() -> Bool {
+        applications.keys.contains { NSRunningApplication(processIdentifier: $0)?.isTerminated != false }
+    }
+
     func terminated(_ pid: Int32) {
+        closed?()
         applications.removeValue(forKey: pid)?.stop()
         creations.removeValue(forKey: pid)
         ledger.forget(pid)
         nativeTabs.forget(pid: pid)
         lastFocused.forget(pid: pid)
         tabRechecks.removeValue(forKey: pid)
-        recheckSoon(pids: [pid])
+        if !frozen {
+            for id in windows.keys.sorted() where windows[id]?.info.pid == pid { remove(id) }
+        } else {
+            recheckSoon(pids: [pid])
+        }
     }
 
     func recheckSoon(pids: Set<Int32>? = nil) {
@@ -641,12 +651,38 @@ final class Discovery {
             return
         }
         let id = AX.id(element) ?? windows.first { $0.value.info.pid == pid && CFEqual($0.value.element, element) }?.key
-        if name == kAXUIElementDestroyedNotification { recheckSoon(pids: [pid]); return }
+        if name == kAXUIElementDestroyedNotification {
+            closed?()
+            if let id { confirmDestroyed(id, pid: pid) }
+            recheckSoon(pids: [pid])
+            return
+        }
         if let id, windows[id] != nil {
             if name == kAXMovedNotification || name == kAXResizedNotification { moved?(id) }
             if name == kAXResizedNotification { resizeTabs(id) }
             update(id, reading: WindowAttribute.reads(for: name))
         } else { recheckSoon(pids: [pid]) }
+    }
+
+    /// Confirms a destroyed non-tabbed window against one immediate WindowServer snapshot on the background queue so
+    /// closing a page's last window does not wait through all three presence-recheck passes.
+    private func confirmDestroyed(_ id: WindowID, pid: Int32) {
+        guard windows[id]?.info.pid == pid, !nativeTabs.hasGroups(pid: pid) else { return }
+        misses.destroyed(id)
+        let ticket = ledger.beginSnapshot()
+        background.async { [weak self] in
+            let cg = CGWindowRecord.snapshot()
+            DispatchQueue.main.async { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    defer { self.ledger.endSnapshot() }
+                    guard self.ledger.accepts(ticket, frozen: self.frozen),
+                          let current = self.windows[id], current.info.pid == pid, current.added <= ticket.stamp,
+                          !self.nativeTabs.hasGroups(pid: pid), let cg, cg[id]?.pid != pid else { return }
+                    self.remove(id)
+                }
+            }
+        }
     }
 
     /// Temporarily expose allowed stash windows to acquire AX handles at startup.

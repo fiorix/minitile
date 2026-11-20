@@ -208,9 +208,18 @@ extension AppDelegate {
     }
 
     func activate(_ pid: Int32, received: TimeInterval, source: String) {
-        guard started, discovery?.frozen == false, reconciler?.suppressesActivation(pid) != true,
-              pid != ProcessInfo.processInfo.processIdentifier else { return }
+        guard started, discovery?.frozen == false, pid != ProcessInfo.processInfo.processIdentifier else { return }
         let now = ProcessInfo.processInfo.systemUptime
+        if now < viewEchoUntil, discovery?.hasTerminatedApplication() == true { closeFocus.noteClose(now: now) }
+        var skipPageShow = now < spaceSwitchedUntil
+        switch closeFocus.activation(pid: pid, focus: engine.savedState().focus, holding: transitions.isHolding,
+                                     now: now, echoUntil: viewEchoUntil) {
+        case .accept: break
+        case .ignore: return
+        case .refocus(let id): reconciler?.focus(id); return
+        case .skipPageShow: skipPageShow = true
+        }
+        guard reconciler?.suppressesActivation(pid) != true else { return }
         if let lastActivation, lastActivation.pid == pid, now - lastActivation.time < 0.15 { return }
         lastActivation = (pid, now)
         // Activation races macOS's own desktop switch, so a reconcile held for a transition goes out first.
@@ -218,8 +227,9 @@ extension AppDelegate {
         reconciler?.activation = (pid, source, received)
         defer { reconciler?.activation = nil }
         // No AX reads before this input: Cmd-Tab's desktop switch has a narrow race. Right after minitile switched a
-        // display's Space, the activation is macOS's answer to that, so it shows no page and only its focus is followed.
-        if now >= spaceSwitchedUntil { handle(.appActivated(pid: pid)) }
+        // display's Space, or right after a close while a navigation command's echo window is open, the activation is
+        // macOS's answer to that, so it shows no page and only its focus is followed.
+        if !skipPageShow { handle(.appActivated(pid: pid)) }
         if let app = NSRunningApplication(processIdentifier: pid), discovery?.allows(app) == false { handle(.focusChanged(nil)) }
         else { followActivatedFocus(pid) }
         discovery?.recheckSoon(pids: [pid])
@@ -249,7 +259,10 @@ extension AppDelegate {
         let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, self.started, !self.quitting, let discovery = self.discovery, !discovery.frozen else { return }
-                switch CloseFocus.step(focus: self.engine.savedState().focus, read: discovery.focusAfterClose()) {
+                let now = ProcessInfo.processInfo.systemUptime
+                switch CloseFocus.step(focus: self.engine.savedState().focus, read: discovery.focusAfterClose(),
+                                       holdsUnfocusedView: self.closeFocus.holdsUnfocusedView, now: now,
+                                       echoUntil: self.viewEchoUntil) {
                 case .none: break
                 case .follow(let id): self.focusReported(id)
                 case .fallback: self.handle(.noFocusAfterClose)

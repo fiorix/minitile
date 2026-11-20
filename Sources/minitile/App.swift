@@ -213,6 +213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         discovery.focused = { [weak self] in self?.focusReported($0) }
         reconciler.focusSettled = { [weak self] in self?.focusSettled($0, reported: $1) }
         discovery.moved = { [weak self] in self?.windowMoved($0) }
+        discovery.closed = { [weak self] in self?.closeFocus.noteClose(now: ProcessInfo.processInfo.systemUptime) }
         transitions.commit = { [weak self] in self?.commitHeld($0) }
         transitions.model = { [weak self] in self?.engine.savedState() ?? SavedState() }
         transitions.showsItsPage = { [weak self] id, state in self?.showsItsPage(id, state: state) ?? true }
@@ -325,11 +326,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var checksCloseFocus = false
         if case .windowGone(let id) = input {
             reconciler?.forget(id); updateDragTracking()
+            let now = ProcessInfo.processInfo.systemUptime
             let state = engine.savedState()
+            closeFocus.noteClose(now: now)
             checksCloseFocus = discovery?.frozen != true
                 && closeFocus.checks(closed: id, owner: state.windows[id]?.info.pid, focus: state.focus,
                                      frontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier,
-                                     now: ProcessInfo.processInfo.systemUptime)
+                                     now: now, echoUntil: viewEchoUntil)
         }
         if case .windowTabSelected(let previous, let info) = input {
             // Both physical windows' cached geometry is stale once the slot changes hands.
@@ -347,19 +350,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var grabbing: (argv: [String], focus: WindowID?)?
         if let argv, GrabCommand.grabs(argv) { grabbing = (argv, before?.focus) }
         let output = engine.handle(input)
-        closeFocus.focused(engine.savedState().focus)
+        let after = engine.savedState()
+        closeFocus.focused(after.focus)
         dragGeneration.update(input, output: output)
         let grab = grabbing.flatMap { GrabCommand(argv: $0.argv, focus: $0.focus, output: output) }
         // The pointer already holds a dragged window, so nothing grabs it, Ctrl+arrow during the drag included.
         if let grab, grab.window != reconciler?.dragging {
-            grabHighlight.command(grab, session: session, focus: engine.savedState().focus)
+            grabHighlight.command(grab, session: session, focus: after.focus)
         }
-        if case .command = input, output.events.contains(where: { $0.type == "page_shown" }) {
-            viewEchoUntil = ProcessInfo.processInfo.systemUptime + ViewChangeEcho.interval
+        if case .command = input, output.reply?.ok == true {
+            let now = ProcessInfo.processInfo.systemUptime
+            let changedView = output.events.contains { $0.type == "page_shown" }
+            let focused = output.actions.contains { if case .focus = $0 { return true }; return false }
+            if changedView { viewEchoUntil = now + ViewChangeEcho.interval }
+            if changedView || focused {
+                closeFocusRead?.cancel()
+                closeFocusRead = nil
+                closeFocus.command(focus: after.focus, owner: after.focus.flatMap { after.windows[$0]?.info.pid },
+                                   changedView: changedView, now: now)
+            }
         }
         var plan: [DisplayID: TransitionKind] = [:]
         if let argv, let before, output.reply?.ok == true {
-            let after = engine.savedState()
             let crossed = output.crossed
             lastCrossed = crossed
             // A display crossed into usually keeps its shown page, which alone would not show the indicator there.
@@ -368,7 +380,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             spaceSync.formUnion(SpaceSync.displays(before: before, after: after, actions: output.actions))
         }
         if let fallbackBefore {
-            spaceSync.formUnion(SpaceSync.displays(before: fallbackBefore, after: engine.savedState(), actions: output.actions))
+            spaceSync.formUnion(SpaceSync.displays(before: fallbackBefore, after: after, actions: output.actions))
         }
         let held = transitions.hold(output, plan: plan, before: before)
         if !held, discovery?.frozen != true { reconcile(output) }
@@ -383,10 +395,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             default: break
             }
         }
-        if !held {
-            for action in output.actions {
-                if case .focus(let id) = action { reconciler?.focus(id) }
-            }
+        for case .focus(let id) in output.actions {
+            if held { reconciler?.expectFocus(id) }
+            else { reconciler?.focus(id) }
         }
         for event in output.events { server?.broadcast(event: event) }
         if output.stateChanged {
@@ -422,6 +433,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Apply a reconcile that waited for a transition capture, with the same ordering as `handle`.
     func commitHeld(_ output: Output) {
+        let now = ProcessInfo.processInfo.systemUptime
+        if now < viewEchoUntil { viewEchoUntil = now + ViewChangeEcho.interval }
+        closeFocus.extendHandoff(focus: engine.savedState().focus, now: now)
         if discovery?.frozen != true { reconcile(output, held: true) }
         for action in output.actions {
             if case .focus(let id) = action { reconciler?.focus(id) }
