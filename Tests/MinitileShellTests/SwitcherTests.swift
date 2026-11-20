@@ -67,37 +67,101 @@ private func apps(_ pids: Int32...) -> [SwitcherApp] { pids.map { SwitcherApp(pi
     let state = model([[[1, 2, 3, 4], [5, 6]]], focus: 1, recent: [1, 5, 2])
     var selection = try #require(open(state))
     #expect(selection.order == [1, 2, 3, 4, 5, 6])
-    #expect(selection.selected == 2)
-    #expect(open(state, forward: false)?.selected == 6)
+    // Either way it opens on the focused window, and Tab and Shift+Tab move on from there.
+    #expect(selection.selected == 1)
+    #expect(open(state, forward: false)?.selected == 1)
     var visited: [SwitcherTarget] = []
     for _ in 0..<6 { selection.step(forward: true); visited.append(selection.selected) }
-    #expect(visited == [3, 4, 5, 6, 1, 2])
-    selection.step(forward: false)
-    #expect(selection.selected == 1)
+    #expect(visited == [2, 3, 4, 5, 6, 1])
     selection.step(forward: false)
     #expect(selection.selected == 6)
+    selection.step(forward: false)
+    #expect(selection.selected == 5)
+    var back = try #require(open(state, forward: false))
+    back.step(forward: false)
+    #expect(back.selected == 6)
 }
 
 @Test func switcherRingVisitsTilesInReadingOrder() throws {
     var state = model([[[1, 2, 3]], [[4]]], focus: 2)
     state.displays[0].workspaces[0].pages[0].variant = .twoByOneTall
-    let selection = try #require(open(state))
+    var selection = try #require(open(state))
     #expect(selection.order == [2, 1, 3, 4])
+    #expect(selection.selected == 2)
+    selection.step(forward: true)
     #expect(selection.selected == 1)
 }
 
-@Test func switcherWithoutManagedFocusStartsAtTheEnds() throws {
+@Test func switcherWithoutManagedFocusStartsAtTheWindowFocusedLast() throws {
     let state = model([[[1, 2, 3, 4], [5, 6]]], recent: [5, 2])
     let selection = try #require(open(state))
     #expect(selection.order == [1, 2, 3, 4, 5, 6])
-    #expect(selection.selected == 1)
-    #expect(open(state, forward: false)?.selected == 6)
+    #expect(selection.selected == 5)
+    #expect(open(state, forward: false)?.selected == 5)
     var elsewhere = state
     elsewhere.focus = 99
-    #expect(open(elsewhere)?.selected == 1)
+    #expect(open(elsewhere)?.selected == 5)
+    // A focused window outside the ring, as a minimized one, does not count.
+    let minimized = model([[[1, 2, 3, 4], [5, 6]]], minimized: [5], focus: 5, recent: [5, 2])
+    #expect(open(minimized)?.selected == 2)
+    // Without history it is the first window, either way.
+    let fresh = model([[[1, 2, 3, 4], [5, 6]]])
+    #expect(open(fresh)?.selected == 1)
+    #expect(open(fresh, forward: false)?.selected == 1)
     let single = model([[[7]]], focus: 7, recent: [7])
     #expect(open(single)?.selected == 7)
     #expect(open(single, forward: false)?.selected == 7)
+}
+
+@Test func quickCmdTabGoesBackToTheWindowFocusedBefore() throws {
+    // 1 has focus, after 5 and then 2.
+    let state = model([[[1, 2, 3, 4], [5, 6]]], focus: 1, recent: [1, 5, 2])
+    #expect(open(state)?.quick == 5)
+    // Cmd+Shift+Tab keeps the window before in the ring.
+    #expect(open(state, forward: false)?.quick == 6)
+    // Without any other window focused before, the window after or before in the ring.
+    let fresh = model([[[1, 2, 3, 4], [5, 6]]], focus: 3, recent: [3])
+    #expect(open(fresh)?.quick == 4)
+    #expect(open(fresh, forward: false)?.quick == 2)
+    // With no managed window focused, back from the window focused last to the one before it.
+    let unfocused = model([[[1, 2, 3, 4], [5, 6]]], recent: [5, 2])
+    #expect(open(unfocused)?.selected == 5 && open(unfocused)?.quick == 2)
+    // A single window goes to itself, and with no window there is nothing to go to.
+    #expect(open(model([[[7]]], focus: 7, recent: [7]))?.quick == 7)
+    let none = model([[[]]])
+    #expect(open(none, apps: apps(8))?.quick == nil)
+    // A step or an arrow moves the selection, which then commits instead; an arrow counts even with nothing that way.
+    var stepped = try #require(open(state))
+    stepped.step(forward: false)
+    #expect(stepped.quick == nil && stepped.selected == 6)
+    var moved = try #require(open(state))
+    moved.move(.left)
+    #expect(moved.quick == nil && moved.selected == 1)
+}
+
+@Test func quickCmdTabFollowsWindowsThatGoBeforeItIsReleased() throws {
+    let state = model([[[1, 2, 3, 4]]], focus: 2, recent: [2, 1, 4])
+    var selection = try #require(open(state))
+    #expect(selection.selected == 2 && selection.quick == 1)
+    // The selected window closes: the next one takes the selection, which is not a move, so the quick target stays.
+    var kept = selection.update(state: model([[[1, 3, 4]]], recent: [1, 4]), config: .default)
+    #expect(kept && selection.selected == 3 && selection.quick == 1)
+    // The quick target closes: it is found again from the selection, as the window focused last of the others.
+    kept = selection.update(state: model([[[3, 4]]], recent: [4]), config: .default)
+    #expect(kept && selection.selected == 3 && selection.quick == 4)
+    // Without one focused before, the window after the selection in the order kept.
+    var fresh = try #require(open(model([[[1, 2, 3]]], focus: 1, recent: [1])))
+    #expect(fresh.quick == 2)
+    kept = fresh.update(state: model([[[1, 3]]], focus: 1, recent: [1]), config: .default)
+    #expect(kept && fresh.selected == 1 && fresh.quick == 3)
+    // A moved selection stays without one.
+    fresh.step(forward: true)
+    kept = fresh.update(state: model([[[1]]], focus: 1, recent: [1]), config: .default)
+    #expect(kept && fresh.selected == 1 && fresh.quick == nil)
+    // With every window gone, nothing is left to go to.
+    var last = try #require(open(model([[[1]]], focus: 1, recent: [1]), apps: apps(8)))
+    kept = last.update(state: model([[[]]]), config: .default, apps: apps(8))
+    #expect(kept && last.selected == .app(8) && last.quick == nil)
 }
 
 @Test func switcherOffersTiledAndFloatingWindowsButNotMinimizedOrHiddenOnes() throws {
@@ -149,7 +213,7 @@ private func apps(_ pids: Int32...) -> [SwitcherApp] { pids.map { SwitcherApp(pi
 
 @Test func switcherKeepsItsOrderAndFollowsClosedWindows() throws {
     var selection = try #require(open(model([[[1, 2, 3, 4], [5, 6]]], focus: 1)))
-    for _ in 0..<3 { selection.step(forward: true) }
+    for _ in 0..<4 { selection.step(forward: true) }
     #expect(selection.selected == 5)
     // Window 5 closes, 7 opens, and 2 takes focus: the order holds, 7 joins at the end, and 6 follows 5 in it.
     var changed = model([[[1, 2, 3, 4], [6, 7]]], focus: 2)
@@ -176,7 +240,7 @@ private func apps(_ pids: Int32...) -> [SwitcherApp] { pids.map { SwitcherApp(pi
 @Test func switcherCropsAroundTheSelectionAndNamesIt() throws {
     // Six workspaces of seven pages, one window each, numbered by cell.
     let grid = (0..<6).map { w in (0..<7).map { p in [WindowID(10 * w + p + 1)] } }
-    let far = try #require(open(model(grid, focus: 55, shown: GridCell(workspace: 2, page: 3))))
+    let far = try #require(open(model(grid, focus: 56, shown: GridCell(workspace: 2, page: 3))))
     let content = SwitcherContent(selection: far, state: model(grid, recent: [56]))
     #expect(content.selected == 56)
     #expect(content.cell == GridCell(workspace: 5, page: 5))
@@ -217,13 +281,11 @@ private func plus(_ grids: [DisplayID: [[[WindowID]]]], shown: [DisplayID: GridC
     return model(screens, floating: floating, focus: focus)
 }
 
-/// The selection on `id`: opened after it, then stepped back.
+/// The selection on `id`: opened with it focused.
 private func selecting(_ id: WindowID, in state: SavedState) -> SwitcherSelection? {
     var focused = state
     focused.focus = id
-    var selection = open(focused)
-    selection?.step(forward: false)
-    return selection
+    return open(focused)
 }
 
 /// Where an arrow from `id` takes the selection, and the display it lands on.
@@ -239,9 +301,11 @@ private func arrow(_ id: WindowID, _ direction: SwitcherDirection, in state: Sav
     // By the top edges of their frames, then their left edges, whatever the model's order.
     #expect(selection.grids.map(\.display) == ["above", "left", "centre", "right", "below"])
     #expect(selection.order == [1, 2, 3, 4, 5, 6])
-    // After the focused window, the last on its display, comes the first window of the next display.
+    // It opens on the focused window, the last on its display; after it comes the first window of the next display.
+    #expect(selection.selected == 4 && selection.display == "centre")
+    #expect(open(state, forward: false)?.selected == 4)
+    selection.step(forward: true)
     #expect(selection.selected == 5 && selection.display == "right")
-    #expect(open(state, forward: false)?.selected == 3)
     selection.step(forward: true)
     #expect(selection.selected == 6 && selection.display == "below")
     selection.step(forward: true)
@@ -250,15 +314,16 @@ private func arrow(_ id: WindowID, _ direction: SwitcherDirection, in state: Sav
     #expect(selection.selected == 6)
     var last = state
     last.focus = 6
-    #expect(open(last)?.selected == 1)
+    #expect(open(last)?.selected == 6 && open(last)?.display == "below")
     var none = state
     none.focus = nil
     #expect(open(none)?.selected == 1)
-    #expect(open(none, forward: false)?.selected == 6)
+    #expect(open(none, forward: false)?.selected == 1)
     let unmanaged = plus(["centre": [[[3, 4]]], "below": [[[6]]], "right": [[[5]]], "above": [[[1]]], "left": [[[2]]]],
                          unmanaged: ["right"], focus: 4)
-    let skipping = try #require(open(unmanaged))
+    var skipping = try #require(open(unmanaged))
     #expect(skipping.order == [1, 2, 3, 4, 6])
+    skipping.step(forward: true)
     #expect(skipping.selected == 6)
 }
 
@@ -320,7 +385,7 @@ private func arrow(_ id: WindowID, _ direction: SwitcherDirection, in state: Sav
     let state = model([laptop, external], focus: 2)
     let selection = try #require(open(state))
     #expect(selection.order == [3, 4, 1, 2])
-    #expect(selection.selected == 3 && selection.display == "external")
+    #expect(selection.selected == 2 && selection.display == "laptop")
     let up = arrow(1, .up, in: state)
     #expect(up?.0 == 3 && up?.1 == "external")
     #expect(arrow(3, .down, in: state)?.0 == 4)
@@ -332,12 +397,12 @@ private func arrow(_ id: WindowID, _ direction: SwitcherDirection, in state: Sav
 @Test func headerNamesTheSelectionsDisplayOnlyWhenSeveralAreManaged() throws {
     let names = ["centre": "Laptop", "above": "External"]
     let two = plus(["centre": [[[10]]], "above": [[[20]]]], focus: 10)
-    let content = SwitcherContent(selection: try #require(open(two)), state: two, names: names)
+    let content = SwitcherContent(selection: try #require(selecting(20, in: two)), state: two, names: names)
     #expect(content.selected == 20)
     #expect(content.displayName == "External")
     #expect(content.area == Rect(x: 0, y: -982, width: 1512, height: 982))
-    let back = SwitcherContent(selection: try #require(selecting(10, in: two)), state: two, names: names)
-    #expect(back.displayName == "Laptop" && back.area == Rect(x: 0, y: 0, width: 1512, height: 982))
+    let back = SwitcherContent(selection: try #require(open(two)), state: two, names: names)
+    #expect(back.selected == 10 && back.displayName == "Laptop" && back.area == Rect(x: 0, y: 0, width: 1512, height: 982))
     #expect(SwitcherContent(selection: try #require(open(two)), state: two).displayName == "Display")
     // A display that is not managed does not count.
     let one = plus(["centre": [[[10, 11]]], "above": [[[20]]]], unmanaged: ["above"], focus: 10)
@@ -359,7 +424,7 @@ private func arrow(_ id: WindowID, _ direction: SwitcherDirection, in state: Sav
 }
 
 @Test func switcherFollowsADisplayThatGoesAwayWhileItIsOpen() throws {
-    let state = plus(["centre": [[[10, 11]]], "above": [[[20, 21]]]], focus: 20)
+    let state = plus(["centre": [[[10, 11]]], "above": [[[20, 21]]]], focus: 21)
     let selection = try #require(open(state))
     #expect(selection.order == [20, 21, 10, 11])
     #expect(selection.selected == 21 && selection.display == "above")
@@ -383,7 +448,7 @@ private func arrow(_ id: WindowID, _ direction: SwitcherDirection, in state: Sav
 }
 
 @Test @MainActor func switcherHeaderDrawsTheDisplayNameBesideTheTitle() throws {
-    let two = plus(["centre": [[[10]]], "above": [[[20]]]], focus: 10)
+    let two = plus(["centre": [[[10]]], "above": [[[20]]]], focus: 20)
     let content = SwitcherContent(selection: try #require(open(two)), state: two, names: ["centre": "Laptop", "above": "External"])
     let view = SwitcherView(content: content)
     let s = content.geometry.metrics.scale, margin = content.geometry.margin
@@ -399,23 +464,25 @@ private func arrow(_ id: WindowID, _ direction: SwitcherDirection, in state: Sav
     var selection = try #require(open(state, apps: apps(9, 1, 2, 4, 8)))
     #expect(selection.order == [1, 3, .app(9), .app(2), .app(4), .app(8)])
     #expect(selection.apps.map(\.pid) == [9, 2, 4, 8])
-    // Opening wraps around the windows alone, either way.
-    #expect(selection.selected == 1)
-    #expect(open(state, apps: apps(9, 8), forward: false)?.selected == 1)
+    // Opening selects the focused window, either way; without one, the first window, never an app.
+    #expect(selection.selected == 3)
+    #expect(open(state, apps: apps(9, 8), forward: false)?.selected == 3)
     var unfocused = state
     unfocused.focus = nil
     #expect(open(unfocused, apps: apps(9, 8))?.selected == 1)
-    #expect(open(unfocused, apps: apps(9, 8), forward: false)?.selected == 3)
+    #expect(open(unfocused, apps: apps(9, 8), forward: false)?.selected == 1)
     // Tab walks on from the last window through the apps and back to the first window.
     var visited: [SwitcherTarget] = []
     for _ in 0..<6 { selection.step(forward: true); visited.append(selection.selected) }
-    #expect(visited == [3, .app(9), .app(2), .app(4), .app(8), 1])
+    #expect(visited == [.app(9), .app(2), .app(4), .app(8), 1, 3])
+    selection.step(forward: false)
+    #expect(selection.selected == 1)
     selection.step(forward: false)
     #expect(selection.selected == .app(8))
 }
 
 @Test func theViewStaysWhereTheSelectionWasWhileAnAppIsSelected() throws {
-    let state = plus(["centre": [[[10]], [[11]]], "above": [[[20]]]], focus: 10)
+    let state = plus(["centre": [[[10]], [[11]]], "above": [[[20]]]], focus: 11)
     var selection = try #require(open(state, apps: apps(7)))
     #expect(selection.order == [20, 10, 11, .app(7)])
     #expect(selection.selected == 11 && selection.place == .init(display: "centre", cell: GridCell(workspace: 1, page: 0)))
@@ -437,7 +504,7 @@ private func arrow(_ id: WindowID, _ direction: SwitcherDirection, in state: Sav
     #expect(selection.order == [.app(7), .app(8)])
     #expect(selection.selected == .app(7) && selection.display == "centre")
     #expect(selection.place.cell == GridCell(workspace: 0, page: 0))
-    #expect(open(state, apps: apps(7, 8), forward: false, active: "centre")?.selected == .app(8))
+    #expect(open(state, apps: apps(7, 8), forward: false, active: "centre")?.selected == .app(7))
     // Without a known active display the first one in arrangement order is on view.
     #expect(open(state, apps: apps(7))?.display == "above")
     // Apps need a managed display to be shown on, and are asked for only when no window is on offer.
@@ -451,7 +518,7 @@ private func arrow(_ id: WindowID, _ direction: SwitcherDirection, in state: Sav
 
 @Test func arrowsMoveBetweenTheGridAndTheAppsRow() throws {
     // W1: [1 | 2], W2: [3] on the first of two pages, and three apps in the row under them.
-    let state = model([[[1, 2], []], [[3]]], focus: 3)
+    let state = model([[[1, 2], []], [[3]]], focus: 1)
     var selection = try #require(open(state, apps: apps(7, 8, 9)))
     #expect(selection.selected == 1)
     var path: [SwitcherTarget] = []
@@ -473,7 +540,7 @@ private func arrow(_ id: WindowID, _ direction: SwitcherDirection, in state: Sav
 }
 
 @Test func arrowsCrossDisplaysPastTheAppsRow() throws {
-    let state = plus(["centre": [[[10]]], "below": [[[30]]], "left": [[[40]]]], focus: 30)
+    let state = plus(["centre": [[[10]]], "below": [[[30]]], "left": [[[40]]]], focus: 40)
     var selection = try #require(open(state, apps: apps(7, 8)))
     #expect(selection.selected == 40)
     selection.step(forward: true)
@@ -502,8 +569,7 @@ private func arrow(_ id: WindowID, _ direction: SwitcherDirection, in state: Sav
     let state = model([[[1, 2]]], focus: 1)
     var selection = try #require(open(state, apps: apps(1, 2, 7, 8, 9)))
     #expect(selection.order == [1, 2, .app(7), .app(8), .app(9)])
-    selection.step(forward: true)
-    selection.step(forward: true)
+    for _ in 0..<3 { selection.step(forward: true) }
     #expect(selection.selected == .app(8))
     // App 8 quits and app 6 starts: 9 follows 8 in the order, and 6 joins at the end.
     var kept = selection.update(state: state, config: .default, apps: apps(6, 1, 2, 7, 9))
@@ -529,7 +595,7 @@ private func arrow(_ id: WindowID, _ direction: SwitcherDirection, in state: Sav
 }
 
 @Test func headerSaysWhyASelectedAppHasNoWindowToShow() throws {
-    let state = model([[[1, 2, 3, 4]]], minimized: [2], appHidden: [4], focus: 3)
+    let state = model([[[1, 2, 3, 4]]], minimized: [2], appHidden: [4], focus: 1)
     var selection = try #require(open(state, apps: apps(2, 4, 8)))
     var content = SwitcherContent(selection: selection, state: state)
     #expect(content.selected == 1 && content.labeled == GridCell(workspace: 0, page: 0))

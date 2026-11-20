@@ -229,6 +229,8 @@ private func switcherState() -> SavedState {
     #expect(switcher.held)
     #expect(clock.pending.map(\.delay) == [WindowSwitcher.showDelay])
     #expect(presenter.shown.isEmpty)
+    // It opens on the focused window, 1, and a quick release goes back to 2, focused before it.
+    #expect(switcher.selection?.selected == 1)
     #expect(switcher.commit() == 2)
     #expect(!switcher.isOpen)
     clock.fire()
@@ -236,24 +238,96 @@ private func switcherState() -> SavedState {
     #expect(presenter.hides == 0)
 }
 
+/// `switcherState` with `focus` focused last, after `recent` in order, most recent first; other windows never focused.
+private func focusedState(_ focus: WindowID?, recent: [WindowID]) -> SavedState {
+    var state = switcherState()
+    for id: WindowID in [1, 2, 3] { state.windows[id]?.lastFocused = 0 }
+    let stamps = (focus.map { [$0] } ?? []) + recent
+    for (index, id) in stamps.enumerated() { state.windows[id]?.lastFocused = UInt64(stamps.count - index) }
+    state.focus = focus
+    return state
+}
+
+@Test @MainActor func quickCmdTabTogglesBetweenTheLastTwoWindows() {
+    let (switcher, _, _) = controller()
+    // 3 was focused before 1, so a quick Cmd+Tab skips 2, the next in the ring.
+    #expect(switcher.open(session: 1, forward: true, held: true, state: focusedState(1, recent: [3, 2]), display: "d", config: .default))
+    #expect(switcher.commit() == 3)
+    // Focusing 3 stamps it, so the next quick Cmd+Tab comes back to 1.
+    #expect(switcher.open(session: 2, forward: true, held: true, state: focusedState(3, recent: [1, 2]), display: "d", config: .default))
+    #expect(switcher.commit() == 1)
+}
+
+@Test @MainActor func quickCmdTabWithoutHistoryAndQuickCmdShiftTabFollowTheRing() {
+    let (switcher, _, _) = controller()
+    // No other window focused before: the next window in the ring.
+    #expect(switcher.open(session: 1, forward: true, held: true, state: focusedState(1, recent: []), display: "d", config: .default))
+    #expect(switcher.commit() == 2)
+    // Cmd+Shift+Tab goes to the window before in the ring, whatever was focused before.
+    #expect(switcher.open(session: 2, forward: false, held: true, state: focusedState(2, recent: [3]), display: "d", config: .default))
+    #expect(switcher.selection?.selected == 2)
+    #expect(switcher.commit() == 1)
+    #expect(switcher.open(session: 3, forward: false, held: true, state: focusedState(1, recent: []), display: "d", config: .default))
+    #expect(switcher.commit() == 3)
+}
+
+@Test @MainActor func quickCmdTabAfterAStepOrAnArrowCommitsTheSelection() {
+    let (switcher, presenter, _) = controller()
+    // Cmd+Tab then Tab lands on 2, after the focused window, not on 3, focused before it.
+    #expect(switcher.open(session: 1, forward: true, held: true, state: focusedState(1, recent: [3]), display: "d", config: .default))
+    switcher.step(forward: true)
+    #expect(switcher.commit() == 2)
+    #expect(switcher.open(session: 2, forward: true, held: true, state: focusedState(1, recent: [3]), display: "d", config: .default))
+    switcher.step(forward: false)
+    #expect(switcher.commit() == 3)
+    // 1 is the large left tile, beside the stacked 2 and 3, which tie; grid order picks 2.
+    #expect(switcher.open(session: 3, forward: true, held: true, state: focusedState(1, recent: [3]), display: "d", config: .default))
+    switcher.move(.right)
+    #expect(switcher.commit() == 2)
+    #expect(presenter.shown.isEmpty)
+}
+
+@Test @MainActor func aShownPanelCommitsTheCurrentWindowUntilTheSelectionMoves() {
+    let (switcher, presenter, clock) = controller()
+    #expect(switcher.open(session: 1, forward: true, held: true, state: focusedState(1, recent: [3]), display: "d", config: .default))
+    clock.fire()
+    #expect(presenter.shown == [1])
+    #expect(switcher.commit() == 1)
+    // Opened from mntl it shows at once, so its commit is the selection too.
+    #expect(switcher.open(session: 2, forward: true, held: false, state: focusedState(1, recent: [3]), display: "d", config: .default))
+    #expect(switcher.commit() == 1)
+}
+
+@Test @MainActor func quickCmdTabFollowsTheSelectedWindowClosing() {
+    let (switcher, _, _) = controller()
+    #expect(switcher.open(session: 1, forward: true, held: true, state: focusedState(2, recent: [1]), display: "d", config: .default))
+    // 2 closes before the release: 3 takes the selection, but the quick Cmd+Tab still goes back to 1.
+    var closed = focusedState(nil, recent: [1])
+    closed.displays[0].workspaces[0].pages[0].windows = [1, 3]
+    closed.windows[2] = nil
+    #expect(switcher.update(state: closed, config: .default) == nil)
+    #expect(switcher.selection?.selected == 3)
+    #expect(switcher.commit() == 1)
+}
+
 @Test @MainActor func heldSwitcherShowsAfterTheDelayAndHidesBeforeCommitting() {
     let (switcher, presenter, clock) = controller()
     #expect(switcher.open(session: 1, forward: true, held: true, state: switcherState(), display: "d", config: .default))
     clock.fire()
-    #expect(presenter.shown == [2])
+    #expect(presenter.shown == [1])
     switcher.step(forward: true)
-    #expect(presenter.shown == [2, 3])
+    #expect(presenter.shown == [1, 2])
     // An unchanged model does not redraw.
     #expect(switcher.update(state: switcherState(), config: .default) == nil)
-    #expect(presenter.shown == [2, 3])
-    #expect(switcher.commit() == 3)
+    #expect(presenter.shown == [1, 2])
+    #expect(switcher.commit() == 2)
     #expect(presenter.hides == 1)
     #expect(switcher.session == nil)
 }
 
 @Test @MainActor func switcherOpenedWithoutAHeldModifierShowsAtOnce() {
     let (switcher, presenter, clock) = controller()
-    #expect(switcher.open(session: 4, forward: false, held: false, state: switcherState(), display: "d", config: .default))
+    #expect(switcher.open(session: 4, forward: false, held: false, state: focusedState(3, recent: [1, 2]), display: "d", config: .default))
     #expect(clock.pending.isEmpty)
     #expect(presenter.shown == [3])
     // 3 is the lower right tile beside the large tile 1.
@@ -305,7 +379,8 @@ private func emptyState() -> SavedState {
     let apps = FakeApps()
     apps.running = [SwitcherApp(pid: 1, name: "One"), SwitcherApp(pid: 7, name: "Seven"), SwitcherApp(pid: 8, name: "Eight")]
     let (switcher, presenter, _) = controller(apps)
-    #expect(switcher.open(session: 1, forward: false, held: false, state: switcherState(), display: "d", config: .default))
+    let state = focusedState(3, recent: [1, 2])
+    #expect(switcher.open(session: 1, forward: false, held: false, state: state, display: "d", config: .default))
     #expect(presenter.shown == [3])
     #expect(presenter.contents.last?.apps.map(\.pid) == [7, 8])
     switcher.step(forward: true)
@@ -314,7 +389,7 @@ private func emptyState() -> SavedState {
     #expect(presenter.moves.last?.display == "d")
     // The app quits: the next one takes the selection, and the row redraws without it.
     apps.running.remove(at: 1)
-    #expect(switcher.update(state: switcherState(), config: .default) == nil)
+    #expect(switcher.update(state: state, config: .default) == nil)
     #expect(presenter.shown == [3, .app(7), .app(8)])
     #expect(presenter.contents.last?.apps.map(\.pid) == [8])
     #expect(switcher.commit() == .app(8))
@@ -350,7 +425,7 @@ private func emptyState() -> SavedState {
 }
 
 /// Display "d" with windows 1 and 2, and display "e" above it with window 3, so the ring is 3, 1, 2.
-private func twoDisplayState(focus: WindowID = 2) -> SavedState {
+private func twoDisplayState(focus: WindowID? = 2) -> SavedState {
     var state = switcherState()
     state.displays[0].workspaces[0].pages[0].windows = [1, 2]
     var page = PageState(id: 20)
@@ -365,8 +440,10 @@ private func twoDisplayState(focus: WindowID = 2) -> SavedState {
 
 @Test @MainActor func switcherPanelStartsOnTheActiveDisplayAndSlidesToTheSelections() {
     let (switcher, presenter, clock) = controller()
-    // The focused window is the last one on "d", so the selection starts on "e", the first display in the ring.
-    #expect(switcher.open(session: 1, forward: true, held: true, state: twoDisplayState(), display: "d", config: .default))
+    // Nothing is focused on the active display "d", and 3 on "e" was focused last, so the selection starts on "e".
+    var state = twoDisplayState(focus: nil)
+    state.windows[3]?.lastFocused = 20
+    #expect(switcher.open(session: 1, forward: true, held: true, state: state, display: "d", config: .default))
     clock.fire()
     #expect(presenter.shown == [3])
     #expect(presenter.moves.map(\.display) == ["e"] && presenter.moves.map(\.from) == ["d"])
@@ -387,7 +464,7 @@ private func twoDisplayState(focus: WindowID = 2) -> SavedState {
 
 @Test @MainActor func switcherPanelMovesWhenTheSelectionsDisplayGoesAway() {
     let (switcher, presenter, _) = controller()
-    #expect(switcher.open(session: 1, forward: true, held: false, state: twoDisplayState(), display: "d", config: .default))
+    #expect(switcher.open(session: 1, forward: true, held: false, state: twoDisplayState(focus: 3), display: "d", config: .default))
     #expect(presenter.moves.last?.display == "e")
     // "e" is unplugged and its window closes: the selection moves on to 1, on "d", and the panel with it.
     var gone = twoDisplayState()

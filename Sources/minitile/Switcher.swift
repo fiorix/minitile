@@ -131,27 +131,31 @@ struct SwitcherSelection: Equatable {
     /// The selected window's display and cell. An app is on no display, so while one is selected the view stays where
     /// the selection last was.
     private(set) var place: Place
+    /// Where a quick Cmd+Tab, released before the panel shows, switches instead of the selection, which starts on the
+    /// current window. Nil once a step or an arrow has moved the selection, and while no window is offered.
+    private(set) var quick: WindowID?
+    /// Opened by next rather than prev, which picks how `quick` is found.
+    private let forward: Bool
 
-    /// Next selects the window after the focused one and prev the one before it, wrapping around the windows alone, so
-    /// opening never lands on an app while there is a window; with no managed window focused they start at the first or
-    /// last window. `apps` are the running apps in the order the row keeps; `active` is the display on view when an
-    /// app is selected first. Nil without a managed display, or with neither a window nor an app to offer.
+    /// Next and prev both select the current window: the focused one, or with no managed window focused, the one
+    /// focused last, the first in the ring when none has been; with no window, the first app. `quick` is found from it.
+    /// `apps` are the running apps in the order the row keeps; `active` is the display on view when an app is selected
+    /// first. Nil without a managed display, or with neither a window nor an app to offer.
     init?(state: SavedState, config: Config, apps running: [SwitcherApp] = [], forward: Bool, active: DisplayID? = nil) {
         let grids = Self.grids(state: state, config: config)
         guard let home = grids.first(where: { $0.display == active }) ?? grids.first else { return nil }
         let windows = grids.flatMap { $0.entries.map(\.window) }
         let apps = Self.shelf(running, state: state, windows: windows)
         let order = windows.map(SwitcherTarget.window) + apps.map { .app($0.pid) }
-        guard let first = order.first, let last = order.last else { return nil }
+        guard let first = order.first else { return nil }
         self.grids = grids
         displays = state.displays.map(\.info)
         self.apps = apps
         self.order = order
-        if let focus = state.focus, let index = windows.firstIndex(of: focus) {
-            selected = .window(windows[(index + (forward ? 1 : windows.count - 1)) % windows.count])
-        } else if let first = windows.first, let last = windows.last {
-            selected = .window(forward ? first : last)
-        } else { selected = forward ? first : last }
+        self.forward = forward
+        let current = state.focus.flatMap { windows.contains($0) ? $0 : nil } ?? Self.latest(windows, state: state)
+        selected = current.map(SwitcherTarget.window) ?? first
+        quick = Self.quick(windows, from: current, state: state, forward: forward)
         place = Place(display: home.display, cell: home.shown ?? GridCell(workspace: 0, page: 0))
         follow()
     }
@@ -180,6 +184,26 @@ struct SwitcherSelection: Equatable {
         return running.filter { !owners.contains($0.pid) }
     }
 
+    /// The window of `windows` focused last, the first in ring order on a tie, as among windows never focused.
+    private static func latest(_ windows: [WindowID], state: SavedState) -> WindowID? {
+        var best: (window: WindowID, stamp: UInt64)?
+        for window in windows {
+            let stamp = state.windows[window]?.lastFocused ?? 0
+            if best.map({ stamp > $0.stamp }) ?? true { best = (window, stamp) }
+        }
+        return best?.window
+    }
+
+    /// Next goes back to the window focused before `current`: the ring's other window focused last. Without one ever
+    /// focused, and always for prev, it goes to the window after `current` in the ring, or before it for prev, which
+    /// with a single window is `current` itself.
+    private static func quick(_ windows: [WindowID], from current: WindowID?, state: SavedState, forward: Bool) -> WindowID? {
+        guard let current, let index = windows.firstIndex(of: current) else { return nil }
+        let focused = windows.filter { $0 != current && (state.windows[$0]?.lastFocused ?? 0) > 0 }
+        if forward, let back = latest(focused, state: state) { return back }
+        return windows[(index + (forward ? 1 : windows.count - 1)) % windows.count]
+    }
+
     /// The view follows a selected window. With an app selected it stays, on a display and a cell that still exist.
     private mutating func follow() {
         if let id = selected.window {
@@ -197,6 +221,7 @@ struct SwitcherSelection: Equatable {
 
     /// Steps through the ring, wrapping around.
     mutating func step(forward: Bool) {
+        quick = nil
         guard let index = order.firstIndex(of: selected) else { return }
         let count = order.count
         selected = order[((index + (forward ? 1 : -1)) % count + count) % count]
@@ -208,6 +233,7 @@ struct SwitcherSelection: Equatable {
     /// and Up from an app to the nearest window; Left and Right in the row stay in it. With nothing there, the selection
     /// crosses to the managed display on that side, found as for Ctrl+arrows, when it has a window. It does not wrap.
     mutating func move(_ direction: SwitcherDirection) {
+        quick = nil
         let grid = grid
         let tiles = grid.entries.map { (target: SwitcherTarget.window($0.window), center: $0.center) }
         let row = zip(apps, grid.shelf(apps.count)).map { (target: SwitcherTarget.app($0.pid), center: $1) }
@@ -240,7 +266,9 @@ struct SwitcherSelection: Equatable {
 
     /// Follows model changes and apps starting and quitting while open: a window that goes, with its display or on its
     /// own, and an app that quits or gains a window in the ring leave the order, and when one was the selection, the next
-    /// in the order takes its place. Returns false when no managed display is left, or nothing to offer.
+    /// in the order takes its place. That replacement is not a move, so `quick` stays; when its own window goes, it is
+    /// found again from the selection in the order kept. Returns false when no managed display is left, or nothing to
+    /// offer.
     mutating func update(state: SavedState, config: Config, apps running: [SwitcherApp] = []) -> Bool {
         let grids = Self.grids(state: state, config: config)
         let windows = grids.flatMap { $0.entries.map(\.window) }
@@ -254,6 +282,9 @@ struct SwitcherSelection: Equatable {
         if !present.contains(selected) {
             let start = old.firstIndex(of: selected) ?? 0
             selected = (1..<old.count).lazy.map { old[(start + $0) % old.count] }.first(where: present.contains) ?? first
+        }
+        if let quick, !present.contains(.window(quick)) {
+            self.quick = Self.quick(next.compactMap(\.window), from: selected.window, state: state, forward: forward)
         }
         self.grids = grids
         displays = state.displays.map(\.info)

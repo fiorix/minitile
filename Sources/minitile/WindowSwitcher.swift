@@ -104,10 +104,11 @@ final class WindowSwitcher {
         return nil
     }
 
-    /// Hides the panel before returning what to switch to, so the panel never shows in a transition capture. An app
-    /// opens only from a panel that showed, so a quick Cmd+Tab switches to a window or does nothing.
+    /// Hides the panel before returning what to switch to, so the panel never shows in a transition capture. Before the
+    /// panel shows, a quick Cmd+Tab switches to the selection's `quick` window until a step or an arrow moves it, and an
+    /// app opens only from a panel that showed, so it switches to a window or does nothing.
     func commit() -> SwitcherTarget? {
-        let selected = visible || selection?.selected.app == nil ? selection?.selected : nil
+        let selected = visible ? selection?.selected : (selection?.quick ?? selection?.selected.window).map(SwitcherTarget.window)
         close()
         return selected
     }
