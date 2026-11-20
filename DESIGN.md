@@ -20,7 +20,7 @@ Display
 - A full screen window has a page to itself (see "Full screen windows").
 - Empty pages disappear. Empty workspaces disappear, except a freshly opened one while it is being viewed.
 
-The currently viewed empty page/workspace is retained until the view leaves it, including when its last window closes. This leaves a destination for the next window. Other empty pages/workspaces are removed. Focus outside the managed window set clears the default window command target while retaining the last display context.
+The currently viewed empty page/workspace is retained until the view leaves it, except when closing a window leaves its display's shown page empty while another page exists on that display: the display then shows another page so the empty page and any empty workspace disappear, leaving only a display's sole page empty. Other empty pages/workspaces are removed. Focus outside the managed window set clears the default window command target while retaining the last display context.
 
 ### Visual style
 
@@ -139,14 +139,14 @@ Untested in minitile: the panel on screen and its columns, the link's hover and 
 
 - A new window goes to the workspace being viewed. It takes the first free slot, scanning from the current page to the right; if none is free, it goes onto a new page at the end of the workspace. A full screen window's page has no free slot.
 - If a new window from the frontmost app lands on a page that is not shown, that page is shown, since macOS focuses such windows. Windows from background apps are placed without changing the view.
-- When a window closes, the remaining windows on its page re-tile, and the freed slot is reused by the next new window. Windows never flow back from later pages.
+- When a window closes, the remaining windows on its page re-tile, and the freed slot is reused by the next new window. Windows never flow back from later pages. When the closed window was the last window on its display's shown page (reserved and floating windows included) and the display has another page, the display shows the page of its preferred window instead (one that can take focus first, then most recently focused, then first in grid order), dropping the empty page and any empty workspace without changing the active display; a display's only page stays.
 - When focus moves to a window on a hidden page by any means (the Dock, a notification, `mntl window focus`), that page is shown. For 1.2 s after a command changes the shown page, such reports are ignored: the app that was frontmost can still report the window minitile just hid as focused, and following it would undo the navigation. Activation still shows an app's page during that time.
 - When an app with no window on a shown page is activated (Cmd-Tab, the Dock), the page holding its most recently focused window is shown. macOS does the focusing. Minimized windows do not count as being on a shown page; windows of a hidden app do, since activation unhides them. See "Rules minitile must follow" for the timing.
 
 ### Navigation and focus
 
 - Showing a page focuses the window that last had focus on it, or its first window. An empty page focuses nothing. A window that cannot take focus leaves the page shown and the next window on it focused (see "Rules minitile must follow").
-- When the focused window closes, is minimized or ordered out, or its app is hidden, minitile does not focus another window. macOS picks the next one, and minitile follows it.
+- When the focused window closes, is minimized or ordered out, or its app is hidden, minitile leaves focus to macOS and follows what macOS picks. If a close of the focused window (or a close in the frontmost app with nothing focused, or right after an activation cleared that window's focus) leaves the frontmost managed app with no focused window after a short settling read, minitile focuses the preferred focusable window across all managed displays (most recently focused, else on the active display first, then grid order) and shows its page.
 - Ctrl+Up/Down (`workspace next|prev`) shows the page at the same position in the workspace above or below. If that workspace ends exactly one page short of the position, an empty page opens there, as Ctrl+Right from its last page would; if it is shorter still, its last page is shown. `workspace show` by index shows the page last viewed in that workspace.
 - Ctrl+Right on the last page opens an empty page, and Ctrl+Down on the last workspace opens an empty workspace. Neither opens a second empty one next to an empty one.
 - Past the edge of a display's grid, Ctrl+arrows cross to the display on that side: Ctrl+Left from the first page, Ctrl+Up from the first workspace, Ctrl+Right from an empty last page and Ctrl+Down from an empty last workspace. Where no managed display lies on that side, they do nothing.
@@ -687,6 +687,7 @@ enum Input {
     case windowGone(WindowID)
     case focusChanged(WindowID?)               // the shell drops echoes of its own focus actions
     case appActivated(pid: Int32)              // the pre-emption fast path
+    case noFocusAfterClose                     // macOS left no window focused after a close
     case dragEnded(WindowID, frame: Rect, cursor: Point)
     case nativeTiled(WindowID, frame: Rect, companions: [WindowID: Rect]) // settled native tiling frames to adopt
     case command([String])                     // keys, menu, mouse gestures and mntl
@@ -846,6 +847,7 @@ Focus and closing:
 - Some windows cannot become key, such as a small untitled window an app keeps open, and their app keeps the key window it had. If the reread after focusing a window on a shown page, while the model's focus is still that window, names a window on a hidden page, the window refused focus: minitile keeps the page and runs `window focus next`, which also makes the next window the page's last focus. If that window refuses too, minitile stops there. Following the reread would undo the navigation and, with the refusing window as the page's last focus, bounce every visit to that page.
 - Focus actions are coalesced: the core's focus changes at once, but the Accessibility and SkyLight focus calls run once per main-loop turn for the latest target. `debug timings` reports the last run's duration as `focus_ms`.
 - Activating an app does not necessarily send a focus notification. When another app is activated, clear a recorded focus owned by a different app at once, without AX reads, then read the activated app's focus about 150 ms later, after macOS has settled its key window. An earlier read can return a stale key window on a hidden page.
+- After a window closes that held focus, just lost focus to an activation, or belonged to the frontmost app while nothing had focus, read the frontmost managed app's `kAXFocusedWindow` about 150 ms later if the model still has no focus. Follow a window macOS focused meanwhile; treat `kAXErrorNoValue` (which other focus reads keep as unknown) as definite absence there and send `noFocusAfterClose`, syncing the chosen window's native Space as `window focus` does. Do not arm the view-change echo guard for a close-driven page change, so a later macOS focus report still wins.
 - Close a window by pressing its `kAXCloseButton`.
 
 ## Implementation

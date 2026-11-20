@@ -70,6 +70,50 @@ enum ActivationFocus {
     static func clears(owner: Int32?, activated pid: Int32) -> Bool { owner.map { $0 != pid } ?? false }
 }
 
+/// macOS picks the focus after a window closes, and minitile follows it, but macOS can also leave no window focused.
+/// When the closed window had focus, just lost focus to an activation that still has not focused a window (as when its
+/// app quit), or nothing had focus while its app is frontmost, the shell reads the frontmost app's focus a moment
+/// later; a focus macOS reported meanwhile wins.
+struct CloseFocus {
+    static let clearedInterval: TimeInterval = 1.2
+    private(set) var cleared: (id: WindowID, until: TimeInterval)?
+
+    enum Step: Equatable {
+        case none
+        /// macOS focused a window it has not reported.
+        case follow(WindowID)
+        /// macOS left no window focused, so minitile focuses one.
+        case fallback
+    }
+
+    mutating func activationCleared(_ id: WindowID?, now: TimeInterval) {
+        cleared = id.map { ($0, now + Self.clearedInterval) }
+    }
+
+    mutating func focused(_ id: WindowID?) {
+        if id != nil { cleared = nil }
+    }
+
+    /// `owner` is the closed window's pid, nil when the model did not know the window.
+    func checks(closed id: WindowID, owner: Int32?, focus: WindowID?, frontmost: Int32?, now: TimeInterval) -> Bool {
+        guard let owner else { return false }
+        let recentlyCleared = focus == nil && cleared.map { $0.id == id && now < $0.until } == true
+        return focus == id || recentlyCleared || (focus == nil && owner == frontmost)
+    }
+
+    /// `read` is the frontmost app's focus, unknown when minitile does not manage that app.
+    static func step(focus: WindowID?, read: FocusObservation) -> Step {
+        guard focus == nil, case .known(let id) = read else { return .none }
+        return id.map(Step.follow) ?? .fallback
+    }
+
+    /// An app with no focused window answers the AX read with no value. Other focus reads keep that as unknown, but a
+    /// moment after a close it is taken as definite, or a close that leaves nothing focused would go unnoticed.
+    static func observation(_ read: (value: CFTypeRef?, error: AXError), identify: (AXUIElement) -> WindowID?) -> FocusObservation {
+        read.error == .noValue ? .known(nil) : FocusRead.read(copy: { read }, identify: identify).observation
+    }
+}
+
 /// minitile's own recent focus actions, by pid. The activations and focus notifications they cause arrive late and
 /// out of order when focus moves quickly between apps, so each app's echo is kept for its own interval.
 struct FocusEchoes {

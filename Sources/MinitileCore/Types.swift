@@ -99,6 +99,8 @@ public enum Input: Sendable {
     case windowGone(WindowID)
     case focusChanged(WindowID?)
     case appActivated(pid: Int32)
+    /// macOS left no window focused after a window closed, so minitile focuses one itself.
+    case noFocusAfterClose
     case dragEnded(WindowID, frame: Rect, cursor: Point)
     case nativeTiled(WindowID, frame: Rect, companions: [WindowID: Rect] = [:])
     case command([String])

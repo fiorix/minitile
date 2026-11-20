@@ -79,6 +79,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var wakeUntil: TimeInterval = 0
     var lastActivation: (pid: Int32, time: TimeInterval)?
     var activationFocusRead: DispatchWorkItem?
+    var closeFocus = CloseFocus()
+    var closeFocusRead: DispatchWorkItem?
     /// Keeps App Nap away: a windowless accessory app looks idle, and a napping one handles keys and gestures late.
     var napActivity: NSObjectProtocol?
     var lastResumeMilliseconds = 0.0
@@ -320,7 +322,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @discardableResult func handle(_ input: Input, grab session: Int? = nil) -> Reply? {
         guard started, !quitting else { return nil }
-        if case .windowGone(let id) = input { reconciler?.forget(id); updateDragTracking() }
+        var checksCloseFocus = false
+        if case .windowGone(let id) = input {
+            reconciler?.forget(id); updateDragTracking()
+            let state = engine.savedState()
+            checksCloseFocus = discovery?.frozen != true
+                && closeFocus.checks(closed: id, owner: state.windows[id]?.info.pid, focus: state.focus,
+                                     frontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier,
+                                     now: ProcessInfo.processInfo.systemUptime)
+        }
         if case .windowTabSelected(let previous, let info) = input {
             // Both physical windows' cached geometry is stale once the slot changes hands.
             reconciler?.forget(previous)
@@ -330,10 +340,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var argv: [String]?
         if case .command(let command) = input { argv = command }
         let before = argv.map { _ in engine.savedState() }
+        // The fallback focuses a window as `window focus ID` does, so its display goes onto that page's Space too.
+        var fallbackBefore: SavedState?
+        if case .noFocusAfterClose = input { fallbackBefore = engine.savedState() }
         let context = argv.flatMap { _ in engine.commandDisplay }
         var grabbing: (argv: [String], focus: WindowID?)?
         if let argv, GrabCommand.grabs(argv) { grabbing = (argv, before?.focus) }
         let output = engine.handle(input)
+        closeFocus.focused(engine.savedState().focus)
         dragGeneration.update(input, output: output)
         let grab = grabbing.flatMap { GrabCommand(argv: $0.argv, focus: $0.focus, output: output) }
         // The pointer already holds a dragged window, so nothing grabs it, Ctrl+arrow during the drag included.
@@ -352,6 +366,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let crossed { gridIndicator.show(on: crossed) }
             plan = TransitionPlan.plan(before: before, after: after, argv: argv, context: context, crossed: crossed != nil)
             spaceSync.formUnion(SpaceSync.displays(before: before, after: after, actions: output.actions))
+        }
+        if let fallbackBefore {
+            spaceSync.formUnion(SpaceSync.displays(before: fallbackBefore, after: engine.savedState(), actions: output.actions))
         }
         let held = transitions.hold(output, plan: plan, before: before)
         if !held, discovery?.frozen != true { reconcile(output) }
@@ -378,6 +395,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         updateMenu()
+        if checksCloseFocus { checkFocusAfterClose() }
         return reply
     }
 
@@ -491,7 +509,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         desktopNotice.stop()
         transitions.stop()
         cancelNativeTiling()
-        permissionTimer?.invalidate(); healthTimer?.invalidate(); dragTimer?.invalidate(); displayWork?.cancel(); activationFocusRead?.cancel()
+        permissionTimer?.invalidate(); healthTimer?.invalidate(); dragTimer?.invalidate(); displayWork?.cancel(); activationFocusRead?.cancel(); closeFocusRead?.cancel()
         for (center, token) in observers { center.removeObserver(token) }
         signalSources.forEach { $0.cancel() }
         stateWriter.flush()

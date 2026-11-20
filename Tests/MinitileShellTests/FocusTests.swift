@@ -116,3 +116,38 @@ import Testing
     #expect(!foreign)
     #expect(!afterForeign)
 }
+
+@Test func closeFocusChecksFocusedFrontmostAndRecentlyClearedWindowsOnly() {
+    var close = CloseFocus()
+    // Focused window closing, or unfocused close in the frontmost app, schedules a check; background closes do not.
+    #expect(close.checks(closed: 1, owner: 10, focus: 1, frontmost: 20, now: 1))
+    #expect(close.checks(closed: 1, owner: 10, focus: nil, frontmost: 10, now: 1))
+    #expect(!close.checks(closed: 1, owner: 10, focus: 2, frontmost: 10, now: 1))
+    #expect(!close.checks(closed: 1, owner: 10, focus: nil, frontmost: 20, now: 1))
+    #expect(!close.checks(closed: 1, owner: nil, focus: 1, frontmost: 10, now: 1))
+
+    // Quitting an app activates the next app (clearing focus) before presence rechecks report the closed window.
+    close.activationCleared(1, now: 5)
+    #expect(close.checks(closed: 1, owner: 10, focus: nil, frontmost: 20, now: 5.2))
+    #expect(!close.checks(closed: 2, owner: 10, focus: nil, frontmost: 20, now: 5.2))
+    #expect(!close.checks(closed: 1, owner: 10, focus: nil, frontmost: 20, now: 5 + CloseFocus.clearedInterval))
+    close.activationCleared(1, now: 10)
+    close.focused(nil)
+    #expect(close.checks(closed: 1, owner: 10, focus: nil, frontmost: 20, now: 10.1))
+    close.focused(3)
+    #expect(!close.checks(closed: 1, owner: 10, focus: nil, frontmost: 20, now: 10.1))
+}
+
+@Test func closeFocusFollowsMacOSAndFallsBackOnlyOnDefiniteAbsence() {
+    let element = AXUIElementCreateApplication(9001)
+    #expect(CloseFocus.observation((nil, .noValue), identify: { _ in 42 }) == .known(nil))
+    #expect(CloseFocus.observation((nil, .success), identify: { _ in 42 }) == .known(nil))
+    #expect(CloseFocus.observation((nil, .cannotComplete), identify: { _ in 42 }) == .unknown)
+    #expect(CloseFocus.observation((element, .success), identify: { _ in 42 }) == .known(42))
+
+    #expect(CloseFocus.step(focus: nil, read: .known(nil)) == .fallback)
+    #expect(CloseFocus.step(focus: nil, read: .known(7)) == .follow(7))
+    #expect(CloseFocus.step(focus: nil, read: .unknown) == .none)
+    #expect(CloseFocus.step(focus: 3, read: .known(nil)) == .none)
+    #expect(CloseFocus.step(focus: 3, read: .known(7)) == .none)
+}

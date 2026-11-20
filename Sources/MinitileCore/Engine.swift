@@ -15,13 +15,14 @@ public struct Engine: Sendable {
         case .started(let saved, let windows, let displays, let focused):
             start(saved: saved, windows: windows, displays: displays, focused: focused, output: &output)
         case .windowAppeared(let info): appeared(info, output: &output)
-        case .windowGone(let id): gone(id, output: &output)
+        case .windowGone(let id): if let at = gone(id, output: &output) { vacate(at, output: &output) }
         case .windowUpdated(let info): updateWindow(info, output: &output)
         case .windowTabSelected(let previous, let info): selectWindowTab(previous: previous, info: info, output: &output)
         case .focusChanged(let id):
             if let id, let at = location(id) { show(at, focusWindow: false, output: &output); focus(id, action: false, output: &output) }
             else { focus(nil, action: false, output: &output) }
         case .appActivated(let pid): appActivated(pid, output: &output)
+        case .noFocusAfterClose: focusAfterClose(output: &output)
         case .command(let argv):
             do { output.reply = try command(argv, output: &output) }
             catch { state = previous; output = Output(reply: Reply(ok: false, text: String(describing: error))) }

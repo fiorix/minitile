@@ -153,7 +153,10 @@ extension AppDelegate {
         let wasSuspended = !suspendedReasons.isEmpty
         let shouldResume = suspension.set(reason, enabled: enabled)
         discovery?.frozen = !suspendedReasons.isEmpty
-        if enabled { dropPanels.hide(); edgeDrops?.cancel(); edgePanels.hide(); endGrab(); cancelNativeTiling(); spaceSync = [] }
+        if enabled {
+            dropPanels.hide(); edgeDrops?.cancel(); edgePanels.hide(); endGrab(); cancelNativeTiling()
+            closeFocusRead?.cancel(); closeFocus = CloseFocus(); spaceSync = []
+        }
         if shouldResume { resume() }
         else if wasSuspended != !suspendedReasons.isEmpty { updateSwipes() }
         updateModalAvailability()
@@ -225,13 +228,35 @@ extension AppDelegate {
     /// Activation does not necessarily send a focus notification. Drop a focus owned by another app at once, then
     /// read the activated app's focus after macOS has settled its key window; an earlier read can return a stale one.
     func followActivatedFocus(_ pid: Int32) {
-        let owner = engine.savedState().focus.flatMap { discovery?.windows[$0]?.info.pid }
-        if ActivationFocus.clears(owner: owner, activated: pid) { handle(.focusChanged(nil)) }
+        let focused = engine.savedState().focus
+        let owner = focused.flatMap { discovery?.windows[$0]?.info.pid }
+        if ActivationFocus.clears(owner: owner, activated: pid) {
+            closeFocus.activationCleared(focused, now: ProcessInfo.processInfo.systemUptime)
+            handle(.focusChanged(nil))
+        }
         activationFocusRead?.cancel()
         let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated { self?.discovery?.refreshFocus(pid: pid) }
         }
         activationFocusRead = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + ActivationFocus.readDelay, execute: work)
+    }
+
+    /// Reads the frontmost app's focus a moment after a close (see `CloseFocus`), once macOS has had time to report
+    /// the focus it picked.
+    func checkFocusAfterClose() {
+        closeFocusRead?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.started, !self.quitting, let discovery = self.discovery, !discovery.frozen else { return }
+                switch CloseFocus.step(focus: self.engine.savedState().focus, read: discovery.focusAfterClose()) {
+                case .none: break
+                case .follow(let id): self.focusReported(id)
+                case .fallback: self.handle(.noFocusAfterClose)
+                }
+            }
+        }
+        closeFocusRead = work
         DispatchQueue.main.asyncAfter(deadline: .now() + ActivationFocus.readDelay, execute: work)
     }
 

@@ -685,6 +685,14 @@ final class Discovery {
         return observation ?? AX.focus(context.element)
     }
 
+    /// The frontmost app's focus for the check after a close (see `CloseFocus`), unknown when minitile does not
+    /// manage that app.
+    func focusAfterClose() -> FocusObservation {
+        guard !frozen, let app = NSWorkspace.shared.frontmostApplication, allows(app),
+              let context = applications[app.processIdentifier] else { return .unknown }
+        return CloseFocus.observation(AX.copy(context.element, kAXFocusedWindowAttribute), identify: AX.id)
+    }
+
     func refreshFocus(pid: Int32? = nil) {
         guard !frozen else { return }
         let read = pid.flatMap { applications[$0].map { AX.focusedWindow($0.element) } }

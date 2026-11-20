@@ -150,14 +150,55 @@ extension Engine {
         }
     }
 
-    mutating func gone(_ id: WindowID, output: inout Output) {
-        guard state.windows[id] != nil else { return }
+    /// Returns the page location the window had, if it had one.
+    @discardableResult mutating func gone(_ id: WindowID, output: inout Output) -> Location? {
+        guard state.windows[id] != nil else { return nil }
+        let at = location(id)
         removeFromPage(id)
         state.windows.removeValue(forKey: id)
         output.events.append(Event(type: "window_removed", data: .number(Double(id))))
         if state.focus == id {
             focus(nil, action: false, output: &output)
         }
+        return at
+    }
+
+    /// A display whose shown page a close left empty shows the page of its preferred window instead, so cleanup drops
+    /// the empty page; a display with no other page keeps it. The close may be in the background, so the display a
+    /// command acts on stays as it was, and focus is left to macOS.
+    mutating func vacate(_ at: Location, output: inout Output) {
+        guard isShown(at), page(at).windows.isEmpty else { return }
+        let positions = locations().filter { $0.value.display == at.display }
+        guard let id = preferred(positions), let target = positions[id] else { return }
+        let active = state.activeDisplay
+        show(target, focusWindow: false, output: &output)
+        state.activeDisplay = active
+    }
+
+    /// macOS left no window focused after a close: the preferred window that can take focus, on any managed display,
+    /// gets focus, and its page is shown.
+    mutating func focusAfterClose(output: inout Output) {
+        guard state.focus == nil else { return }
+        let candidates = locations().filter { state.displays[$0.value.display].info.unmanagedReason == nil && canFocus($0.key) }
+        guard let id = preferred(candidates), let at = candidates[id] else { return }
+        show(at, focusWindow: false, output: &output)
+        focus(id, action: true, output: &output)
+    }
+
+    /// The window minitile picks when it must pick one: one that can take focus, then the most recently focused, then
+    /// on the command display before others, then first in grid order, which with no focus history is on the top
+    /// workspace's first page.
+    func preferred(_ candidates: [WindowID: Location]) -> WindowID? {
+        let current = currentDisplay()
+        return candidates.min { a, b in
+            let (canA, canB) = (canFocus(a.key), canFocus(b.key))
+            if canA != canB { return canA }
+            let (stampA, stampB) = (state.windows[a.key]?.lastFocused ?? 0, state.windows[b.key]?.lastFocused ?? 0)
+            if stampA != stampB { return stampA > stampB }
+            if (a.value.display == current) != (b.value.display == current) { return a.value.display == current }
+            return (a.value.display, a.value.workspace, a.value.page, a.value.slot)
+                < (b.value.display, b.value.workspace, b.value.page, b.value.slot)
+        }?.key
     }
 
     mutating func appActivated(_ pid: Int32, output: inout Output) {

@@ -204,3 +204,129 @@ func hidingFocusedAppWaitsForNativeFocus(_ order: [WindowID]) {
     #expect(e.savedState().focus == 1)
     #expect(out.actions.isEmpty)
 }
+
+@Test func closingLastWindowOnAShownPageDropsItAndFollowsFocusHistoryThenTopLeft() {
+    var e = engine(4)
+    // Four workspaces: W1:[1, 2], W2:[3], W3:[4], W4:[5], with 1 and 2 never focused, then 3 -> 4 -> 5.
+    command(&e, "window move 3 workspace next")
+    command(&e, "window move 4 workspace next")
+    command(&e, "window move 4 workspace next")
+    _ = e.handle(.windowAppeared(window(5, frontmost: true)))
+    command(&e, "window move 5 workspace next")
+    for id: WindowID in [1, 2, 3, 4, 5] { e.state.windows[id]?.lastFocused = 0 }
+    command(&e, "window focus 3")
+    command(&e, "window focus 4")
+    command(&e, "window focus 5")
+    #expect(grid(e) == [[[1, 2]], [[3]], [[4]], [[5]]])
+
+    // Closing 5 drops W4 and shows W3 (4), leaving focus nil with no focus action so macOS can choose.
+    let first = e.handle(.windowGone(5))
+    #expect(grid(e) == [[[1, 2]], [[3]], [[4]]])
+    #expect(first.scene.displays["primary"]?.visible == [4])
+    #expect(e.savedState().focus == nil && first.actions.isEmpty)
+
+    // Fallback focuses 4; closing 4 drops W3 and shows W2 (3); closing 3 drops W2 and falls back to W1:P1 ([1, 2]).
+    let fallback4 = e.handle(.noFocusAfterClose)
+    #expect(e.savedState().focus == 4 && fallback4.actions == [.focus(4)])
+    _ = e.handle(.windowGone(4))
+    #expect(grid(e) == [[[1, 2]], [[3]]])
+    #expect(e.makeScene().displays["primary"]?.visible == [3])
+    _ = e.handle(.windowGone(3))
+    #expect(grid(e) == [[[1, 2]]])
+    #expect(e.makeScene().displays["primary"]?.visible == [1, 2])
+    let fallback1 = e.handle(.noFocusAfterClose)
+    #expect(e.savedState().focus == 1 && fallback1.actions == [.focus(1)])
+}
+
+@Test func closingLastWindowKeepsADisplaysOnlyPageAndRespectsReservedAndSharedPages() {
+    var e = engine(2)
+    command(&e, "window nudge 2 right")
+    // Closing 1 on a shared or hidden page: first make [1, 3] on P1 and [2] on P2.
+    command(&e, "window focus 1")
+    _ = e.handle(.windowAppeared(window(3, frontmost: true)))
+    #expect(grid(e) == [[[1, 3], [2]]])
+    // Shared shown page stays shown; hidden page closing its sole window leaves the shown page alone.
+    _ = e.handle(.windowGone(3))
+    #expect(grid(e) == [[[1], [2]]])
+    #expect(e.makeScene().displays["primary"]?.visible == [1])
+    let hiddenClose = e.handle(.windowGone(2))
+    #expect(grid(e) == [[[1]]])
+    #expect(!hiddenClose.events.contains { $0.type == "page_shown" })
+    // The display's only page stays empty when its last window closes.
+    let last = e.handle(.windowGone(1))
+    #expect(grid(e) == [[[]]])
+    #expect(last.actions.isEmpty && e.savedState().focus == nil)
+    #expect(e.handle(.noFocusAfterClose).actions.isEmpty)
+}
+
+@Test func minimizedSlotsKeepTheirPageAndRankBehindFocusableWindows() {
+    var e = engine(2)
+    command(&e, "window nudge 2 right")
+    _ = e.handle(.windowAppeared(window(3, frontmost: true)))
+    command(&e, "window nudge 3 right")
+    #expect(grid(e) == [[[1], [2], [3]]])
+    // P1:[1], P2:[2], P3:[3]. Focus 2 more recently than 1, then minimize 2 and focus 3.
+    command(&e, "window focus 1")
+    command(&e, "window focus 2")
+    var min2 = window(2)
+    min2.minimized = true
+    _ = e.handle(.windowUpdated(min2))
+    command(&e, "window focus 3")
+    // Closing 3 vacates P3 onto P1 ([1], focusable) rather than P2 ([2], minimized despite a newer stamp).
+    let vacated = e.handle(.windowGone(3))
+    #expect(grid(e) == [[[1], [2]]])
+    #expect(vacated.scene.displays["primary"]?.visible == [1])
+    // On a page that still holds a minimized slot, closing the other window keeps the page.
+    command(&e, "page next")
+    _ = e.handle(.windowAppeared(window(4, frontmost: true)))
+    #expect(grid(e) == [[[1], [2, 4]]])
+    _ = e.handle(.windowGone(4))
+    #expect(grid(e) == [[[1], [2]]])
+    #expect(e.savedState().displays[0].workspaces[0].currentPage == e.savedState().displays[0].workspaces[0].pages[1].id)
+}
+
+@Test func backgroundCloseOnAnotherDisplayPreservesActiveDisplayAndFallbackCrossesDisplays() {
+    let other = DisplayInfo(id: "other", frame: Rect(x: -880, y: 80, width: 1000, height: 800))
+    var e = Engine()
+    _ = e.handle(.started(saved: nil, windows: [window(1, display: "other"), window(2, display: "other"), window(3, display: "primary")],
+                          displays: [other, testDisplay], focus: 3))
+    // Split other into two pages and show its second page, then return focus to 3 on primary.
+    command(&e, "window nudge 2 right")
+    command(&e, "window focus 3")
+    #expect(grid(e, display: 0) == [[[1], [2]]])
+    #expect(e.commandDisplay == "primary")
+    // Window 2 closes in the background on other: other drops P2 for P1, while primary stays active and 3 keeps focus.
+    let bg = e.handle(.windowGone(2))
+    #expect(grid(e, display: 0) == [[[1]]])
+    #expect(bg.scene.displays["other"]?.visible == [1])
+    #expect(e.commandDisplay == "primary" && e.savedState().focus == 3)
+    // While focus is held, noFocusAfterClose changes nothing; once 3 closes, it crosses to 1 on other.
+    #expect(e.handle(.noFocusAfterClose).actions.isEmpty)
+    _ = e.handle(.windowGone(3))
+    #expect(grid(e, display: 1) == [[[]]])
+    let fallback = e.handle(.noFocusAfterClose)
+    #expect(e.savedState().focus == 1 && fallback.actions == [.focus(1)] && e.commandDisplay == "other")
+
+    // With no focus history on either display, noFocusAfterClose prefers a window on the command display over display 0.
+    var fresh = Engine()
+    _ = fresh.handle(.started(saved: nil, windows: [window(10, display: "other"), window(20, display: "primary"), window(21, display: "primary")],
+                              displays: [other, testDisplay], focus: 21))
+    fresh.state.windows[10]?.lastFocused = 0
+    fresh.state.windows[20]?.lastFocused = 0
+    command(&fresh, "window nudge 21 right")
+    _ = fresh.handle(.windowGone(21))
+    let local = fresh.handle(.noFocusAfterClose)
+    #expect(fresh.savedState().focus == 20 && local.actions == [.focus(20)] && fresh.commandDisplay == "primary")
+}
+
+@Test func closingASelectedTabAfterSlotTransferKeepsItsPage() {
+    var e = engine(2)
+    command(&e, "window nudge 2 right")
+    #expect(grid(e) == [[[1], [2]]])
+    // Tab 3 replaces 2 in its slot before 2 is reported gone.
+    _ = e.handle(.windowTabSelected(previous: 2, window(3, pid: window(2).pid, frontmost: true)))
+    let out = e.handle(.windowGone(2))
+    #expect(grid(e) == [[[1], [3]]])
+    #expect(out.scene.displays["primary"]?.visible == [3])
+    #expect(e.savedState().focus == 3)
+}
