@@ -23,8 +23,9 @@ extension SwitcherApp {
     }
 }
 
-/// The switcher's main-thread side: its selection, its session with the key router, and when the panel shows. Opened
-/// by a held binding, the panel waits `showDelay`, so a quick Cmd+Tab switches without it ever appearing.
+/// The switcher's main-thread side: its selection, its pointer state, its session with the key router, and when the
+/// panel shows. Opened by a held binding, the panel waits `showDelay`, so a quick Cmd+Tab switches without it ever
+/// appearing.
 @MainActor
 final class WindowSwitcher {
     typealias Schedule = @MainActor (TimeInterval, @escaping @MainActor @Sendable () -> Void) -> Void
@@ -32,16 +33,35 @@ final class WindowSwitcher {
     typealias Apps = @MainActor () -> [SwitcherApp]
     static let showDelay: TimeInterval = 0.15
 
+    struct Press: Equatable {
+        var hit: SwitcherHit?
+        var start: CGPoint
+        var dragging: WindowID?
+    }
+
+    enum PointerUpAction: Equatable {
+        case none
+        case commit
+        case cross(SwitcherDirection)
+        case drop(window: WindowID, drop: SwitcherDrop, layout: SwitcherDropLayout, sourceDisplay: DisplayID)
+    }
+
     private(set) var selection: SwitcherSelection?
     private(set) var session: Int?
     /// Opened by a binding, so it commits when the binding's modifiers are released.
     private(set) var held = false
     private(set) var visible = false
+    private(set) var press: Press?
+    private(set) var releasedDuringPress = false
+    private(set) var dragPoint: CGPoint?
+    private(set) var hoveredDrop: SwitcherDrop?
+    private(set) var dropLayout: SwitcherDropLayout?
     /// Runs before the delayed panel appears and may close the switcher, as a modifier release the tap missed does.
     var willShow: (() -> Void)?
     /// The newest session seen, so an open the tap thread sent before a newer session cannot reopen a closed switcher.
     private var latest = 0
     private var state: SavedState?
+    private var config: Config = .default
     private var shown: SwitcherContent?
     /// The display the panel is on, or before it shows, the active display it starts from.
     private var presented: DisplayID?
@@ -61,6 +81,12 @@ final class WindowSwitcher {
     }
 
     var isOpen: Bool { selection != nil }
+    var dragging: WindowID? { press?.dragging }
+    var isDragging: Bool { dragging != nil }
+    var currentDropLayout: SwitcherDropLayout? {
+        guard let selection, let state else { return nil }
+        return SwitcherContent(selection: selection, state: state, names: names()).dropLayout
+    }
 
     func isStale(_ session: Int) -> Bool { session <= latest }
 
@@ -77,6 +103,7 @@ final class WindowSwitcher {
         self.session = session
         self.held = held
         self.state = state
+        self.config = config
         presented = display
         if held { schedule(Self.showDelay) { [weak self] in self?.reveal(session) } }
         else { reveal(session) }
@@ -84,22 +111,120 @@ final class WindowSwitcher {
     }
 
     func step(forward: Bool) {
+        guard !isDragging else { return }
         selection?.step(forward: forward)
         redraw()
     }
 
     func move(_ direction: SwitcherDirection) {
+        guard !isDragging else { return }
         selection?.move(direction)
         redraw()
     }
 
+    func hover(_ target: SwitcherTarget) {
+        guard visible, press == nil else { return }
+        selection?.select(target)
+        redraw()
+    }
+
+    func cross(_ side: SwitcherDirection) {
+        guard !isDragging else { return }
+        selection?.cross(side)
+        redraw()
+    }
+
+    func pointerDown(at point: CGPoint) {
+        guard visible, let selection, let state else { return }
+        let base = SwitcherContent(selection: selection, state: state, names: names())
+        let hit = base.target(at: point)
+        press = Press(hit: hit, start: point, dragging: nil)
+        dragPoint = nil
+        hoveredDrop = nil
+        dropLayout = nil
+        if case .target(let target) = hit {
+            self.selection?.select(target)
+            redraw()
+        }
+    }
+
+    func pointerDragged(to point: CGPoint) {
+        guard visible, var currentPress = press, let state else { return }
+        let moved = hypot(point.x - currentPress.start.x, point.y - currentPress.start.y) > DragMove.tolerance
+        if currentPress.dragging == nil, moved, case .target(.window(let id)) = currentPress.hit,
+           state.windows[id]?.info.fullscreen != true {
+            currentPress.dragging = id
+        }
+        press = currentPress
+        if let id = currentPress.dragging {
+            dragPoint = point
+            recomputeDrop(for: id, at: point)
+            redraw()
+        }
+    }
+
+    /// Returns true when no press or physical button holds the switcher open, so the caller commits immediately.
+    func unhold(buttonDown: Bool) -> Bool {
+        held = false
+        if press != nil || buttonDown {
+            releasedDuringPress = true
+            return false
+        }
+        return true
+    }
+
+    /// Consumes a deferred modifier release once the physical mouse button goes up without a recorded press.
+    func consumeDeferredReleaseCommit() -> Bool {
+        guard isOpen, releasedDuringPress, press == nil else { return false }
+        releasedDuringPress = false
+        return true
+    }
+
+    func pointerUp(at point: CGPoint) -> PointerUpAction {
+        guard let currentPress = press else { return .none }
+        let released = releasedDuringPress
+        let drop = hoveredDrop
+        let layout = dropLayout
+        let sourceDisplay = selection?.display
+        clearPress()
+        if let id = currentPress.dragging {
+            redraw()
+            guard let drop, let layout, let sourceDisplay else { return .none }
+            return .drop(window: id, drop: drop, layout: layout, sourceDisplay: sourceDisplay)
+        }
+        let moved = hypot(point.x - currentPress.start.x, point.y - currentPress.start.y) > DragMove.tolerance
+        if !moved {
+            switch currentPress.hit {
+            case .target(let target):
+                selection?.select(target)
+                return .commit
+            case .marker(let side):
+                return released ? .commit : .cross(side)
+            case nil:
+                return released ? .commit : .none
+            }
+        }
+        return released ? .commit : .none
+    }
+
     /// Follows model changes and apps starting and quitting. Returns the session it closed because nothing is left to
     /// offer.
-    func update(state: SavedState, config: Config) -> Int? {
+    func update(state: SavedState, config: Config, keeping: DisplayID? = nil) -> Int? {
         guard var selection, let session else { return nil }
-        guard selection.update(state: state, config: config, apps: apps()) else { close(); return session }
+        guard selection.update(state: state, config: config, apps: apps(), keeping: keeping) else { close(); return session }
         self.selection = selection
         self.state = state
+        self.config = config
+        if let dragged = press?.dragging {
+            if !selection.order.contains(.window(dragged)) || state.windows[dragged]?.info.fullscreen == true {
+                clearPress()
+            } else if let point = dragPoint {
+                let fresh = SwitcherContent(selection: selection, state: state, names: names())
+                if fresh.dropLayout != dropLayout {
+                    recomputeDrop(for: dragged, at: point)
+                }
+            }
+        }
         redraw()
         return nil
     }
@@ -122,6 +247,40 @@ final class WindowSwitcher {
         close()
     }
 
+    private func recomputeDrop(for id: WindowID, at point: CGPoint) {
+        guard let selection, let state else { return }
+        let base = SwitcherContent(selection: selection, state: state, names: names())
+        let floating = state.windows[id]?.floating == true
+        hoveredDrop = base.dropTarget(at: point, dragging: id, floating: floating)
+        dropLayout = base.dropLayout
+    }
+
+    private func makeDragOverlay() -> SwitcherDrag? {
+        guard let id = press?.dragging, let point = dragPoint, let selection, let state,
+              let window = state.windows[id] else { return nil }
+        var pagePreview: GridMiniature?
+        if case .page(let w, let p) = hoveredDrop,
+           let displayState = state.displays.first(where: { $0.info.id == selection.display }),
+           displayState.workspaces.indices.contains(w),
+           displayState.workspaces[w].pages.indices.contains(p) {
+            var page = displayState.workspaces[w].pages[p]
+            page.windows.removeAll { $0 == id }
+            page.windows.append(id)
+            if !window.floating {
+                page.nativeLayout = nil
+                let activeCount = page.windows.filter { other in
+                    state.windows[other].map { !$0.floating && !$0.info.minimized && !$0.info.appHidden } ?? false
+                }.count
+                let (r1, r2) = Layout.defaults(count: activeCount, variant: page.variant)
+                page.r1 = r1
+                page.r2 = r2
+            }
+            pagePreview = GridMiniature(page: page, windows: state.windows, focus: nil, area: selection.grid.area, config: config)
+        }
+        return SwitcherDrag(window: id, pid: window.info.pid, floating: window.floating, point: point, drop: hoveredDrop,
+                            pagePreview: pagePreview)
+    }
+
     private func reveal(_ session: Int) {
         guard self.session == session, !visible else { return }
         willShow?()
@@ -132,11 +291,19 @@ final class WindowSwitcher {
 
     private func redraw() {
         guard visible, let selection, let state else { return }
-        let content = SwitcherContent(selection: selection, state: state, names: names())
+        let content = SwitcherContent(selection: selection, state: state, names: names(), drag: makeDragOverlay())
         guard content != shown || selection.display != presented else { return }
         shown = content
         presenter.show(content, display: selection.display, from: presented)
         presented = selection.display
+    }
+
+    private func clearPress() {
+        press = nil
+        releasedDuringPress = false
+        dragPoint = nil
+        hoveredDrop = nil
+        dropLayout = nil
     }
 
     private func close() {
@@ -145,6 +312,7 @@ final class WindowSwitcher {
         session = nil
         held = false
         visible = false
+        clearPress()
         state = nil
         shown = nil
         presented = nil
@@ -169,7 +337,7 @@ enum PanelSlide {
     }
 }
 
-/// A click-through panel in the middle of the display's usable area. It moves to another display by sliding there.
+/// A non-activating panel in the middle of the display's usable area. It moves to another display by sliding there.
 @MainActor
 final class SwitcherPanel: SwitcherPresenting {
     /// Above the position indicator (`.floating`), the page-transition overlays (one below it) and other apps' floating
@@ -177,29 +345,43 @@ final class SwitcherPanel: SwitcherPresenting {
     static let level = NSWindow.Level.popUpMenu
     /// Off with Reduce Motion or `transition_ms` at 0: the panel then moves between displays at once.
     var slides = true
+    var frameChanged: ((Rect?) -> Void)?
+    var usesFallbackMonitors: (() -> Bool)?
+    var dismissed: (() -> Void)?
+    var hovered: ((SwitcherTarget) -> Void)?
+    var pressed: ((CGPoint) -> Void)?
+    var dragged: ((CGPoint) -> Void)?
+    var released: ((CGPoint) -> Void)?
     private var panel: NSPanel?
     private var icons = AppIconCache<NSImage>()
     private var slide: (timer: Timer, target: NSRect)?
+    private var mouseMonitor: Any?
+    private var localMouseMonitor: Any?
 
     func show(_ content: SwitcherContent, display: DisplayID, from: DisplayID?) {
         guard let screen = NSScreen.screen(for: display) else { hide(); return }
         let panel = self.panel ?? makePanel(content)
         self.panel = panel
+        let wasVisible = panel.isVisible
         if let view = panel.styledContent as? SwitcherView {
             icons.prune(keeping: Set(content.pages.flatMap { $0.flatMap { $0.slots.map(\.pid) + $0.floaters.map(\.pid) } }
-                                         + content.apps.map(\.pid)))
+                                         + content.apps.map(\.pid) + (content.drag.map { [$0.pid] } ?? [])))
             var images: [Int32: NSImage] = [:]
             for pid in content.pids {
                 images[pid] = icons.icon(pid) { NSRunningApplication(processIdentifier: $0)?.icon }
             }
             view.icons = images
             view.content = content
+            if !wasVisible { view.noteShown(at: NSEvent.mouseLocation) }
             let parts = [content.app, content.title, content.position, content.displayName ?? ""].filter { !$0.isEmpty }
             view.setAccessibilityLabel((["Window switcher"] + parts).joined(separator: ", "))
         }
         let size = content.geometry.size, area = screen.visibleFrame
         let target = PanelSlide.frame(size, centeredOn: CGPoint(x: area.midX, y: area.midY))
-        if let slide, slide.target == target { return }
+        if let slide, slide.target == target {
+            updateFallbackMonitors()
+            return
+        }
         // A slide starts where the panel is, mid-slide or in the middle of the display left behind; a panel not yet
         // shown starts in the middle of `from`.
         var start: NSRect?
@@ -210,20 +392,62 @@ final class SwitcherPanel: SwitcherPresenting {
         endSlide()
         if let start, start != target {
             panel.setFrame(start, display: true)
+            publishFrame(panel.frame)
             slide(panel, from: start.origin, to: target)
-        } else if panel.frame != target { panel.setFrame(target, display: true) }
-        if !panel.isVisible { panel.orderFrontRegardless() }
+        } else if panel.frame != target {
+            panel.setFrame(target, display: true)
+            publishFrame(panel.frame)
+        } else {
+            publishFrame(panel.frame)
+        }
+        if !panel.isVisible {
+            panel.orderFrontRegardless()
+            publishFrame(panel.frame)
+        }
+        updateFallbackMonitors()
     }
 
     func hide() {
         endSlide()
+        removeFallbackMonitors()
+        publishFrame(nil)
         panel?.orderOut(nil)
     }
 
     func stop() {
         endSlide()
+        removeFallbackMonitors()
+        publishFrame(nil)
         panel?.close()
         panel = nil
+    }
+
+    private func publishFrame(_ frame: NSRect?) {
+        guard let frame else { frameChanged?(nil); return }
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+        frameChanged?(Geometry.cgFrame(frame, primaryHeight: primaryHeight))
+    }
+
+    private func updateFallbackMonitors() {
+        guard usesFallbackMonitors?() == true else { removeFallbackMonitors(); return }
+        guard mouseMonitor == nil else { return }
+        let mask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] _ in
+            MainActor.assumeIsolated { self?.dismissed?() }
+        }
+        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+            MainActor.assumeIsolated {
+                if let self, event.window !== self.panel { self.dismissed?() }
+            }
+            return event
+        }
+    }
+
+    private func removeFallbackMonitors() {
+        if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
+        if let localMouseMonitor { NSEvent.removeMonitor(localMouseMonitor) }
+        mouseMonitor = nil
+        localMouseMonitor = nil
     }
 
     /// Moves the panel's origin on each tick, which the window server does without redrawing the panel.
@@ -231,9 +455,13 @@ final class SwitcherPanel: SwitcherPresenting {
         let began = ProcessInfo.processInfo.systemUptime
         let timer = Timer(timeInterval: 1.0 / 120, repeats: true) { [weak self, weak panel] _ in
             MainActor.assumeIsolated {
+                guard let self else { return }
                 let elapsed = ProcessInfo.processInfo.systemUptime - began
-                panel?.setFrameOrigin(PanelSlide.origin(from: start, to: target.origin, elapsed: elapsed))
-                if elapsed >= PanelSlide.duration || panel == nil { self?.endSlide() }
+                if let panel {
+                    panel.setFrameOrigin(PanelSlide.origin(from: start, to: target.origin, elapsed: elapsed))
+                    self.publishFrame(panel.frame)
+                }
+                if elapsed >= PanelSlide.duration || panel == nil { self.endSlide() }
             }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -250,14 +478,22 @@ final class SwitcherPanel: SwitcherPresenting {
         panel.isReleasedWhenClosed = false
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
-        panel.ignoresMouseEvents = true
+        panel.ignoresMouseEvents = false
+        panel.isMovable = false
+        panel.isMovableByWindowBackground = false
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.animationBehavior = .none
         panel.level = Self.level
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
-        panel.setStyledContent(SwitcherView(content: content))
+        let view = SwitcherView(content: content)
+        view.isSliding = { [weak self] in self?.slide != nil }
+        view.onHover = { [weak self] in self?.hovered?($0) }
+        view.onMouseDown = { [weak self] in self?.pressed?($0) }
+        view.onMouseDragged = { [weak self] in self?.dragged?($0) }
+        view.onMouseUp = { [weak self] in self?.released?($0) }
+        panel.setStyledContent(view)
         return panel
     }
 }
@@ -270,6 +506,12 @@ final class SwitcherView: NSView {
     var content: SwitcherContent {
         didSet { if content != oldValue { needsDisplay = true } }
     }
+    var isSliding: (() -> Bool)?
+    var onHover: ((SwitcherTarget) -> Void)?
+    var onMouseDown: ((CGPoint) -> Void)?
+    var onMouseDragged: ((CGPoint) -> Void)?
+    var onMouseUp: ((CGPoint) -> Void)?
+    private var lastScreenMouse: NSPoint?
 
     init(content: SwitcherContent) {
         self.content = content
@@ -280,12 +522,70 @@ final class SwitcherView: NSView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override var isFlipped: Bool { true }
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if trackingAreas.isEmpty {
+            addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                           owner: self))
+        }
+    }
+
+    func noteShown(at screenPoint: NSPoint) {
+        lastScreenMouse = screenPoint
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        lastScreenMouse = NSEvent.mouseLocation
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        lastScreenMouse = NSEvent.mouseLocation
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        let screenPoint = NSEvent.mouseLocation
+        defer { lastScreenMouse = screenPoint }
+        guard isSliding?() != true, NSEvent.pressedMouseButtons == 0 else { return }
+        if let last = lastScreenMouse, hypot(screenPoint.x - last.x, screenPoint.y - last.y) < 0.5 { return }
+        let point = convert(event.locationInWindow, from: nil)
+        if case .target(let target) = content.target(at: point) {
+            onHover?(target)
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        lastScreenMouse = NSEvent.mouseLocation
+        onMouseDown?(convert(event.locationInWindow, from: nil))
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        lastScreenMouse = NSEvent.mouseLocation
+        onMouseDragged?(convert(event.locationInWindow, from: nil))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        lastScreenMouse = NSEvent.mouseLocation
+        onMouseUp?(convert(event.locationInWindow, from: nil))
+    }
+
+    override func rightMouseDown(with event: NSEvent) {}
+    override func otherMouseDown(with event: NSEvent) {}
 
     override func draw(_ dirtyRect: NSRect) {
         let geometry = content.geometry
         GridPainter.background(bounds)
-        for marker in content.markers { GridPainter.marker(marker, geometry: geometry) }
+        let litSide: SwitcherDirection? = if case .display(_, let side) = content.drag?.drop { side } else { nil }
+        for marker in content.markers {
+            GridPainter.marker(marker, geometry: geometry, lit: marker.side == litSide)
+        }
         GridPainter.inner(at: geometry.inset) { drawInner(geometry) }
+        if let drag = content.drag, bounds.contains(drag.point) {
+            GridPainter(area: content.area, metrics: geometry.metrics, icons: icons)
+                .dragIcon(drag.pid, at: drag.point, scale: geometry.metrics.scale)
+        }
     }
 
     private func drawInner(_ geometry: GridIndicatorGeometry) {
@@ -304,9 +604,34 @@ final class SwitcherView: NSView {
                              size: 10 * s, color: PanelStyle.dim, alignment: .right, monospaced: true)
         }
         let painter = GridPainter(area: content.area, metrics: geometry.metrics, icons: icons)
-        painter.grid(content.pages, rows: content.rows, columns: content.columns, geometry: geometry, labeled: content.labeled,
-                     current: content.shown, selected: content.selected.window)
-        painter.shelf(content.apps.map(\.pid), geometry: geometry, selected: content.selected.app)
+        if let drag = content.drag {
+            let selectedTile: WindowID? = if case .swap(let other) = drag.drop { other } else { nil }
+            let preview: (cell: GridCell, miniature: GridMiniature, window: WindowID)? =
+                if case .page(let w, let p) = drag.drop, let pagePreview = drag.pagePreview {
+                    (GridCell(workspace: w, page: p), pagePreview, drag.window)
+                } else {
+                    nil
+                }
+            painter.grid(content.pages, rows: content.rows, columns: content.columns, geometry: geometry, labeled: content.labeled,
+                         current: content.shown, selected: selectedTile, dimmed: drag.window, preview: preview)
+            if let drop = drag.drop, let visual = content.insertionVisual(for: drop, drag: drag, geometry: geometry) {
+                switch visual {
+                case .ghostCell(let rect, let miniature):
+                    painter.draw(miniature, in: rect, current: false, litCell: true, selected: drag.window)
+                case .bar(let from, let to):
+                    let path = NSBezierPath()
+                    path.move(to: from)
+                    path.line(to: to)
+                    path.lineCapStyle = .round
+                    PanelStyle.grab.draw(path)
+                }
+            }
+            painter.shelf(content.apps.map(\.pid), geometry: geometry, selected: nil)
+        } else {
+            painter.grid(content.pages, rows: content.rows, columns: content.columns, geometry: geometry, labeled: content.labeled,
+                         current: content.shown, selected: content.selected.window)
+            painter.shelf(content.apps.map(\.pid), geometry: geometry, selected: content.selected.app)
+        }
         if content.cropped {
             GridPainter.text("Grid cropped around the selection", rect: geometry.footerRect, size: 9 * s, color: PanelStyle.dim,
                              monospaced: true)
@@ -347,9 +672,41 @@ extension AppDelegate {
         case .step(let forward): windowSwitcher.step(forward: forward)
         case .move(let direction): windowSwitcher.move(direction)
         case .quit: quitSwitcherSelection()
+        case .unhold:
+            if windowSwitcher.unhold(buttonDown: NSEvent.pressedMouseButtons & 1 != 0) {
+                _ = commitSwitcher()
+            } else {
+                startSwitcherPressTimer()
+            }
         case .commit: _ = commitSwitcher()
         case .cancel: windowSwitcher.cancel()
         case .open: break
+        }
+    }
+
+    func switcherPointerDown(_ point: CGPoint) {
+        switcherOwnsPress = true
+        startSwitcherPressTimer()
+        windowSwitcher.pointerDown(at: point)
+    }
+
+    func switcherPointerUp(_ point: CGPoint) {
+        switch windowSwitcher.pointerUp(at: point) {
+        case .none: break
+        case .commit: _ = commitSwitcher()
+        case .cross(let side): windowSwitcher.cross(side)
+        case .drop(let id, let drop, let expectedLayout, let sourceDisplay):
+            if let closed = windowSwitcher.update(state: engine.savedState(), config: engine.config) {
+                keyboard?.close(closed)
+                return
+            }
+            guard windowSwitcher.isOpen, windowSwitcher.currentDropLayout == expectedLayout else { return }
+            let reply = command(drop.command(id, display: sourceDisplay))
+            if !reply.ok { logger.info("Switcher drop \(id): \(reply.text, privacy: .public)") }
+            let keeping: DisplayID? = if case .display = drop { sourceDisplay } else { nil }
+            if let closed = windowSwitcher.update(state: engine.savedState(), config: engine.config, keeping: keeping) {
+                keyboard?.close(closed)
+            }
         }
     }
 
@@ -402,7 +759,7 @@ extension AppDelegate {
     /// it, so nothing quits unseen, and Finder is left alone, as in the native app switcher. The switcher stays open and
     /// follows the app going away.
     func quitSwitcherSelection() {
-        guard windowSwitcher.visible, let target = windowSwitcher.selection?.selected else { return }
+        guard windowSwitcher.visible, !windowSwitcher.isDragging, let target = windowSwitcher.selection?.selected else { return }
         let pid = target.app ?? target.window.flatMap { engine.savedState().windows[$0]?.info.pid }
         guard let pid, let app = NSRunningApplication(processIdentifier: pid), app.bundleIdentifier != SwitcherApp.finder else { return }
         if !app.terminate() { logger.info("Switcher quit \(pid): the app did not take the request") }

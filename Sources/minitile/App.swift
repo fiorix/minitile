@@ -65,7 +65,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var observers: [(NotificationCenter, NSObjectProtocol)] = []
     var healthTimer: Timer?
     var dragTimer: Timer?
+    var switcherPressTimer: Timer?
     var nativeTileTimer: Timer?
+    /// A left-mouse press begun on the switcher panel, which must not start a desktop window drag.
+    var switcherOwnsPress = false
     /// The dragged window's tile when the drag began.
     var dragTile: Rect?
     /// The actual frame before the first move notification, including floating windows.
@@ -227,6 +230,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.keyboard = keyboard
         updateFrontmost()
         windowSwitcher.willShow = { [weak self] in self?.checkModalModifiers() }
+        switcherPanel.frameChanged = { [weak self] in self?.keyboard?.switcherFrame($0) }
+        switcherPanel.usesFallbackMonitors = { [weak self] in self?.keyboard?.unavailable == true }
+        switcherPanel.dismissed = { [weak self] in
+            guard let self, let session = self.windowSwitcher.session else { return }
+            self.windowSwitcher.cancel()
+            self.keyboard?.close(session)
+        }
+        switcherPanel.hovered = { [weak self] in self?.windowSwitcher.hover($0) }
+        switcherPanel.pressed = { [weak self] point in self?.switcherPointerDown(point) }
+        switcherPanel.dragged = { [weak self] point in self?.windowSwitcher.pointerDragged(to: point) }
+        switcherPanel.released = { [weak self] point in self?.switcherPointerUp(point) }
         helpPanel.dismissed = { [weak self] in
             guard let self, let session = self.helpScreen.session else { return }
             self.helpScreen.close()
@@ -362,7 +376,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let now = ProcessInfo.processInfo.systemUptime
             let changedView = output.events.contains { $0.type == "page_shown" }
             let focused = output.actions.contains { if case .focus = $0 { return true }; return false }
-            if changedView { viewEchoUntil = now + ViewChangeEcho.interval }
+            if ViewChangeEcho.arms(changedView: changedView, oldFocus: before?.focus, after: after) {
+                viewEchoUntil = now + ViewChangeEcho.interval
+            }
             if changedView || focused {
                 closeFocusRead?.cancel()
                 closeFocusRead = nil
@@ -376,7 +392,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             lastCrossed = crossed
             // A display crossed into usually keeps its shown page, which alone would not show the indicator there.
             if let crossed { gridIndicator.show(on: crossed) }
-            plan = TransitionPlan.plan(before: before, after: after, argv: argv, context: context, crossed: crossed != nil)
+            plan = TransitionPlan.plan(before: before, after: after, argv: argv, context: context, crossed: crossed != nil,
+                                       suppressSlides: windowSwitcher.visible)
             spaceSync.formUnion(SpaceSync.displays(before: before, after: after, actions: output.actions))
         }
         if let fallbackBefore {
@@ -523,7 +540,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         desktopNotice.stop()
         transitions.stop()
         cancelNativeTiling()
-        permissionTimer?.invalidate(); healthTimer?.invalidate(); dragTimer?.invalidate(); displayWork?.cancel(); activationFocusRead?.cancel(); closeFocusRead?.cancel()
+        permissionTimer?.invalidate(); healthTimer?.invalidate(); dragTimer?.invalidate(); switcherPressTimer?.invalidate(); displayWork?.cancel(); activationFocusRead?.cancel(); closeFocusRead?.cancel()
         for (center, token) in observers { center.removeObserver(token) }
         signalSources.forEach { $0.cancel() }
         stateWriter.flush()

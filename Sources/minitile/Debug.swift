@@ -136,6 +136,7 @@ extension AppDelegate {
                                 "switcher_open": .bool(windowSwitcher.isOpen),
                                 "switcher_selected": windowSwitcher.selection?.selected.window.map { .number(Double($0)) } ?? .null,
                                 "switcher_selected_app": windowSwitcher.selection?.selected.app.map { .number(Double($0)) } ?? .null,
+                                "switcher_dragging": windowSwitcher.dragging.map { .number(Double($0)) } ?? .null,
                                 "help_open": .bool(helpScreen.isOpen),
                                 "grab_window": grabHighlight.window.map { .number(Double($0)) } ?? .null,
                                 "grab_held": .bool(grabHighlight.session != nil),

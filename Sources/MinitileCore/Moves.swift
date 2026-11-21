@@ -117,6 +117,211 @@ extension Engine {
         return number - 1
     }
 
+    private enum AddressedGridTarget: Equatable {
+        case index(Int)
+        case new(Int?)
+    }
+
+    private enum ResolvedMoveTarget: Equatable {
+        case existing(display: Int, workspace: Int, page: Int)
+        case newPage(display: Int, workspace: Int, index: Int)
+        case newWorkspace(display: Int, index: Int)
+    }
+
+    mutating func moveAddressed(_ id: WindowID, args: [String], stay: Bool, output: inout Output) throws {
+        guard !args.isEmpty else { throw CommandError("Expected a direction or page|workspace|display ADDRESS") }
+        guard let ownD = state.windows[id].flatMap({ displayIndex($0.display) }) else {
+            throw CommandError("No managed display")
+        }
+        let preSource = location(id)
+        let resolved: ResolvedMoveTarget
+        if args.count == 2, args[0] == "page" || args[0] == "workspace", args[1] == "next" || args[1] == "prev" {
+            guard state.displays[ownD].info.unmanagedReason == nil,
+                  let base = preSource ?? currentLocation(display: ownD) else { throw CommandError("No managed display") }
+            if args[0] == "page" {
+                let pages = state.displays[ownD].workspaces[base.workspace].pages
+                let index = try addressedIndex(args[1], current: base.page, count: pages.count, allowNext: true)
+                resolved = index == pages.count
+                    ? .newPage(display: ownD, workspace: base.workspace, index: pages.count)
+                    : .existing(display: ownD, workspace: base.workspace, page: index)
+            } else {
+                let workspaces = state.displays[ownD].workspaces
+                let index = try addressedIndex(args[1], current: base.workspace, count: workspaces.count, allowNext: true)
+                if index == workspaces.count {
+                    resolved = .newWorkspace(display: ownD, index: workspaces.count)
+                } else {
+                    let workspace = workspaces[index]
+                    let page = workspace.pages.firstIndex { $0.id == workspace.currentPage } ?? 0
+                    resolved = .existing(display: ownD, workspace: index, page: page)
+                }
+            }
+        } else {
+            var i = 0
+            var displayAddr: String?
+            var workspaceSpec: AddressedGridTarget?
+            var pageSpec: AddressedGridTarget?
+            if i < args.count, args[i] == "display" {
+                guard i + 1 < args.count else { throw CommandError("Expected display UUID, next or prev") }
+                displayAddr = args[i + 1]
+                i += 2
+            }
+            if i < args.count, args[i] == "workspace" {
+                guard i + 1 < args.count else { throw CommandError("Expected workspace INDEX or new [INDEX]") }
+                if args[i + 1] == "new" {
+                    i += 2
+                    if i < args.count, args[i] != "page" {
+                        guard let index = Int(args[i]) else { throw CommandError("Expected workspace new [INDEX]") }
+                        workspaceSpec = .new(index)
+                        i += 1
+                    } else {
+                        workspaceSpec = .new(nil)
+                    }
+                } else {
+                    guard let index = Int(args[i + 1]) else { throw CommandError("Expected workspace INDEX or new [INDEX]") }
+                    workspaceSpec = .index(index)
+                    i += 2
+                }
+            }
+            if i < args.count, args[i] == "page" {
+                guard i + 1 < args.count else { throw CommandError("Expected page INDEX or new [INDEX]") }
+                if args[i + 1] == "new" {
+                    i += 2
+                    if i < args.count {
+                        guard let index = Int(args[i]) else { throw CommandError("Expected page new [INDEX]") }
+                        pageSpec = .new(index)
+                        i += 1
+                    } else {
+                        pageSpec = .new(nil)
+                    }
+                } else {
+                    guard let index = Int(args[i + 1]) else { throw CommandError("Expected page INDEX or new [INDEX]") }
+                    pageSpec = .index(index)
+                    i += 2
+                }
+            }
+            guard i == args.count, displayAddr != nil || workspaceSpec != nil || pageSpec != nil else {
+                throw CommandError("Expected [display UUID|next|prev] [workspace INDEX|new [INDEX]] [page INDEX|new [INDEX]] [stay]")
+            }
+            let destDisplay: Int
+            if let displayAddr {
+                if displayAddr == "next" || displayAddr == "prev" {
+                    let managed = state.displays.indices.filter { state.displays[$0].info.unmanagedReason == nil }
+                    guard let current = managed.firstIndex(of: ownD) else { throw CommandError("No managed display") }
+                    let idx = try addressedIndex(displayAddr, current: current, count: managed.count)
+                    destDisplay = managed[idx]
+                } else {
+                    guard let found = displayIndex(displayAddr), state.displays[found].info.unmanagedReason == nil else {
+                        throw CommandError("Expected a managed display UUID, next or prev")
+                    }
+                    destDisplay = found
+                }
+            } else {
+                guard state.displays[ownD].info.unmanagedReason == nil else { throw CommandError("No managed display") }
+                destDisplay = ownD
+            }
+            let workspaces = state.displays[destDisplay].workspaces
+            if case .new(let requested) = workspaceSpec {
+                let count = workspaces.count
+                let number = requested ?? (count + 1)
+                guard (1...(count + 1)).contains(number) else {
+                    throw CommandError("Expected a workspace index in 1...\(count + 1)")
+                }
+                if let pageSpec, pageSpec != .index(1), pageSpec != .new(1) {
+                    throw CommandError("workspace new accepts only page 1 or page new 1")
+                }
+                resolved = .newWorkspace(display: destDisplay, index: number - 1)
+            } else {
+                let targetWorkspace: Int
+                if let workspaceSpec, case .index(let number) = workspaceSpec {
+                    guard (1...workspaces.count).contains(number) else {
+                        throw CommandError("Expected a workspace index in 1...\(workspaces.count)")
+                    }
+                    targetWorkspace = number - 1
+                } else if displayAddr == nil, destDisplay == ownD, let preSource {
+                    targetWorkspace = preSource.workspace
+                } else {
+                    guard let current = currentLocation(display: destDisplay) else {
+                        throw CommandError("Display has no workspace")
+                    }
+                    targetWorkspace = current.workspace
+                }
+                let pages = workspaces[targetWorkspace].pages
+                switch pageSpec {
+                case nil:
+                    let page = workspaces[targetWorkspace].pages.firstIndex { $0.id == workspaces[targetWorkspace].currentPage } ?? 0
+                    resolved = .existing(display: destDisplay, workspace: targetWorkspace, page: page)
+                case .index(let number):
+                    guard (1...pages.count).contains(number) else {
+                        throw CommandError("Expected a page index in 1...\(pages.count)")
+                    }
+                    resolved = .existing(display: destDisplay, workspace: targetWorkspace, page: number - 1)
+                case .new(let requested):
+                    let number = requested ?? (pages.count + 1)
+                    guard (1...(pages.count + 1)).contains(number) else {
+                        throw CommandError("Expected a page index in 1...\(pages.count + 1)")
+                    }
+                    resolved = .newPage(display: destDisplay, workspace: targetWorkspace, index: number - 1)
+                }
+            }
+        }
+        if let preSource {
+            switch resolved {
+            case .existing(let d, let w, let p):
+                if preSource.display == d, preSource.workspace == w, preSource.page == p { return }
+            case .newPage(let d, let w, let index):
+                if preSource.display == d, preSource.workspace == w, page(preSource).windows == [id],
+                   index == preSource.page || index == preSource.page + 1 { return }
+            case .newWorkspace(let d, let index):
+                if preSource.display == d,
+                   state.displays[d].workspaces[preSource.workspace].pages.allSatisfy({ $0.windows.allSatisfy { $0 == id } }),
+                   index == preSource.workspace || index == preSource.workspace + 1 { return }
+            }
+        }
+        let target: Location
+        switch resolved {
+        case .existing(let d, let w, let p):
+            target = Location(display: d, workspace: w, page: p)
+        case .newPage(let d, let w, let index):
+            let created = PageState(id: nextSerial())
+            state.displays[d].workspaces[w].pages.insert(created, at: index)
+            target = Location(display: d, workspace: w, page: index)
+        case .newWorkspace(let d, let index):
+            let created = newWorkspace(home: state.displays[d].info.id)
+            state.displays[d].workspaces.insert(created, at: index)
+            target = Location(display: d, workspace: index, page: 0)
+        }
+        let source = location(id)
+        guard stay else {
+            move(id, to: target, output: &output)
+            return
+        }
+        removeFromPage(id)
+        let dest = place(id, at: target)
+        if let source, isShown(source), page(source).windows.isEmpty {
+            vacate(source, excluding: id, output: &output)
+        }
+        if let source {
+            keepFocusInView(id, from: source.display, to: dest, output: &output)
+        }
+        output.events.append(Event(type: "window_moved", data: .number(Double(id))))
+    }
+
+    /// After `id` left `display` without the view following it, focus stays on what that display shows.
+    mutating func keepFocusInView(_ id: WindowID, from d: Int, to dest: Location, output: inout Output) {
+        guard state.focus == id, !(dest.display == d && isShown(dest)) else { return }
+        let active = state.activeDisplay
+        if let current = currentLocation(display: d),
+           page(current).windows.contains(where: { $0 != id && canFocus($0) }) {
+            show(current, output: &output)
+            state.activeDisplay = active
+        } else if isShown(dest) {
+            // Nothing is left to focus on the source display, so the active display goes with the focus.
+            state.activeDisplay = state.displays[dest.display].info.id
+        } else {
+            focus(nil, action: false, output: &output)
+        }
+    }
+
     mutating func swap(_ first: WindowID, _ second: WindowID, follow: Bool = true, output: inout Output) throws {
         guard let a = location(first), let b = location(second),
               state.windows[first]?.floating == false, state.windows[second]?.floating == false else {
@@ -128,21 +333,28 @@ extension Engine {
         state.displays[b.display].workspaces[b.workspace].pages[b.page].windows[b.slot] = first
         state.windows[first]?.display = state.displays[b.display].info.id
         state.windows[second]?.display = state.displays[a.display].info.id
-        if a.display != b.display || a.workspace != b.workspace || a.page != b.page {
+        let crossPage = a.display != b.display || a.workspace != b.workspace || a.page != b.page
+        if crossPage {
             if page(a).lastFocus == first { state.displays[a.display].workspaces[a.workspace].pages[a.page].lastFocus = nil }
             if page(b).lastFocus == second { state.displays[b.display].workspaces[b.workspace].pages[b.page].lastFocus = nil }
         }
-        if follow { show(b, focusWindow: false, output: &output); focus(first, action: true, output: &output) }
+        if follow {
+            show(b, focusWindow: false, output: &output)
+            focus(first, action: true, output: &output)
+        } else if crossPage {
+            if state.focus == first { keepFocusInView(first, from: a.display, to: b, output: &output) }
+            else if state.focus == second { keepFocusInView(second, from: b.display, to: a, output: &output) }
+        }
         output.events += [Event(type: "window_moved", data: .number(Double(first))), Event(type: "window_moved", data: .number(Double(second)))]
     }
 
     /// Trades the window with the active tile after or before it on its page, wrapping around; reserved slots of
     /// minimized and app-hidden windows are skipped. Focus stays with the window.
-    mutating func swapNeighbour(_ id: WindowID, step: Int, output: inout Output) throws {
+    mutating func swapNeighbour(_ id: WindowID, step: Int, follow: Bool = true, output: inout Output) throws {
         guard let (at, _) = activeTile(id) else { throw CommandError("Window has no active tile") }
         let active = tiled(page(at), activeOnly: true)
         guard active.count > 1, let index = active.firstIndex(of: id) else { return }
-        try swap(id, active[((index + step) % active.count + active.count) % active.count], output: &output)
+        try swap(id, active[((index + step) % active.count + active.count) % active.count], follow: follow, output: &output)
     }
 
     /// Sets the page's variant and puts the window in that tile of the layout. `standard` stands for the count's first

@@ -33,6 +33,10 @@ enum ReconcilePlan {
 enum ViewChangeEcho {
     static let interval: TimeInterval = 1.2
 
+    static func arms(changedView: Bool, oldFocus: WindowID?, after: SavedState) -> Bool {
+        changedView || oldFocus.map { after.pageShown(holding: $0) == false } == true
+    }
+
     static func ignores(_ id: WindowID?, state: SavedState, now: TimeInterval, until: TimeInterval) -> Bool {
         guard now < until, let id else { return false }
         return state.pageShown(holding: id) == false

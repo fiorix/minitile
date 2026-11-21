@@ -243,7 +243,8 @@ private func apps(_ pids: Int32...) -> [SwitcherApp] { pids.map { SwitcherApp(pi
     let far = try #require(open(model(grid, focus: 56, shown: GridCell(workspace: 2, page: 3))))
     let content = SwitcherContent(selection: far, state: model(grid, recent: [56]))
     #expect(content.selected == 56)
-    #expect(content.cell == GridCell(workspace: 5, page: 5))
+    #expect(content.selectionCell == GridCell(workspace: 5, page: 5))
+    #expect(content.viewportCell == GridCell(workspace: 5, page: 5))
     #expect(content.rows == 2..<6)
     #expect(content.columns == 2..<7)
     #expect(content.cropped)
@@ -485,10 +486,10 @@ private func arrow(_ id: WindowID, _ direction: SwitcherDirection, in state: Sav
     let state = plus(["centre": [[[10]], [[11]]], "above": [[[20]]]], focus: 11)
     var selection = try #require(open(state, apps: apps(7)))
     #expect(selection.order == [20, 10, 11, .app(7)])
-    #expect(selection.selected == 11 && selection.place == .init(display: "centre", cell: GridCell(workspace: 1, page: 0)))
+    #expect(selection.selected == 11 && selection.place == .init(display: "centre", selectionCell: GridCell(workspace: 1, page: 0)))
     selection.step(forward: true)
     #expect(selection.selected == .app(7) && selection.display == "centre")
-    #expect(selection.place.cell == GridCell(workspace: 1, page: 0) && selection.entry == nil)
+    #expect(selection.place.selectionCell == GridCell(workspace: 1, page: 0) && selection.entry == nil)
     selection.step(forward: true)
     #expect(selection.selected == 20 && selection.display == "above")
     selection.step(forward: false)
@@ -503,7 +504,7 @@ private func arrow(_ id: WindowID, _ direction: SwitcherDirection, in state: Sav
     let selection = try #require(open(state, apps: apps(7, 8), active: "centre"))
     #expect(selection.order == [.app(7), .app(8)])
     #expect(selection.selected == .app(7) && selection.display == "centre")
-    #expect(selection.place.cell == GridCell(workspace: 0, page: 0))
+    #expect(selection.place.selectionCell == GridCell(workspace: 0, page: 0))
     #expect(open(state, apps: apps(7, 8), forward: false, active: "centre")?.selected == .app(7))
     // Without a known active display the first one in arrangement order is on view.
     #expect(open(state, apps: apps(7))?.display == "above")
@@ -608,7 +609,7 @@ private func arrow(_ id: WindowID, _ direction: SwitcherDirection, in state: Sav
         selection.step(forward: true)
         content = SwitcherContent(selection: selection, state: state)
         seen.append([content.app, content.title, content.position])
-        #expect(content.labeled == nil && content.cell == GridCell(workspace: 0, page: 0))
+        #expect(content.labeled == nil && content.selectionCell == GridCell(workspace: 0, page: 0))
     }
     #expect(seen == [["App 2", "Minimized", ""], ["App 4", "Hidden", ""], ["App 8", "No window in the grid", ""]])
 }
@@ -673,4 +674,204 @@ private func arrow(_ id: WindowID, _ direction: SwitcherDirection, in state: Sav
     try saveRender(bitmap, name: "switcher-apps-row")
     view.content.apps = []
     #expect(view.content.geometry.shelfRects.isEmpty)
+}
+
+@Test func hitTestingResolvesMarkersTrayFloatersTilesAppsAndIgnoresReserved() throws {
+    let state = plus(["centre": [[[1, 2, 3, 4]]], "above": [[[10]]], "left": [[[20]]], "right": [[[30]]], "below": [[[40]]]],
+                     floating: [4], focus: 1)
+    var withReserved = state
+    withReserved.windows[2]?.info.minimized = true
+    withReserved.displays[0].workspaces[0].pages[0] = state.displays[0].workspaces[0].pages[0]
+    let selection = try #require(SwitcherSelection(state: withReserved, config: .default, apps: apps(8, 9), forward: true))
+    let content = SwitcherContent(selection: selection, state: withReserved)
+    let g = content.geometry, inset = g.inset
+    // Corners belong to up and down rather than left and right.
+    #expect(content.target(at: CGPoint(x: 4, y: 4)) == .marker(.up))
+    #expect(content.target(at: CGPoint(x: g.size.width - 4, y: g.size.height - 4)) == .marker(.down))
+    #expect(content.target(at: CGPoint(x: 4, y: g.size.height / 2)) == .marker(.left))
+    #expect(content.target(at: CGPoint(x: g.size.width - 4, y: g.size.height / 2)) == .marker(.right))
+    let cell = g.cellRect(row: 0, column: 0)
+    // Floating tray icon overlaps the top edge of the right tile and takes precedence over it.
+    let tray = try #require(GridIndicatorGeometry.trayRects(count: 1, cell: cell, metrics: g.metrics).first)
+    let overlap = CGPoint(x: inset.x + tray.midX, y: inset.y + cell.minY + 4)
+    #expect(content.target(at: overlap) == .target(4))
+    // Active tiles hit; reserved minimized slot at the bottom-left does not steal the tile behind it, and empty chrome is nil.
+    let firstTile = GridIndicatorGeometry.tileRect( try #require(content.pages[0][0].tiles[0].frame), area: content.area, cell: cell)
+    #expect(content.target(at: CGPoint(x: inset.x + firstTile.midX, y: inset.y + firstTile.midY)) == .target(1))
+    #expect(content.target(at: CGPoint(x: inset.x + g.margin, y: inset.y + 12)) == nil)
+    // Apps row hits each icon; reserved window 2 cannot be hit anywhere.
+    let shelf = g.shelfRects
+    #expect(content.target(at: CGPoint(x: inset.x + shelf[0].midX, y: inset.y + shelf[0].midY)) == .target(.app(8)))
+    #expect(content.target(at: CGPoint(x: inset.x + shelf[1].midX, y: inset.y + shelf[1].midY)) == .target(.app(9)))
+    let reserved = try #require(GridIndicatorGeometry.reservedRects(count: 1, cell: cell, metrics: g.metrics).first)
+    #expect(content.target(at: CGPoint(x: inset.x + reserved.midX, y: inset.y + reserved.midY)) != .target(2))
+    // Small displays scale the panel down and hit-testing follows the scaled geometry.
+    var small = model([[[1, 2], [3]], [[4]], [[5]], [[6]]], focus: 1)
+    small.displays[0].info.visibleFrame = Rect(x: 0, y: 0, width: 640, height: 420)
+    let smallSelection = try #require(open(small, apps: apps(7)))
+    let smallContent = SwitcherContent(selection: smallSelection, state: small)
+    #expect(smallContent.geometry.metrics.scale < GridMetrics.switcher.scale)
+    let scaledCell = smallContent.geometry.cellRect(row: 0, column: 1)
+    #expect(smallContent.target(at: CGPoint(x: scaledCell.midX, y: scaledCell.midY)) == .target(3))
+}
+
+@Test func pointerHoverSelectsWithoutShiftingACroppedViewportAndClearsQuick() throws {
+    let grid = (0..<6).map { w in (0..<7).map { p in [WindowID(10 * w + p + 1)] } }
+    let state = model(grid, focus: 34, recent: [34, 11])
+    var selection = try #require(open(state, apps: apps(99)))
+    let initialContent = SwitcherContent(selection: selection, state: state)
+    let initialRows = initialContent.rows, initialCols = initialContent.columns
+    #expect(initialRows == 1..<5 && initialCols == 1..<6)
+    #expect(selection.quick == 11)
+    // Re-selecting the already selected window keeps `quick`.
+    selection.select(34)
+    #expect(selection.quick == 11)
+    // Hovering a corner window inside the crop updates header/labels without re-centering the crop.
+    selection.select(12)
+    let hovered = SwitcherContent(selection: selection, state: state)
+    #expect(hovered.selected == 12 && hovered.app == "App 12" && hovered.position == "Workspace 2 / Page 2")
+    #expect(hovered.labeled == GridCell(workspace: 1, page: 1))
+    #expect(hovered.rows == initialRows && hovered.columns == initialCols)
+    #expect(selection.quick == nil)
+    // Hovering an app keeps the viewport too.
+    selection.select(.app(99))
+    let appHovered = SwitcherContent(selection: selection, state: state)
+    #expect(appHovered.selected == .app(99) && appHovered.rows == initialRows && appHovered.columns == initialCols)
+}
+
+@Test func dropTargetsCoverPagesSwapsGapsShortRowsMarkersAndNoOps() throws {
+    // W1: P1 [1, 2], P2 [3, 4, 5, 6] (6 minimized -> 3 active + 1 reserved = 4 slots), P3 [7, 8, 9, 10] (all minimized).
+    // W2: P1 [11] (short row beside 3 columns).
+    let state = plus(["centre": [[[1, 2], [3, 4, 5, 6], [7, 8, 9, 10]], [[11]]], "above": [[[20]]]], focus: 1)
+    var mixed = state
+    for id: WindowID in [6, 7, 8, 9, 10] { mixed.windows[id]?.info.minimized = true }
+    let selection = try #require(open(mixed))
+    let content = SwitcherContent(selection: selection, state: mixed)
+    let g = content.geometry, ix = g.inset.x, iy = g.inset.y
+    func panel(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: ix + x, y: iy + y) }
+
+    // Same-page swap onto tile 2, and nil over own tile 1.
+    let c00 = g.cellRect(row: 0, column: 0)
+    #expect(content.dropTarget(at: panel(c00.minX + 40, c00.midY), dragging: 1, floating: false) == nil)
+    #expect(content.dropTarget(at: panel(c00.maxX - 40, c00.midY), dragging: 1, floating: false) == .swap(2))
+
+    // 3 active + 1 reserved counts as 4 tiled slots, so tiled window 1 swaps with an active tile on P2, whereas a
+    // floating window joins P2.
+    let c01 = g.cellRect(row: 0, column: 1)
+    #expect(content.dropTarget(at: panel(c01.minX + 40, c01.midY), dragging: 1, floating: false) == .swap(3))
+    #expect(content.dropTarget(at: panel(c01.midX, c01.midY), dragging: 1, floating: true) == .page(workspace: 0, page: 1))
+
+    // All-reserved 4-slot page P3 has no active tile to swap with, so a tiled drop returns nil.
+    let c02 = g.cellRect(row: 0, column: 2)
+    #expect(content.dropTarget(at: panel(c02.midX, c02.midY), dragging: 1, floating: false) == nil)
+
+    // Existing page with room: W2/P1 has 1 slot, so dragging 1 onto it joins W2/P1.
+    let c10 = g.cellRect(row: 1, column: 0)
+    #expect(content.dropTarget(at: panel(c10.midX, c10.midY), dragging: 1, floating: false) == .page(workspace: 1, page: 0))
+
+    // Shorter row W2: dragging to the right of W2/P1 inserts at W2's end (index 1) and previews a ghost cell.
+    let c11 = g.cellRect(row: 1, column: 1)
+    let ghostDrop = content.dropTarget(at: panel(c11.midX, c11.midY), dragging: 1, floating: false)
+    #expect(ghostDrop == .newPage(workspace: 1, index: 1))
+    let drag = SwitcherDrag(window: 1, pid: 1, point: panel(c11.midX, c11.midY), drop: ghostDrop)
+    if case .ghostCell(let rect, _) = content.insertionVisual(for: .newPage(workspace: 1, index: 1), drag: drag, geometry: g) {
+        #expect(rect == c11)
+    } else { Issue.record("Expected ghost cell") }
+
+    // Left, middle and right page insertion bands on W1 (since 1 shares P1 with 2, all three are real moves).
+    #expect(content.dropTarget(at: panel(c00.minX - 4, c00.midY), dragging: 1, floating: false) == .newPage(workspace: 0, index: 0))
+    #expect(content.dropTarget(at: panel((c00.maxX + c01.minX) / 2, c00.midY), dragging: 1, floating: false) == .newPage(workspace: 0, index: 1))
+    #expect(content.dropTarget(at: panel(c02.maxX + 4, c02.midY), dragging: 1, floating: false) == .newPage(workspace: 0, index: 3))
+
+    // Top, middle and bottom workspace insertion bands, including the strip just inside row 0's top edge.
+    #expect(content.dropTarget(at: panel(c00.midX, c00.minY + 4), dragging: 1, floating: false) == .newWorkspace(index: 0))
+    #expect(content.dropTarget(at: panel(c00.midX, (c00.maxY + c10.minY) / 2), dragging: 1, floating: false) == .newWorkspace(index: 1))
+    #expect(content.dropTarget(at: panel(c10.midX, c10.maxY + 4), dragging: 1, floating: false) == .newWorkspace(index: 2))
+
+    // Lone-window no-op suppression: 11 is alone in W2 (and on W2/P1), so adjacent page/workspace insertions return nil.
+    #expect(content.dropTarget(at: panel(c10.minX - 4, c10.midY), dragging: 11, floating: false) == nil)
+    #expect(content.dropTarget(at: panel(c11.midX, c11.midY), dragging: 11, floating: false) == nil)
+    #expect(content.dropTarget(at: panel(c00.midX, (c00.maxY + c10.minY) / 2), dragging: 11, floating: false) == nil)
+    #expect(content.dropTarget(at: panel(c10.midX, c10.maxY + 4), dragging: 11, floating: false) == nil)
+    // Moving lone 11 above W1 IS a real reorder.
+    #expect(content.dropTarget(at: panel(c00.midX, c00.minY + 4), dragging: 11, floating: false) == .newWorkspace(index: 0))
+
+    // Monitor marker drop (including slight overshoot within the 60 pt outer band) and far-outside cancellation; header returns nil.
+    #expect(content.dropTarget(at: CGPoint(x: g.size.width / 2, y: 10), dragging: 1, floating: false) == .display("above", side: .up))
+    #expect(content.dropTarget(at: CGPoint(x: g.size.width / 2, y: -10), dragging: 1, floating: false) == .display("above", side: .up))
+    #expect(content.dropTarget(at: panel(c00.midX, 16), dragging: 1, floating: false) == nil)
+    #expect(content.dropTarget(at: CGPoint(x: -100, y: 100), dragging: 1, floating: false) == nil)
+}
+
+@Test func shortRowLeftOfCropClampsNewPageIndexToPageCount() throws {
+    // W1 has 7 pages (focused on P7 -> columns 2..<7); W2 has 1 page (index 0, completely left of columns 2..<7).
+    let state = model([[(1...7).map { [$0] }][0], [[20, 21]]], focus: 7)
+    let selection = try #require(open(state))
+    let content = SwitcherContent(selection: selection, state: state)
+    #expect(content.columns == 2..<7)
+    let g = content.geometry
+    let c10 = g.cellRect(row: 1, column: 0)
+    let drop = content.dropTarget(at: CGPoint(x: g.inset.x + c10.midX, y: g.inset.y + c10.midY), dragging: 7, floating: false)
+    #expect(drop == .newPage(workspace: 1, index: 1))
+    #expect(drop?.command(7, display: "d") == ["window", "move", "7", "display", "d", "workspace", "2", "page", "new", "2", "stay"])
+}
+
+@Test @MainActor func switcherRendersDragPagePreviewsGhostCellsAndInsertionBars() throws {
+    var state = model([[[1, 2], [3]], [[4]]], focus: 1)
+    // Skew P2's ratio so we verify the preview resets to default 0.5 ratios for 2 active tiles.
+    state.displays[0].workspaces[0].pages[1].r1 = 0.8
+    let presenter = SwitcherPreviewRecorder()
+    let switcher = WindowSwitcher(presenter: presenter, schedule: { _, work in work() }, names: { [:] }, apps: { [] })
+    #expect(switcher.open(session: 1, forward: true, held: false, state: state, display: "d", config: .default))
+    let base = try #require(presenter.last)
+    let g = base.geometry
+    let c00 = g.cellRect(row: 0, column: 0), c01 = g.cellRect(row: 0, column: 1), c11 = g.cellRect(row: 1, column: 1)
+    let tile1 = GridIndicatorGeometry.tileRect(try #require(base.pages[0][0].tiles[0].frame), area: base.area, cell: c00)
+    switcher.pointerDown(at: CGPoint(x: tile1.midX, y: tile1.midY))
+
+    // Drag onto P2: preview miniature has 2 tiles at default 0.5 ratios, and renders neon on P2's cell.
+    switcher.pointerDragged(to: CGPoint(x: c01.midX, y: c01.midY))
+    let joinContent = try #require(presenter.last)
+    #expect(joinContent.drag?.drop == .page(workspace: 0, page: 1))
+    #expect(joinContent.drag?.pagePreview?.tiles.count == 2)
+    let leftWidth = try #require(joinContent.drag?.pagePreview?.tiles[0].frame?.width)
+    let rightWidth = try #require(joinContent.drag?.pagePreview?.tiles[1].frame?.width)
+    #expect(abs(leftWidth - rightWidth) <= 2)
+    let view = SwitcherView(content: joinContent)
+    let appNames = ["Utilities/Terminal", "TextEdit", "Notes", "Mail"]
+    view.icons = Dictionary(uniqueKeysWithValues: appNames.enumerated().map {
+        (Int32($0 + 1), NSWorkspace.shared.icon(forFile: "/System/Applications/\($1).app"))
+    })
+    #expect(try draws(view, in: CGRect(x: c01.midX - 10, y: c01.minY - 2, width: 20, height: 6)))
+    let joinBitmap = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+    view.cacheDisplay(in: view.bounds, to: joinBitmap)
+    try saveRender(joinBitmap, name: "switcher-drag-join")
+
+    // Drag into W2's unoccupied second column: renders the ghost cell there.
+    let emptyView = SwitcherView(content: base)
+    #expect(try !draws(emptyView, in: c11.insetBy(dx: 8, dy: 8)))
+    switcher.pointerDragged(to: CGPoint(x: c11.midX, y: c11.midY))
+    view.content = try #require(presenter.last)
+    #expect(try draws(view, in: CGRect(x: c11.midX - 10, y: c11.minY - 2, width: 20, height: 6)))
+    let ghostBitmap = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+    view.cacheDisplay(in: view.bounds, to: ghostBitmap)
+    try saveRender(ghostBitmap, name: "switcher-drag-ghost")
+
+    // Drag into the gap between P1 and P2: renders the vertical neon insertion bar (sampled clear of the drag icon).
+    let gapX = (c00.maxX + c01.minX) / 2
+    let gapBand = CGRect(x: gapX - 3, y: c00.minY + 10, width: 6, height: 20)
+    #expect(try !draws(emptyView, in: gapBand))
+    switcher.pointerDragged(to: CGPoint(x: gapX, y: c00.midY))
+    view.content = try #require(presenter.last)
+    #expect(try draws(view, in: gapBand))
+    let barBitmap = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+    view.cacheDisplay(in: view.bounds, to: barBitmap)
+    try saveRender(barBitmap, name: "switcher-drag-bar")
+}
+
+@MainActor
+private final class SwitcherPreviewRecorder: SwitcherPresenting {
+    var last: SwitcherContent?
+    func show(_ content: SwitcherContent, display: DisplayID, from: DisplayID?) { last = content }
+    func hide() { last = nil }
 }

@@ -498,3 +498,208 @@ private func twoDisplayState(focus: WindowID? = 2) -> SavedState {
     #expect(steps[1] - steps[0] < steps[6] - steps[5])
     #expect(PanelSlide.duration == 0.25)
 }
+
+@Test func routerMouseSwallowsOutsideClicksAndTracksInsidePressPerSession() {
+    var router = makeRouter()
+    let frame = Rect(x: 100, y: 100, width: 400, height: 300)
+    router.switcherFrame = frame
+    // Closed: mouse passes through.
+    #expect(router.mouse(.down, button: 0, at: Point(x: 20, y: 20)) == .pass)
+    #expect(router.mouse(.up, button: 0, at: Point(x: 20, y: 20)) == .pass)
+    // Open: outside click cancels and swallows its drag and release.
+    #expect(router.key(tab, modifiers: .cmd, down: true) == .switcher(.open(forward: true, held: .cmd), session: 1))
+    #expect(router.mouse(.down, button: 0, at: Point(x: 20, y: 20)) == .switcher(.cancel, session: 1))
+    #expect(router.switcher == nil)
+    #expect(router.mouse(.dragged, button: 0, at: Point(x: 30, y: 30)) == .swallow)
+    #expect(router.mouse(.up, button: 0, at: Point(x: 30, y: 30)) == .swallow)
+    #expect(router.mouse(.up, button: 0, at: Point(x: 30, y: 30)) == .pass)
+    // Inside left press sets `pressed`, turns a Cmd release into `.unhold` without closing `modal`, and does not leak to
+    // a new session or survive `resetHeld`.
+    #expect(router.key(tab, modifiers: .cmd, down: true) == .switcher(.open(forward: true, held: .cmd), session: 2))
+    #expect(router.mouse(.down, button: 0, at: Point(x: 200, y: 200)) == .pass)
+    #expect(router.switcher?.pressed == true)
+    #expect(router.flags([]) == .switcher(.unhold, session: 2))
+    #expect(router.switcher == KeyRouter.OpenModal(kind: .switcher, session: 2, held: [], pressed: true))
+    #expect(router.key(escape, modifiers: [], down: true) == .switcher(.cancel, session: 2))
+    #expect(router.key(tab, modifiers: .cmd, down: true) == .switcher(.open(forward: true, held: .cmd), session: 3))
+    #expect(router.switcher?.pressed == false)
+    #expect(router.mouse(.down, button: 0, at: Point(x: 200, y: 200)) == .pass)
+    router.resetHeld()
+    #expect(router.switcher?.pressed == false)
+    #expect(router.flags([]) == .switcher(.commit, session: 3))
+}
+
+@Test @MainActor func switcherPointerClicksCrossesMarkersAndHandlesModifierReleases() throws {
+    let apps = FakeApps()
+    apps.running = [SwitcherApp(pid: 8, name: "Eight")]
+    let (switcher, presenter, _) = controller(apps)
+    var state = twoDisplayState(focus: 1)
+    // Add an empty managed display on the right so its marker has no window to cross to.
+    state.displays.append(DisplayState(info: DisplayInfo(id: "r", frame: Rect(x: 1512, y: 0, width: 1512, height: 982)),
+                                       workspaces: [WorkspaceState(id: 3, home: "r", pages: [PageState(id: 30)], currentPage: 30)],
+                                       currentWorkspace: 3))
+    #expect(switcher.open(session: 1, forward: true, held: true, state: state, display: "d", config: .default))
+    switcher.willShow = nil
+    // Reveal by re-opening unheld for synchronous geometry, then inspect held flows too.
+    #expect(switcher.open(session: 2, forward: true, held: false, state: state, display: "d", config: .default))
+    let content = try #require(presenter.contents.last)
+    let g = content.geometry, ix = g.inset.x, iy = g.inset.y
+    let cell = g.cellRect(row: 0, column: 0)
+    let tile2 = GridIndicatorGeometry.tileRect(try #require(content.pages[0][0].tiles[1].frame), area: content.area, cell: cell)
+    let tile2Center = CGPoint(x: ix + tile2.midX, y: iy + tile2.midY)
+
+    // Clicking tile 2 selects and commits it.
+    switcher.pointerDown(at: tile2Center)
+    #expect(switcher.pointerUp(at: tile2Center) == .commit)
+    #expect(switcher.commit() == 2)
+
+    // Marker click to windowless display "r" does nothing; marker click to "e" crosses.
+    #expect(switcher.open(session: 3, forward: true, held: false, state: state, display: "d", config: .default))
+    let rightMarker = CGPoint(x: g.size.width - 10, y: g.size.height / 2)
+    switcher.pointerDown(at: rightMarker)
+    #expect(switcher.pointerUp(at: rightMarker) == .cross(.right))
+    switcher.cross(.right)
+    #expect(switcher.selection?.display == "d")
+    let upMarker = CGPoint(x: g.size.width / 2, y: 10)
+    switcher.pointerDown(at: upMarker)
+    #expect(switcher.pointerUp(at: upMarker) == .cross(.up))
+    switcher.cross(.up)
+    #expect(switcher.selection?.display == "e" && switcher.selection?.selected == 3)
+
+    // Moved press on an app icon, marker, chrome, or fullscreen window runs no click unless Cmd released during press.
+    var fsState = state
+    fsState.windows[2]?.info.fullscreen = true
+    let (heldSwitcher, heldPresenter, clock) = controller(apps)
+    #expect(heldSwitcher.open(session: 5, forward: true, held: true, state: fsState, display: "d", config: .default))
+    clock.fire()
+    let hc = try #require(heldPresenter.contents.last)
+    let shelf = try #require(hc.geometry.shelfRects.first)
+    let appPoint = CGPoint(x: hc.geometry.inset.x + shelf.midX, y: hc.geometry.inset.y + shelf.midY)
+    heldSwitcher.pointerDown(at: appPoint)
+    heldSwitcher.pointerDragged(to: CGPoint(x: appPoint.x + 20, y: appPoint.y))
+    #expect(!heldSwitcher.isDragging)
+    #expect(heldSwitcher.pointerUp(at: CGPoint(x: appPoint.x + 20, y: appPoint.y)) == .none)
+    // Fullscreen window does not start a drag either.
+    let fsCell = hc.geometry.cellRect(row: 0, column: 0)
+    let fsTile = GridIndicatorGeometry.tileRect(try #require(hc.pages[0][0].tiles[1].frame), area: hc.area, cell: fsCell)
+    let fsPoint = CGPoint(x: hc.geometry.inset.x + fsTile.midX, y: hc.geometry.inset.y + fsTile.midY)
+    heldSwitcher.pointerDown(at: fsPoint)
+    heldSwitcher.pointerDragged(to: CGPoint(x: fsPoint.x + 20, y: fsPoint.y))
+    #expect(!heldSwitcher.isDragging)
+    // Releasing Cmd during a plain press commits on mouseUp.
+    #expect(!heldSwitcher.unhold(buttonDown: true))
+    #expect(heldSwitcher.pointerUp(at: CGPoint(x: fsPoint.x + 20, y: fsPoint.y)) == .commit)
+    // Deferred release when no mouseDown reached the view commits once the button check sees it up.
+    #expect(!heldSwitcher.unhold(buttonDown: true))
+    #expect(heldSwitcher.consumeDeferredReleaseCommit())
+    #expect(!heldSwitcher.consumeDeferredReleaseCommit())
+}
+
+@Test @MainActor func switcherDragLifecycleHandlesUnholdEscReturnClosingLayoutChangesAndMarkerDrops() throws {
+    let (switcher, presenter, clock) = controller()
+    var state = twoDisplayState(focus: 1)
+    state.windows[1]?.lastFocused = 30
+    state.windows[2]?.lastFocused = 20
+    #expect(switcher.open(session: 1, forward: true, held: true, state: state, display: "d", config: .default))
+    clock.fire()
+    let c = try #require(presenter.contents.last)
+    let g = c.geometry, ix = g.inset.x, iy = g.inset.y
+    let cell = g.cellRect(row: 0, column: 0)
+    let tile1 = GridIndicatorGeometry.tileRect(try #require(c.pages[0][0].tiles[0].frame), area: c.area, cell: cell)
+    let start = CGPoint(x: ix + tile1.midX, y: iy + tile1.midY)
+    let newPageRight = CGPoint(x: ix + cell.maxX + 8, y: iy + cell.midY)
+
+    // Cmd released mid-drag unholds and stays open after drop; Tab/arrows are ignored while dragging.
+    switcher.pointerDown(at: start)
+    switcher.pointerDragged(to: newPageRight)
+    #expect(switcher.dragging == 1)
+    switcher.step(forward: true)
+    switcher.move(.right)
+    #expect(switcher.selection?.selected == 1)
+    #expect(!switcher.unhold(buttonDown: true))
+    let action = switcher.pointerUp(at: newPageRight)
+    guard case .drop(let dragged, let drop, let layout, let sourceDisplay) = action else {
+        Issue.record("Expected drop action"); return
+    }
+    #expect(dragged == 1 && drop == .newPage(workspace: 0, index: 1) && sourceDisplay == "d")
+    #expect(switcher.isOpen && !switcher.held && !switcher.consumeDeferredReleaseCommit())
+    // Layout change right at release invalidates `expectedLayout`.
+    var altered = state
+    altered.displays[0].workspaces[0].pages[0].windows = [1]
+    altered.windows[2] = nil
+    #expect(switcher.update(state: altered, config: .default) == nil)
+    #expect(switcher.currentDropLayout != layout)
+
+    // Esc and Return mid-drag abort the drag without running a drop; commit returns selection.
+    #expect(switcher.open(session: 2, forward: true, held: true, state: state, display: "d", config: .default))
+    clock.fire()
+    switcher.pointerDown(at: start)
+    switcher.pointerDragged(to: newPageRight)
+    #expect(switcher.isDragging)
+    #expect(switcher.commit() == 1)
+    #expect(!switcher.isDragging && !switcher.isOpen)
+
+    #expect(switcher.open(session: 3, forward: true, held: false, state: state, display: "d", config: .default))
+    switcher.pointerDown(at: start)
+    switcher.pointerDragged(to: newPageRight)
+    switcher.cancel()
+    #expect(!switcher.isDragging && switcher.pointerUp(at: newPageRight) == .none)
+
+    // Dragged window closing mid-drag aborts the drag cleanly.
+    #expect(switcher.open(session: 4, forward: true, held: false, state: state, display: "d", config: .default))
+    switcher.pointerDown(at: start)
+    switcher.pointerDragged(to: newPageRight)
+    var without1 = state
+    without1.displays[0].workspaces[0].pages[0].windows = [2]
+    without1.windows[1] = nil
+    #expect(switcher.update(state: without1, config: .default) == nil)
+    #expect(!switcher.isDragging && switcher.pointerUp(at: newPageRight) == .none)
+
+    // Marker drop keeps the view on the source display (selecting its most recently focused remaining window) until none
+    // is left there, when it follows the moved window.
+    #expect(switcher.open(session: 5, forward: true, held: true, state: state, display: "d", config: .default))
+    clock.fire()
+    var movedOne = state
+    movedOne.displays[0].workspaces[0].pages[0].windows = [2]
+    movedOne.displays[1].workspaces[0].pages[0].windows = [3, 1]
+    movedOne.windows[1]?.display = "e"
+    movedOne.focus = 2
+    #expect(switcher.update(state: movedOne, config: .default, keeping: "d") == nil)
+    #expect(switcher.selection?.display == "d" && switcher.selection?.selected == 2)
+    // Cmd stayed held through the drag, so releasing it commits the current selection.
+    #expect(switcher.held && switcher.commit() == 2)
+
+    #expect(switcher.open(session: 6, forward: true, held: false, state: movedOne, display: "d", config: .default))
+    #expect(switcher.selection?.display == "d" && switcher.selection?.selected == 2)
+    var movedAll = movedOne
+    movedAll.displays[0].workspaces[0].pages[0].windows = []
+    movedAll.displays[1].workspaces[0].pages[0].windows = [3, 1, 2]
+    movedAll.windows[2]?.display = "e"
+    #expect(switcher.update(state: movedAll, config: .default, keeping: "d") == nil)
+    #expect(switcher.selection?.display == "e" && switcher.selection?.selected == 2)
+}
+
+@Test func stayEchoGuardSlideSuppressionAndPressGuardHold() {
+    // Stashing the focused window with `stay` arms `ViewChangeEcho` even without `page_shown`.
+    var state = twoDisplayState(focus: 2)
+    state.displays[0].workspaces[0].pages[0].windows = [2]
+    var hiddenPage = PageState(id: 11)
+    hiddenPage.windows = [1]
+    state.displays[0].workspaces[0].pages.append(hiddenPage)
+    #expect(ViewChangeEcho.arms(changedView: false, oldFocus: 1, after: state))
+    #expect(!ViewChangeEcho.arms(changedView: false, oldFocus: 2, after: state))
+    #expect(!ViewChangeEcho.arms(changedView: false, oldFocus: nil, after: state))
+
+    // Page slides are suppressed while the switcher is visible, while bounces still work when unblocked.
+    var after = state
+    after.displays[0].workspaces[0].currentPage = 11
+    #expect(!TransitionPlan.plan(before: state, after: after, argv: ["window", "focus", "1"], context: "d",
+                                 suppressSlides: false).isEmpty)
+    #expect(TransitionPlan.plan(before: state, after: after, argv: ["window", "focus", "1"], context: "d",
+                                suppressSlides: true).isEmpty)
+
+    // A window move during a switcher-owned press does not count as a desktop mouse drag.
+    #expect(SwitcherPressGuard.mouseDown(buttons: 1, switcherOwnsPress: false))
+    #expect(!SwitcherPressGuard.mouseDown(buttons: 1, switcherOwnsPress: true))
+    #expect(!SwitcherPressGuard.mouseDown(buttons: 0, switcherOwnsPress: false))
+}

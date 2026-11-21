@@ -13,6 +13,12 @@ struct SuspensionState {
     }
 }
 
+enum SwitcherPressGuard {
+    static func mouseDown(buttons: Int, switcherOwnsPress: Bool) -> Bool {
+        buttons & 1 != 0 && !switcherOwnsPress
+    }
+}
+
 extension AppDelegate {
     func observeLifecycle() {
         let workspace = NSWorkspace.shared.notificationCenter
@@ -274,7 +280,7 @@ extension AppDelegate {
     }
 
     func windowMoved(_ id: WindowID) {
-        let mouseDown = NSEvent.pressedMouseButtons & 1 != 0
+        let mouseDown = SwitcherPressGuard.mouseDown(buttons: NSEvent.pressedMouseButtons, switcherOwnsPress: switcherOwnsPress)
         if !mouseDown, reconciler?.dragging != id, discovery?.frozen == false {
             trackNativeTiling(id)
             return
@@ -290,6 +296,23 @@ extension AppDelegate {
             updateDragTracking()
             endGrab()
         }
+    }
+
+    func startSwitcherPressTimer() {
+        guard switcherPressTimer == nil else { return }
+        let timer = Timer(timeInterval: 0.03, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, NSEvent.pressedMouseButtons & 1 == 0 else { return }
+                self.switcherPressTimer?.invalidate()
+                self.switcherPressTimer = nil
+                self.switcherOwnsPress = false
+                if self.windowSwitcher.consumeDeferredReleaseCommit() {
+                    _ = self.commitSwitcher()
+                }
+            }
+        }
+        switcherPressTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     func updateDragTracking() {

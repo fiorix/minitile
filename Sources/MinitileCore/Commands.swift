@@ -18,9 +18,10 @@ extension Engine {
     window float [ID] [on|off]
     window nudge [ID] left|right
     window move [ID] left|right|up|down
-    window move [ID] page|workspace INDEX|next|prev
-    window move [ID] display UUID|next|prev
-    window swap [ID] OTHER_ID|next|prev
+    window move [ID] page|workspace INDEX|next|prev [stay]
+    window move [ID] display UUID|next|prev [stay]
+    window move [ID] [display UUID|next|prev] [workspace INDEX|new [INDEX]] [page INDEX|new [INDEX]] [stay]
+    window swap [ID] OTHER_ID|next|prev [stay]
     window resize [ID] SHARE|WIDTHxHEIGHT|left|right|up|down
     window place [ID] standard|alternate|stacked|1x2-tall|2x1-tall|1x2-wide|2x1-wide SLOT
     page list
@@ -42,6 +43,7 @@ extension Engine {
     Tiled resize uses fractional shares; floating resize uses WIDTHxHEIGHT in points.
     Directional resize moves an edge by 0.05 of the layout area.
     Place sets the page's layout and puts the window in that tile, counting active tiles.
+    Stay moves or swaps without changing the shown page or focus.
     Ignore does nothing; a chord bound to it is swallowed.
     """
 
@@ -143,6 +145,13 @@ extension Engine {
             return Reply(text: "OK")
         }
         var args = supplied
+        let stay: Bool
+        if (verb == "move" || verb == "swap"), args.last == "stay" {
+            stay = true
+            args.removeLast()
+        } else {
+            stay = false
+        }
         let operands = verb == "place" ? 2 : ["move", "nudge", "swap", "resize"].contains(verb) ? 1 : 0
         let id: WindowID
         if args.count > operands, let first = args.first, let explicit = WindowID(first) { id = explicit; args.removeFirst() }
@@ -170,16 +179,24 @@ extension Engine {
             try nudge(id, direction: args[0] == "left" ? -1 : 1, output: &output)
         case "move":
             if args.count == 1, ["left", "right", "up", "down"].contains(args[0]) {
+                guard !stay else { throw CommandError("Directional window move does not take stay") }
                 if args[0] == "left" || args[0] == "right" { try nudge(id, direction: args[0] == "left" ? -1 : 1, output: &output) }
                 else { try moveTarget(id, noun: "workspace", address: args[0] == "up" ? "prev" : "next", output: &output) }
-            } else {
-                guard args.count == 2 else { throw CommandError("Expected a direction or page|workspace|display ADDRESS") }
+            } else if !stay, args.count == 2, ["page", "workspace", "display"].contains(args[0]),
+                      !(args[1] == "new" && (args[0] == "page" || args[0] == "workspace")) {
                 try moveTarget(id, noun: args[0], address: args[1], output: &output)
+            } else {
+                try moveAddressed(id, args: args, stay: stay, output: &output)
             }
         case "swap":
-            if args == ["next"] || args == ["prev"] { try swapNeighbour(id, step: args[0] == "next" ? 1 : -1, output: &output); break }
-            guard args.count == 1, let other = WindowID(args[0]) else { throw CommandError("Expected window swap [ID] OTHER_ID|next|prev") }
-            try swap(id, other, output: &output)
+            if args == ["next"] || args == ["prev"] {
+                try swapNeighbour(id, step: args[0] == "next" ? 1 : -1, follow: !stay, output: &output)
+                break
+            }
+            guard args.count == 1, let other = WindowID(args[0]) else {
+                throw CommandError("Expected window swap [ID] OTHER_ID|next|prev [stay]")
+            }
+            try swap(id, other, follow: !stay, output: &output)
         case "resize":
             guard args.count == 1 else { throw CommandError("Expected window resize [ID] SHARE|WIDTHxHEIGHT|left|right|up|down") }
             if ["left", "right", "up", "down"].contains(args[0]) { try resizeStep(id, direction: args[0], output: &output) }

@@ -47,7 +47,7 @@ import Testing
     #expect(e.makeScene().displays["primary"]?.visible == [5, 6, 7, 8])
 }
 
-@Test(arguments: ["wat", "debug spaces", "window wat 1", "page show 0", "page ratio nan", "page ratio 0.5 bad", "workspace variant", "display show", "window move 1 nowhere 2", "window swap 1 nope", "window resize 1 -2", "config reload extra"])
+@Test(arguments: ["wat", "debug spaces", "window wat 1", "page show 0", "page ratio nan", "page ratio 0.5 bad", "workspace variant", "display show", "window move 1 nowhere 2", "window move left stay", "window move 1 right stay", "window move 1 workspace 1 page next", "window move 1 workspace next page 1", "window move 1 workspace new page 2", "window move 1 page new 0", "window move 1 workspace new 0", "window swap stay", "window swap 1 nope", "window resize 1 -2", "config reload extra"])
 func malformedCommandsFailWithoutStateChanges(_ text: String) {
     var e = engine(2)
     command(&e, "window focus 1")

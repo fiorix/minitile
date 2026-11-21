@@ -166,9 +166,9 @@ extension Engine {
     /// A display whose shown page a close left empty shows the page of its preferred window instead, so cleanup drops
     /// the empty page; a display with no other page keeps it. The close may be in the background, so the display a
     /// command acts on stays as it was, and focus is left to macOS.
-    mutating func vacate(_ at: Location, output: inout Output) {
+    mutating func vacate(_ at: Location, excluding excluded: WindowID? = nil, output: inout Output) {
         guard isShown(at), page(at).windows.isEmpty else { return }
-        let positions = locations().filter { $0.value.display == at.display }
+        let positions = locations().filter { $0.value.display == at.display && $0.key != excluded }
         guard let id = preferred(positions), let target = positions[id] else { return }
         let active = state.activeDisplay
         show(target, focusWindow: false, output: &output)

@@ -267,7 +267,8 @@ struct GridPainter {
 
     /// `labeled` picks the row and column labels to emphasize, `current` the cell outlined as the shown page.
     func grid(_ pages: [[GridMiniature]], rows: Range<Int>, columns: Range<Int>, geometry: GridIndicatorGeometry,
-              labeled: GridCell?, current: GridCell?, selected: WindowID? = nil) {
+              labeled: GridCell?, current: GridCell?, selected: WindowID? = nil, dimmed: WindowID? = nil,
+              preview: (cell: GridCell, miniature: GridMiniature, window: WindowID)? = nil) {
         let size = 10 * metrics.scale
         for (column, page) in columns.enumerated() {
             Self.label("P\(page + 1)", rect: geometry.columnLabelRect(column: column), size: size, current: labeled?.page == page)
@@ -276,24 +277,31 @@ struct GridPainter {
             Self.label("W\(workspace + 1)", rect: geometry.rowLabelRect(row: row), size: size, current: labeled?.workspace == workspace)
             for (column, page) in columns.enumerated() {
                 guard pages.indices.contains(workspace), pages[workspace].indices.contains(page) else { continue }
-                draw(pages[workspace][page], in: geometry.cellRect(row: row, column: column),
-                     current: current == GridCell(workspace: workspace, page: page), selected: selected)
+                let at = GridCell(workspace: workspace, page: page)
+                let rect = geometry.cellRect(row: row, column: column)
+                if let preview, preview.cell == at {
+                    draw(preview.miniature, in: rect, current: current == at, litCell: true, selected: preview.window)
+                } else {
+                    draw(pages[workspace][page], in: rect, current: current == at, selected: selected, dimmed: dimmed)
+                }
             }
         }
     }
 
     /// The focused tile and the selected one are highlighted; their icons alone are drawn at full opacity.
-    func draw(_ miniature: GridMiniature, in cell: NSRect, current: Bool, selected: WindowID? = nil) {
+    func draw(_ miniature: GridMiniature, in cell: NSRect, current: Bool, litCell: Bool = false, selected: WindowID? = nil,
+              dimmed: WindowID? = nil) {
         let s = metrics.scale
         for tile in miniature.tiles {
             guard let frame = tile.frame else { continue }
             let rect = GridIndicatorGeometry.tileRect(frame, area: area, cell: cell)
-            let highlighted = tile.focused || tile.window == selected
+            let isDimmed = tile.window == dimmed
+            let highlighted = !isDimmed && (tile.focused || tile.window == selected)
             Self.plate(rect, radius: PanelStyle.tileRadius * s, fill: highlighted ? PanelStyle.highlightFill : PanelStyle.tileFill,
                        stroke: highlighted ? PanelStyle.highlight : PanelStyle.tile)
             if !tile.placeholder {
                 icon(tile.pid, in: GridIndicatorGeometry.iconRect(tile: rect, range: metrics.icon),
-                     fraction: highlighted ? 1 : PanelStyle.iconOpacity)
+                     fraction: isDimmed ? PanelStyle.reservedOpacity : highlighted ? 1 : PanelStyle.iconOpacity)
             }
         }
         let reserved = GridIndicatorGeometry.reservedRects(count: miniature.reserved.count, cell: cell, metrics: metrics)
@@ -301,10 +309,18 @@ struct GridPainter {
             Self.plate(first.union(last).insetBy(dx: -s, dy: -s), radius: 2 * s, fill: PanelStyle.plateFill, stroke: PanelStyle.plate)
             for (slot, rect) in zip(miniature.reserved, reserved) { icon(slot.pid, in: rect, fraction: PanelStyle.reservedOpacity) }
         }
-        let outline = current ? PanelStyle.shownPage : miniature.empty ? PanelStyle.emptyPage : PanelStyle.page
+        let outline = litCell ? PanelStyle.highlight : current ? PanelStyle.shownPage : miniature.empty ? PanelStyle.emptyPage : PanelStyle.page
         outline.draw(inside: cell, radius: PanelStyle.pageRadius * s)
-        if metrics.trayIcon != nil { tray(miniature.floaters.filter(\.active), cell: cell, selected: selected) }
+        if metrics.trayIcon != nil { tray(miniature.floaters.filter(\.active), cell: cell, selected: selected, dimmed: dimmed) }
         else if miniature.floating > 0 { badge(miniature.floating, cell: cell) }
+    }
+
+    /// The app icon that follows the pointer while dragging a window in the switcher.
+    func dragIcon(_ pid: Int32, at point: CGPoint, scale s: CGFloat) {
+        let side = (18 * s).rounded()
+        let rect = NSRect(x: (point.x - side / 2).rounded(), y: (point.y - side / 2).rounded(), width: side, height: side)
+        Self.plate(rect.insetBy(dx: -2 * s, dy: -2 * s), radius: 4 * s, fill: PanelStyle.plateFill, stroke: PanelStyle.highlight)
+        icon(pid, in: rect, fraction: 1)
     }
 
     private func badge(_ count: Int, cell: NSRect) {
@@ -317,17 +333,18 @@ struct GridPainter {
         Self.text(String(count), rect: line, size: size, weight: .medium, color: PanelStyle.dim, alignment: .center, monospaced: true)
     }
 
-    private func tray(_ floaters: [GridMiniature.Floater], cell: NSRect, selected: WindowID?) {
+    private func tray(_ floaters: [GridMiniature.Floater], cell: NSRect, selected: WindowID?, dimmed: WindowID? = nil) {
         let s = metrics.scale
         let rects = GridIndicatorGeometry.trayRects(count: floaters.count, cell: cell, metrics: metrics)
         guard let first = rects.first, let last = rects.last else { return }
         Self.plate(first.union(last).insetBy(dx: -2 * s, dy: -2 * s), radius: 4 * s, fill: PanelStyle.plateFill, stroke: PanelStyle.plate)
         for (floater, rect) in zip(floaters, rects) {
-            let chosen = floater.window == selected
+            let isDimmed = floater.window == dimmed
+            let chosen = !isDimmed && floater.window == selected
             if chosen {
                 Self.plate(rect.insetBy(dx: -1.5 * s, dy: -1.5 * s), radius: 3 * s, fill: PanelStyle.highlightFill, stroke: PanelStyle.highlight)
             }
-            icon(floater.pid, in: rect, fraction: chosen ? 1 : PanelStyle.iconOpacity)
+            icon(floater.pid, in: rect, fraction: isDimmed ? PanelStyle.reservedOpacity : chosen ? 1 : PanelStyle.iconOpacity)
         }
     }
 
@@ -369,8 +386,9 @@ struct GridPainter {
 
     /// A monitor marker in unlit wire, since it shows where Ctrl+arrows cross rather than state: a small screen on a
     /// stand, a chevron pointing out of the panel, and the display's name in dim monospace.
-    static func marker(_ marker: MonitorMarker, geometry: GridIndicatorGeometry) {
-        let s = geometry.metrics.scale, parts = geometry.marker(marker.side), stroke = PanelStyle.marker
+    static func marker(_ marker: MonitorMarker, geometry: GridIndicatorGeometry, lit: Bool = false) {
+        let s = geometry.metrics.scale, parts = geometry.marker(marker.side)
+        let stroke = lit ? PanelStyle.highlight : PanelStyle.marker
         let glyph = parts.screen, screen = NSRect(x: glyph.minX, y: glyph.minY, width: glyph.width, height: (9 * s).rounded())
         stroke.draw(inside: screen, radius: 1.5 * s)
         let base = glyph.maxY - stroke.width / 2, stand = NSBezierPath()
@@ -393,7 +411,8 @@ struct GridPainter {
         chevron.lineJoinStyle = .round
         stroke.draw(chevron)
         let sideways = marker.side == .left || marker.side == .right
-        text(marker.name, rect: parts.name, size: 9 * s, color: PanelStyle.dim, alignment: sideways ? .center : .left, monospaced: true)
+        text(marker.name, rect: parts.name, size: 9 * s, color: lit ? PanelStyle.neon : PanelStyle.dim,
+             alignment: sideways ? .center : .left, monospaced: true)
     }
 
     /// Draws `inner` with the inner layout's origin at `inset`, past the marker bands on the left and top.

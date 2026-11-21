@@ -44,15 +44,16 @@ enum TransitionPlan {
     /// display it acts on changed nothing: the addressed display, else `context`. A navigation that `crossed` to
     /// another display changed something, so nothing bounces.
     static func plan(before: SavedState, after: SavedState, argv: [String], context: DisplayID?,
-                     crossed: Bool = false) -> [DisplayID: TransitionKind] {
+                     crossed: Bool = false, suppressSlides: Bool = false) -> [DisplayID: TransitionKind] {
         let navigation = crossed ? nil : navigation(argv)
         let context = navigation?.display ?? context
         var result: [DisplayID: TransitionKind] = [:]
         for display in after.displays {
             guard let old = before.displays.first(where: { $0.info.id == display.info.id }),
                   let from = ShownView(old), let to = ShownView(display) else { continue }
-            if from != to { result[display.info.id] = .slide(direction(before: old, after: display, from: from, to: to)) }
-            else if display.info.id == context, let navigation { result[display.info.id] = .bounce(navigation.direction) }
+            if from != to {
+                if !suppressSlides { result[display.info.id] = .slide(direction(before: old, after: display, from: from, to: to)) }
+            } else if display.info.id == context, let navigation { result[display.info.id] = .bounce(navigation.direction) }
         }
         return result
     }

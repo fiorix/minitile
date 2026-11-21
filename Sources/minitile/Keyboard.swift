@@ -40,6 +40,8 @@ enum SwitcherKey: Equatable, Sendable {
     case move(SwitcherDirection)
     /// Q: quit the selection's app.
     case quit
+    /// A modifier went up while the left button pressed the switcher; the session stays open without held modifiers.
+    case unhold
     case commit
     case cancel
 }
@@ -93,11 +95,15 @@ struct KeyRouter {
     /// The screens that take the keyboard while open. At most one is open: opening one replaces the other.
     enum Modal: Equatable, Sendable { case switcher, help }
 
+    enum MousePhase: Equatable, Sendable { case down, dragged, up }
+
     struct OpenModal: Equatable {
         var kind: Modal
         var session: Int
         /// The switcher's opening modifiers other than Shift; help always leaves these empty.
         var held: Modifiers
+        /// Left mouse button pressed inside the switcher panel during this session.
+        var pressed = false
     }
 
     /// A grab started by a binding, held while all of the binding's modifiers are.
@@ -119,6 +125,8 @@ struct KeyRouter {
     var helpAvailable = false {
         didSet { if !helpAvailable, modal?.kind == .help { modal = nil } }
     }
+    /// The visible switcher panel's frame in CG global coordinates; nil while hidden.
+    var switcherFrame: Rect?
     private(set) var modal: OpenModal?
     var switcher: OpenModal? { modal?.kind == .switcher ? modal : nil }
     var help: OpenModal? { modal?.kind == .help ? modal : nil }
@@ -126,6 +134,7 @@ struct KeyRouter {
     private var sessions = 0
     private var grabSessions = 0
     private var swallowed: Set<UInt16> = []
+    private var swallowedButtons: Set<Int64> = []
     /// Held keys whose press ran a repeating binding.
     private var repeating: Set<UInt16> = []
 
@@ -153,7 +162,34 @@ struct KeyRouter {
             && ["left", "right", "up", "down"].contains(argv[argv.count - 1])
     }
 
-    mutating func resetHeld() { swallowed.removeAll(); repeating.removeAll() }
+    mutating func resetHeld() {
+        swallowed.removeAll()
+        repeating.removeAll()
+        swallowedButtons.removeAll()
+        if modal?.kind == .switcher { modal?.pressed = false }
+    }
+
+    mutating func mouse(_ phase: MousePhase, button: Int64, at point: Point) -> KeyDecision {
+        switch phase {
+        case .down:
+            swallowedButtons.remove(button)
+            if let open = switcher, let frame = switcherFrame {
+                if !frame.contains(point) {
+                    swallowedButtons.insert(button)
+                    modal = nil
+                    return .switcher(.cancel, session: open.session)
+                }
+                if button == 0 { modal?.pressed = true }
+            }
+            return .pass
+        case .dragged:
+            return swallowedButtons.contains(button) ? .swallow : .pass
+        case .up:
+            if swallowedButtons.remove(button) != nil { return .swallow }
+            if button == 0, modal?.kind == .switcher { modal?.pressed = false }
+            return .pass
+        }
+    }
 
     /// Escape cancels the pointer's edge action independently of where the key itself is routed.
     static func cancelsEdgeDrop(_ code: UInt16, down: Bool, leftButtonDown: () -> Bool) -> Bool {
@@ -222,9 +258,14 @@ struct KeyRouter {
         return .pass
     }
 
-    /// A switcher opened by a binding commits once one of its modifiers other than Shift is released.
+    /// A switcher opened by a binding commits once one of its modifiers other than Shift is released, unless the left
+    /// mouse button is pressing the switcher, which turns the session unheld instead.
     mutating func flags(_ modifiers: Modifiers) -> KeyDecision {
         guard let open = switcher, !open.held.isEmpty, !modifiers.isSuperset(of: open.held) else { return .pass }
+        if open.pressed {
+            modal?.held = []
+            return .switcher(.unhold, session: open.session)
+        }
         modal = nil
         return .switcher(.commit, session: open.session)
     }
@@ -382,6 +423,8 @@ final class KeyboardTap: @unchecked Sendable {
         lock.withLock { router.switcherAvailable = switcher; router.helpAvailable = help }
     }
 
+    func switcherFrame(_ frame: Rect?) { lock.withLock { router.switcherFrame = frame } }
+
     func open(_ kind: KeyRouter.Modal) -> Int { lock.withLock { router.open(kind) } }
 
     func close(_ session: Int) { lock.withLock { router.close(session) } }
@@ -403,7 +446,13 @@ final class KeyboardTap: @unchecked Sendable {
 
     func start() {
         let thread = Thread { [self] in
-            let mask = [CGEventType.keyDown, .keyUp, .flagsChanged].reduce(CGEventMask(0)) { $0 | (1 << $1.rawValue) }
+            let events: [CGEventType] = [
+                .keyDown, .keyUp, .flagsChanged,
+                .leftMouseDown, .leftMouseDragged, .leftMouseUp,
+                .rightMouseDown, .rightMouseDragged, .rightMouseUp,
+                .otherMouseDown, .otherMouseDragged, .otherMouseUp,
+            ]
+            let mask = events.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << $1.rawValue) }
             guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
                                               eventsOfInterest: mask, callback: { _, type, event, pointer in
                 guard let pointer else { return Unmanaged.passUnretained(event) }
@@ -462,6 +511,21 @@ final class KeyboardTap: @unchecked Sendable {
             let decisions = lock.withLock { [router.flags(modifiers), router.grabFlags(modifiers)] }
             for decision in decisions where decision != .pass { DispatchQueue.main.async { [handle] in handle(decision, nil, received) } }
             return Unmanaged.passUnretained(event)
+        }
+        let mousePhase: KeyRouter.MousePhase? = switch type {
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown: .down
+        case .leftMouseDragged, .rightMouseDragged, .otherMouseDragged: .dragged
+        case .leftMouseUp, .rightMouseUp, .otherMouseUp: .up
+        default: nil
+        }
+        if let mousePhase {
+            let button = event.getIntegerValueField(.mouseEventButtonNumber)
+            let point = Point(x: event.location.x, y: event.location.y)
+            let decision = lock.withLock { router.mouse(mousePhase, button: button, at: point) }
+            if case .switcher = decision {
+                DispatchQueue.main.async { [handle] in handle(decision, nil, received) }
+            }
+            return decision == .pass ? Unmanaged.passUnretained(event) : nil
         }
         guard type == .keyDown || type == .keyUp else { return Unmanaged.passUnretained(event) }
         let code = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
