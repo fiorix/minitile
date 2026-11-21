@@ -6,6 +6,7 @@
 #   MINITILE_CONFIGURATION  debug or release (default debug)
 #   MINITILE_VERSION        CFBundleShortVersionString (default 0.0.0)
 #   MINITILE_BUILD          CFBundleVersion (default 1)
+#                           The commit, with -dirty for uncommitted changes, goes in the MinitileCommit key.
 #   MINITILE_HARDENED       1 signs with the hardened runtime and a secure timestamp, as notarization requires
 #   MINITILE_CHANNEL        dev (default) or release; dev builds are "Minitile Dev" with their own bundle ID, so
 #                           macOS keeps their privacy permissions apart from an installed release
@@ -16,6 +17,7 @@ identity=${MINITILE_SIGN_IDENTITY:-Apple Development}
 configuration=${MINITILE_CONFIGURATION:-debug}
 version=${MINITILE_VERSION:-0.0.0}
 build=${MINITILE_BUILD:-1}
+commit=$(git describe --always --dirty --abbrev=7 --exclude='*' 2>/dev/null || echo unknown)
 case ${MINITILE_CHANNEL:-dev} in
     dev) bundle_id=app.minitile.dev name="Minitile Dev" ;;
     release) bundle_id=app.minitile name=Minitile ;;
@@ -45,6 +47,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>$version</string>
     <key>CFBundleVersion</key><string>$build</string>
+    <key>MinitileCommit</key><string>$commit</string>
     <key>LSMinimumSystemVersion</key><string>26.0</string>
     <key>LSUIElement</key><true/>
     <key>NSAppSleepDisabled</key><true/>

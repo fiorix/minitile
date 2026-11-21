@@ -184,12 +184,18 @@ func edgeDropClampsDragAndReleaseAndCommitsOnce(_ edge: DropEdge, _ raw: Point, 
     #expect(dropOwner { window, _ in window.info.appHidden = true } == nil)
     #expect(dropOwner { window, _ in window.info.fullscreen = true } == nil)
     #expect(dropOwner { window, _ in window.info.orderedOut = true } == nil)
-    #expect(dropOwner { window, _ in window.info.onStash = true } == nil)
     #expect(dropOwner { window, _ in window.display = "other" } == nil)
     #expect(dropOwner { _, display in display.unmanagedReason = "no stash" } == nil)
     #expect(dropOwner { _, display in display.visibleSpace = 6 } == nil)
     #expect(dropOwner { _, display in display.visibleSpace = nil } == nil)
     #expect(dropOwner { window, _ in window.floating = true } != nil)
+}
+
+@Test func aWindowFoundOnTheStashAtLaunchGetsEdgeTargetsOnceShown() {
+    let window = WindowState(info: WindowInfo(id: 42, pid: 123, frame: moved, display: "d", onStash: true), display: "d", floating: false)
+    let display = DisplayInfo(id: "d", frame: bounds, visibleSpace: 4, stashSpace: 5)
+    #expect(EdgeDropOwner(window: window, display: display, origin: origin, frame: moved, currentSpace: 4, visible: true) != nil)
+    #expect(EdgeDropOwner(window: window, display: display, origin: origin, frame: moved, currentSpace: 4, visible: false) == nil)
 }
 
 @Test func edgeDropCancellationAndOwnerChangesCannotRearmTheSamePress() throws {

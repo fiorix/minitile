@@ -82,13 +82,16 @@ func saveRender(_ bitmap: NSBitmapImageRep, name: String) throws {
     #expect((bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2)?.alphaComponent ?? 0) > 0)
 }
 
-@Test @MainActor func helpHeaderPutsTheMarkTitleAndLinkLeftAndTheSubtitleRight() throws {
-    let view = HelpView(layout: HelpLayout(content: HelpContent(config: .default), bounds: CGSize(width: 1480, height: 913)))
-    let header = HelpHeader(width: view.bounds.width)
-    #expect(header.mark.maxX < header.title.minX && header.title.maxX < header.link.minX && header.link.maxX < header.subtitle.minX)
+@Test @MainActor func helpHeaderLinksTheMarkAndTitleAndShowsTheVersion() throws {
+    let view = HelpView(layout: HelpLayout(content: HelpContent(config: .default), bounds: CGSize(width: 1480, height: 913)),
+                        version: "0.9.0 (33aa25b)")
+    let header = HelpHeader(width: view.bounds.width, version: "0.9.0 (33aa25b)")
+    #expect(header.mark.maxX < header.title.minX && header.title.maxX < header.version.minX && header.version.maxX < header.subtitle.minX)
+    #expect(header.link.contains(header.mark) && header.link.contains(header.title) && !header.link.intersects(header.version))
+    #expect(HelpHeader(width: view.bounds.width, version: nil).version.isEmpty)
     #expect(header.subtitle.maxX == view.bounds.width - HelpLayout.margin)
     #expect(abs(header.mark.midY - header.title.midY) <= 2)
-    for rect in [header.mark, header.title, header.subtitle, header.link] {
+    for rect in [header.mark, header.title, header.subtitle, header.version] {
         #expect(rect.minY >= 0 && rect.maxY <= HelpLayout.margin + HelpLayout.titleHeight)
         #expect(try draws(view, in: rect))
     }

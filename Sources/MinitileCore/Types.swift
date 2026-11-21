@@ -52,6 +52,7 @@ public struct WindowInfo: Codable, Sendable, Equatable {
     public var fullscreen = false
     public var fromFrontmostApp: Bool
     public var display: DisplayID?
+    /// Whether discovery first found the window on the stash, for startup placement. It does not follow later moves.
     public var onStash: Bool
 
     public init(id: WindowID, pid: Int32, bundleID: String? = nil, appName: String = "", title: String = "",

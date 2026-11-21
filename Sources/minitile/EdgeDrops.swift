@@ -95,7 +95,7 @@ struct EdgeDropOwner: Equatable, Sendable {
 
     init?(window: WindowState, display: DisplayInfo, origin: Rect, frame: Rect, currentSpace: UInt64, visible: Bool) {
         guard visible, !window.hidden, !window.info.minimized, !window.info.appHidden, !window.info.fullscreen,
-              !window.info.orderedOut, !window.info.onStash,
+              !window.info.orderedOut,
               window.display == display.id, display.unmanagedReason == nil,
               display.visibleSpace == currentSpace,
               abs(frame.width - origin.width) <= DragMove.tolerance, abs(frame.height - origin.height) <= DragMove.tolerance,

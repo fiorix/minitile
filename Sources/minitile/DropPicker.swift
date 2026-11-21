@@ -70,7 +70,8 @@ struct DropPicker: Equatable {
     var display: DisplayID
     var area: Rect
     var frame: CGRect
-    /// `GridMetrics.picker`, scaled down when the row would not fit the usable area less `PanelStyle.inset`.
+    /// `GridMetrics.picker`, scaled down when the row would not fit the usable area less `PanelStyle.inset` and the
+    /// side edge targets.
     var metrics: GridMetrics
     var options: [Option]
 
@@ -86,7 +87,11 @@ struct DropPicker: Equatable {
         guard (2...4).contains(count) else { return nil }
         let area = display.info.visibleFrame
         let variants = Layout.variants(count: count)
-        let room = CGSize(width: area.width - 2 * PanelStyle.inset, height: area.height - 2 * PanelStyle.inset)
+        // The row shares its vertical centre with the side edge targets, so it stays between them. A display too narrow
+        // for both keeps at least half its width for the row.
+        let side = config.edgeDrops ? DropEdge.left.target(in: area).maxX - area.x : 0
+        let full = area.width - 2 * PanelStyle.inset
+        let room = CGSize(width: max(full - 2 * side, full / 2), height: area.height - 2 * PanelStyle.inset)
         let metrics = GridMetrics.picker.fitted(to: room) { Self.size(count: variants.count, area: area, metrics: $0) }
         let cell = GridIndicatorGeometry.cellSize(area: area, metrics: metrics), margin = Self.margin * metrics.scale
         let current = Layout.effective(page.variant, count: count)

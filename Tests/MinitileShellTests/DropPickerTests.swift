@@ -59,6 +59,23 @@ func pickerOffersTheCountsLayoutsInARowInTheMiddle(_ count: Int, _ variants: [Va
     #expect(abs(picker.frame.midY - display.visibleFrame.center.y) <= 0.5)
 }
 
+@Test(arguments: [Rect(x: 0, y: 33, width: 1512, height: 900), Rect(x: 0, y: 39, width: 2056, height: 1290)])
+func pickerLeavesTheSideEdgeTargetsVisible(_ area: Rect) throws {
+    let screen = DisplayInfo(id: "d", frame: Rect(x: 0, y: 0, width: area.width, height: area.maxY), visibleFrame: area, isPrimary: true)
+    var e = Engine(config: config)
+    _ = e.handle(.started(saved: nil, windows: (1...3).map { WindowInfo(id: WindowID($0), pid: Int32(100 + $0), display: "d") },
+                          displays: [screen], focus: nil))
+    let picker = try #require(dropPicker(e))
+    for edge in [DropEdge.left, .right] {
+        let target = edge.target(in: area)
+        #expect(!picker.frame.intersects(CGRect(x: target.x, y: target.y, width: target.width, height: target.height)))
+    }
+    var off = config
+    off.edgeDrops = false
+    let without = try #require(DropPicker(state: e.savedState(), config: off, window: 1))
+    #expect(without.frame.width > picker.frame.width)
+}
+
 @Test func pickerScalesDownToFitASmallDisplay() throws {
     #expect(dropPicker(engine(2))?.metrics == .picker)
     let small = DisplayInfo(id: "d", frame: Rect(x: 0, y: 0, width: 480, height: 330), visibleFrame: Rect(x: 0, y: 30, width: 480, height: 300),
