@@ -19,6 +19,267 @@ enum SwitcherPressGuard {
     }
 }
 
+struct AppearanceHooks {
+    var isKnown: (WindowID, Int32) -> Bool
+    var readFrame: (WindowID) -> Rect?
+    var isActive: (Int32) -> Bool
+    var focusedWindow: (Int32) -> FocusObservation
+    var refreshFocus: () -> Void
+    var retryRead: (Set<Int32>) -> Void
+}
+
+/// Holds newly discovered windows outside the core model while a non-switcher left mouse press is active, and keeps
+/// entries whose mouse-up frame read failed until a later frame observation succeeds or discovery confirms removal.
+struct PendingAppearances {
+    struct Entry: Equatable {
+        var info: WindowInfo
+        /// True when discovery withheld focus on an active app's window (such as an unseen tab left behind by a detach).
+        var suppressedFocus: Bool
+        /// An admitted window in the core model whose slot transfers to `info.id` via `.windowTabSelected` on admission.
+        var tabPrevious: WindowID?
+        /// True when `info.id` is already an ordered-out window in the core model, so admission updates it in place.
+        var updatesExisting = false
+        /// True once a mouse-up frame read returned nil; waits for a fresh frame observation instead of 30 ms retries.
+        var awaitingFrame = false
+        /// A frame read delivered while the button was already up, ready to admit without another main-thread AX read.
+        var recoveredFrame: Rect?
+    }
+
+    enum GoneAction: Equatable {
+        case pass
+        case dropped(orphanedGone: [WindowID])
+        case deferred
+    }
+
+    enum TabRoute: Equatable {
+        case pass
+        case recorded(orphanedGone: [WindowID], activeTargetUpdate: WindowInfo?)
+    }
+
+    enum AdmissionKind: Equatable {
+        case appeared(WindowInfo)
+        case updated(WindowInfo)
+        case tabSelected(previous: WindowID, WindowInfo)
+
+        var input: Input {
+            switch self {
+            case .appeared(let info): .windowAppeared(info)
+            case .updated(let info): .windowUpdated(info)
+            case .tabSelected(let previous, let info): .windowTabSelected(previous: previous, info)
+            }
+        }
+    }
+
+    struct Admission: Equatable {
+        var kind: AdmissionKind
+        var deferredGone: [WindowID] = []
+    }
+
+    struct DrainResult: Equatable {
+        var admissions: [Admission] = []
+        var orphanedGone: [WindowID] = []
+        var retryPids: Set<Int32> = []
+    }
+
+    private(set) var entries: [Entry] = []
+    private(set) var deferredGone: Set<WindowID> = []
+
+    var isEmpty: Bool { entries.isEmpty }
+    var needsReleasePoll: Bool { entries.contains { !$0.awaitingFrame } }
+    func contains(_ id: WindowID) -> Bool { entries.contains { $0.info.id == id } }
+
+    mutating func appear(_ info: WindowInfo, appActive: Bool) -> [WindowID] {
+        let suppressed = appActive && !info.fromFrontmostApp
+        if let index = entries.firstIndex(where: { $0.info.id == info.id }) {
+            if entries[index].info.pid == info.pid {
+                entries[index] = Entry(info: info, suppressedFocus: suppressed, tabPrevious: entries[index].tabPrevious,
+                                       updatesExisting: entries[index].updatesExisting)
+                return []
+            }
+            let oldPrev = entries[index].tabPrevious
+            entries.remove(at: index)
+            entries.append(Entry(info: info, suppressedFocus: suppressed, tabPrevious: nil))
+            return releaseOrphanedGone(candidates: oldPrev.map { [$0] } ?? [])
+        }
+        entries.append(Entry(info: info, suppressedFocus: suppressed, tabPrevious: nil))
+        return []
+    }
+
+    mutating func update(_ info: WindowInfo, appActive: Bool) -> Bool {
+        guard let index = entries.firstIndex(where: { $0.info.id == info.id }),
+              entries[index].info.pid == info.pid else { return false }
+        if entries[index].info.orderedOut && !info.orderedOut {
+            entries[index].suppressedFocus = appActive && !info.fromFrontmostApp
+        }
+        entries[index].info = info
+        return true
+    }
+
+    mutating func observeFrame(_ id: WindowID, pid: Int32, frame: Rect, mouseDown: Bool, frozen: Bool) -> Bool {
+        guard let index = entries.firstIndex(where: { $0.info.id == id && $0.info.pid == pid }) else { return false }
+        entries[index].info.frame = frame
+        guard entries[index].awaitingFrame else { return false }
+        entries[index].awaitingFrame = false
+        if !mouseDown && !frozen {
+            entries[index].recoveredFrame = frame
+            return true
+        }
+        entries[index].recoveredFrame = nil
+        return false
+    }
+
+    mutating func gone(_ id: WindowID, admittedInModel: Bool) -> GoneAction {
+        if let index = entries.firstIndex(where: { $0.info.id == id }) {
+            let removed = entries.remove(at: index)
+            let orphaned = releaseOrphanedGone(candidates: removed.tabPrevious.map { [$0] } ?? [])
+            return .dropped(orphanedGone: admittedInModel ? orphaned + [id] : orphaned)
+        }
+        if entries.contains(where: { $0.tabPrevious == id }) {
+            deferredGone.insert(id)
+            return .deferred
+        }
+        return .pass
+    }
+
+    mutating func tabSelected(previous: WindowID, info: WindowInfo, mouseDown: Bool, appActive: Bool,
+                              previousState: WindowState?, targetState: WindowState?) -> TabRoute {
+        let previousPending = contains(previous)
+        let targetPending = contains(info.id)
+        guard previousPending || targetPending || (mouseDown && targetState == nil) else { return .pass }
+        if previous == info.id {
+            if targetPending { _ = update(info, appActive: appActive) }
+            return .recorded(orphanedGone: [], activeTargetUpdate: nil)
+        }
+        let suppressed = appActive && !info.fromFrontmostApp
+        let updatesExisting = targetState?.info.pid == info.pid && !deferredGone.contains(info.id)
+        var orphaned: [WindowID] = []
+        if let prevIndex = entries.firstIndex(where: { $0.info.id == previous }) {
+            let inherited = entries[prevIndex].tabPrevious
+            entries[prevIndex].info.orderedOut = true
+            entries[prevIndex].tabPrevious = nil
+            if updatesExisting, targetState?.info.orderedOut == false, !targetPending,
+               inherited == nil || inherited == info.id {
+                return .recorded(orphanedGone: [], activeTargetUpdate: info)
+            }
+            var newInfo = info
+            newInfo.orderedOut = false
+            let updated = Entry(info: newInfo, suppressedFocus: suppressed, tabPrevious: inherited,
+                                updatesExisting: updatesExisting)
+            if let existing = entries.firstIndex(where: { $0.info.id == info.id }) {
+                let oldPrev = entries[existing].tabPrevious
+                entries.remove(at: existing)
+                let insertAt = existing < prevIndex ? prevIndex : prevIndex + 1
+                entries.insert(updated, at: insertAt)
+                if let oldPrev, oldPrev != inherited { orphaned = releaseOrphanedGone(candidates: [oldPrev]) }
+            } else {
+                entries.insert(updated, at: prevIndex + 1)
+            }
+            return .recorded(orphanedGone: orphaned, activeTargetUpdate: nil)
+        }
+        let inherited = (previousState != nil && previousState?.info.pid == info.pid && !deferredGone.contains(previous))
+            ? previous : nil
+        if let inherited {
+            for idx in entries.indices where entries[idx].tabPrevious == inherited && entries[idx].info.id != info.id {
+                entries[idx].info.orderedOut = true
+                entries[idx].tabPrevious = nil
+            }
+        }
+        var newInfo = info
+        newInfo.orderedOut = false
+        let updated = Entry(info: newInfo, suppressedFocus: suppressed, tabPrevious: inherited,
+                            updatesExisting: updatesExisting)
+        if let existing = entries.firstIndex(where: { $0.info.id == info.id }) {
+            let oldPrev = entries[existing].tabPrevious
+            entries[existing] = updated
+            if let oldPrev, oldPrev != inherited { orphaned = releaseOrphanedGone(candidates: [oldPrev]) }
+        } else {
+            entries.append(updated)
+        }
+        return .recorded(orphanedGone: orphaned, activeTargetUpdate: nil)
+    }
+
+    mutating func revalidate(isKnown: (WindowID, Int32) -> Bool) -> [WindowID] {
+        var kept: [Entry] = []
+        var removedPrevs: [WindowID] = []
+        for var entry in entries {
+            guard isKnown(entry.info.id, entry.info.pid) else {
+                if let prev = entry.tabPrevious { removedPrevs.append(prev) }
+                continue
+            }
+            entry.awaitingFrame = false
+            entry.recoveredFrame = nil
+            kept.append(entry)
+        }
+        entries = kept
+        return releaseOrphanedGone(candidates: removedPrevs)
+    }
+
+    mutating func drain(isKnown: (WindowID, Int32) -> Bool, readFrame: (WindowID) -> Rect?,
+                        isActive: (Int32) -> Bool, focusedWindow: (Int32) -> FocusObservation) -> DrainResult {
+        var result = DrainResult()
+        var kept: [Entry] = []
+        var removedPrevs: [WindowID] = []
+        var admittedPrevs: [WindowID] = []
+        var focusReads = FocusReads()
+        for var entry in entries {
+            let id = entry.info.id, pid = entry.info.pid
+            guard isKnown(id, pid) else {
+                if let prev = entry.tabPrevious { removedPrevs.append(prev) }
+                continue
+            }
+            if entry.awaitingFrame {
+                kept.append(entry)
+                continue
+            }
+            guard let frame = entry.recoveredFrame ?? readFrame(id) else {
+                entry.awaitingFrame = true
+                entry.recoveredFrame = nil
+                kept.append(entry)
+                result.retryPids.insert(pid)
+                continue
+            }
+            entry.info.frame = frame
+            entry.recoveredFrame = nil
+            let active = isActive(pid)
+            if entry.tabPrevious != nil || entry.suppressedFocus {
+                entry.info.fromFrontmostApp = active && focusReads.read(pid, using: { focusedWindow(pid) }).window == id
+            } else {
+                entry.info.fromFrontmostApp = active
+            }
+            let kind: AdmissionKind
+            if let previous = entry.tabPrevious {
+                kind = .tabSelected(previous: previous, entry.info)
+                admittedPrevs.append(previous)
+            } else if entry.updatesExisting {
+                kind = .updated(entry.info)
+            } else {
+                kind = .appeared(entry.info)
+            }
+            result.admissions.append(Admission(kind: kind))
+        }
+        entries = kept
+        for index in result.admissions.indices {
+            if case .tabSelected(let previous, _) = result.admissions[index].kind,
+               !entries.contains(where: { $0.tabPrevious == previous }),
+               deferredGone.remove(previous) != nil {
+                result.admissions[index].deferredGone.append(previous)
+            }
+        }
+        result.orphanedGone = releaseOrphanedGone(candidates: removedPrevs + admittedPrevs)
+        return result
+    }
+
+    private mutating func releaseOrphanedGone(candidates: [WindowID]) -> [WindowID] {
+        var released: [WindowID] = []
+        for id in candidates where !released.contains(id) {
+            if !entries.contains(where: { $0.tabPrevious == id }), deferredGone.remove(id) != nil {
+                released.append(id)
+            }
+        }
+        return released
+    }
+}
+
 extension AppDelegate {
     func observeLifecycle() {
         let workspace = NSWorkspace.shared.notificationCenter
@@ -161,6 +422,7 @@ extension AppDelegate {
         discovery?.frozen = !suspendedReasons.isEmpty
         if enabled {
             dropPanels.hide(); edgeDrops?.cancel(); edgePanels.hide(); endGrab(); cancelNativeTiling()
+            suspendPendingAppearances()
             closeFocusRead?.cancel(); closeFocus = CloseFocus(); spaceSync = []
         }
         if shouldResume { resume() }
@@ -185,6 +447,7 @@ extension AppDelegate {
         } catch { warnings["config"] = "Config: \(error)" }
         discovery.recheckSoon()
         finishDragIfReleased(cursor: CGEvent(source: nil)?.location)
+        resumePendingAppearances()
         discovery.refreshFocus()
         let applyStart = ProcessInfo.processInfo.systemUptime
         reconciler.apply(Output(scene: reconciler.scene))
@@ -280,7 +543,8 @@ extension AppDelegate {
     }
 
     func windowMoved(_ id: WindowID) {
-        let mouseDown = SwitcherPressGuard.mouseDown(buttons: NSEvent.pressedMouseButtons, switcherOwnsPress: switcherOwnsPress)
+        guard !pendingAppearances.contains(id) else { return }
+        let mouseDown = SwitcherPressGuard.mouseDown(buttons: pressedMouseButtons(), switcherOwnsPress: switcherOwnsPress)
         if !mouseDown, reconciler?.dragging != id, discovery?.frozen == false {
             trackNativeTiling(id)
             return
@@ -302,7 +566,7 @@ extension AppDelegate {
         guard switcherPressTimer == nil else { return }
         let timer = Timer(timeInterval: 0.03, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, NSEvent.pressedMouseButtons & 1 == 0 else { return }
+                guard let self, self.pressedMouseButtons() & 1 == 0 else { return }
                 self.switcherPressTimer?.invalidate()
                 self.switcherPressTimer = nil
                 self.switcherOwnsPress = false
@@ -338,6 +602,7 @@ extension AppDelegate {
                 let start = ProcessInfo.processInfo.systemUptime
                 let cursor = CGEvent(source: nil)?.location
                 self.finishDragIfReleased(cursor: cursor)
+                self.drainPendingAppearancesIfReleased()
                 self.updateEdgePreview()
                 self.updateDropPicker(cursor: cursor)
                 self.dragTicks.record((ProcessInfo.processInfo.systemUptime - start) * 1000)
@@ -370,7 +635,7 @@ extension AppDelegate {
 
     func finishDragIfReleased(cursor: CGPoint?) {
         guard discovery?.frozen == false, let reconciler, let id = reconciler.dragging,
-              NSEvent.pressedMouseButtons & 1 == 0 else { return }
+              pressedMouseButtons() & 1 == 0 else { return }
         let owner = updateEdgePolicy()
         guard case .ready(let release) = edgeDrops?.finish() ?? .ready(nil) else { return }
         let tile = dragTile
@@ -402,5 +667,160 @@ extension AppDelegate {
         case .dragEnded(let frame, let cursor): handle(.dragEnded(id, frame: frame, cursor: cursor))
         case .ignore: break
         }
+    }
+
+    private var isLeftMouseHeldForDeferral: Bool {
+        SwitcherPressGuard.mouseDown(buttons: pressedMouseButtons(), switcherOwnsPress: switcherOwnsPress)
+    }
+
+    func interceptPendingAppearance(_ input: Input) -> Bool {
+        let mouseDown = isLeftMouseHeldForDeferral
+        let frozen = discovery?.frozen == true || !suspendedReasons.isEmpty
+        switch input {
+        case .windowAppeared(let info):
+            guard mouseDown || frozen || pendingAppearances.needsReleasePoll else { return false }
+            let orphaned = pendingAppearances.appear(info, appActive: isPendingAppActive(info.pid))
+            admitGone(orphaned)
+            if !mouseDown && !frozen { drainPendingAppearancesIfReleased() }
+            else { updateAppearanceTracking() }
+            return true
+        case .windowUpdated(let info):
+            return pendingAppearances.update(info, appActive: isPendingAppActive(info.pid))
+        case .windowTabSelected(let previous, let info):
+            let windows = engine.savedState().windows
+            switch pendingAppearances.tabSelected(previous: previous, info: info, mouseDown: mouseDown || frozen,
+                                                  appActive: isPendingAppActive(info.pid), previousState: windows[previous],
+                                                  targetState: windows[info.id]) {
+            case .pass:
+                return false
+            case .recorded(let orphaned, let activeUpdate):
+                admitGone(orphaned)
+                if let activeUpdate { _ = handle(.windowUpdated(activeUpdate), admitting: true) }
+                if !mouseDown && !frozen { drainPendingAppearancesIfReleased() }
+                else { updateAppearanceTracking() }
+                return true
+            }
+        case .windowGone(let id):
+            switch pendingAppearances.gone(id, admittedInModel: engine.savedState().windows[id] != nil) {
+            case .pass:
+                return false
+            case .deferred:
+                updateAppearanceTracking()
+                return true
+            case .dropped(let orphaned):
+                updateAppearanceTracking()
+                admitGone(orphaned)
+                return true
+            }
+        case .focusChanged(let id):
+            return id.map { pendingAppearances.contains($0) } == true
+        default:
+            return false
+        }
+    }
+
+    func suspendPendingAppearances() {
+        appearanceTimer?.invalidate()
+        appearanceTimer = nil
+    }
+
+    func resumePendingAppearances() {
+        guard started, !quitting, discovery?.frozen != true, suspendedReasons.isEmpty else { return }
+        let orphaned = pendingAppearances.revalidate { id, pid in isPendingWindowKnown(id, pid: pid) }
+        admitGone(orphaned)
+        if !isLeftMouseHeldForDeferral { drainPendingAppearancesIfReleased() }
+        else { updateAppearanceTracking() }
+    }
+
+    func observedWindowFrame(_ id: WindowID, pid: Int32, frame: Rect) {
+        let frozen = discovery?.frozen == true || !suspendedReasons.isEmpty
+        let mouseDown = isLeftMouseHeldForDeferral
+        if pendingAppearances.observeFrame(id, pid: pid, frame: frame, mouseDown: mouseDown, frozen: frozen) {
+            drainPendingAppearancesIfReleased()
+        } else {
+            updateAppearanceTracking()
+        }
+    }
+
+    func updateAppearanceTracking() {
+        guard started, !quitting, discovery?.frozen != true, suspendedReasons.isEmpty,
+              pendingAppearances.needsReleasePoll else {
+            appearanceTimer?.invalidate()
+            appearanceTimer = nil
+            return
+        }
+        guard appearanceTimer == nil else { return }
+        let timer = Timer(timeInterval: 0.03, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.drainPendingAppearancesIfReleased() }
+        }
+        appearanceTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    func drainPendingAppearancesIfReleased() {
+        guard started, !quitting, !drainingAppearances, discovery?.frozen != true, suspendedReasons.isEmpty,
+              !isLeftMouseHeldForDeferral else { return }
+        if reconciler?.dragging != nil {
+            finishDragIfReleased(cursor: CGEvent(source: nil)?.location)
+            guard reconciler?.dragging == nil else {
+                updateAppearanceTracking()
+                return
+            }
+        }
+        guard pendingAppearances.needsReleasePoll else {
+            updateAppearanceTracking()
+            return
+        }
+        drainingAppearances = true
+        let result = pendingAppearances.drain(
+            isKnown: { id, pid in isPendingWindowKnown(id, pid: pid) },
+            readFrame: { id in readPendingWindowFrame(id) },
+            isActive: { pid in isPendingAppActive(pid) },
+            focusedWindow: { pid in readPendingAppFocus(pid) }
+        )
+        for admission in result.admissions {
+            _ = handle(admission.kind.input, admitting: true)
+            admitGone(admission.deferredGone)
+        }
+        admitGone(result.orphanedGone)
+        drainingAppearances = false
+        updateAppearanceTracking()
+        if !result.retryPids.isEmpty { retryPendingReads(result.retryPids) }
+        if !result.admissions.isEmpty { refreshFocusAfterAdmission() }
+    }
+
+    private func admitGone(_ ids: [WindowID]) {
+        for id in ids { _ = handle(.windowGone(id), admitting: true) }
+    }
+
+    private func isPendingWindowKnown(_ id: WindowID, pid: Int32) -> Bool {
+        if let hooks = appearanceHooks { return hooks.isKnown(id, pid) }
+        return discovery?.windows[id]?.info.pid == pid
+    }
+
+    private func readPendingWindowFrame(_ id: WindowID) -> Rect? {
+        if let hooks = appearanceHooks { return hooks.readFrame(id) }
+        return discovery?.windows[id].flatMap { AX.frame($0.element) }
+    }
+
+    private func isPendingAppActive(_ pid: Int32) -> Bool {
+        if let hooks = appearanceHooks { return hooks.isActive(pid) }
+        return NSRunningApplication(processIdentifier: pid)?.isActive == true
+    }
+
+    private func readPendingAppFocus(_ pid: Int32) -> FocusObservation {
+        if let hooks = appearanceHooks { return hooks.focusedWindow(pid) }
+        return discovery?.applications[pid].map { AX.focus($0.element) } ?? .unknown
+    }
+
+    private func refreshFocusAfterAdmission() {
+        if let hooks = appearanceHooks { hooks.refreshFocus(); return }
+        discovery?.refreshFocus()
+    }
+
+    private func retryPendingReads(_ pids: Set<Int32>) {
+        if let hooks = appearanceHooks { hooks.retryRead(pids); return }
+        discovery?.recheckSoon(pids: pids)
+        discovery?.scan(pids: pids)
     }
 }

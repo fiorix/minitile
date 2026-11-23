@@ -65,8 +65,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var observers: [(NotificationCenter, NSObjectProtocol)] = []
     var healthTimer: Timer?
     var dragTimer: Timer?
+    var appearanceTimer: Timer?
     var switcherPressTimer: Timer?
     var nativeTileTimer: Timer?
+    var pendingAppearances = PendingAppearances()
+    var drainingAppearances = false
+    var pressedMouseButtons: () -> Int = { NSEvent.pressedMouseButtons }
+    var appearanceHooks: AppearanceHooks?
     /// A left-mouse press begun on the switcher panel, which must not start a desktop window drag.
     var switcherOwnsPress = false
     /// The dragged window's tile when the drag began.
@@ -216,6 +221,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         discovery.focused = { [weak self] in self?.focusReported($0) }
         reconciler.focusSettled = { [weak self] in self?.focusSettled($0, reported: $1) }
         discovery.moved = { [weak self] in self?.windowMoved($0) }
+        discovery.frameObserved = { [weak self] id, pid, frame in self?.observedWindowFrame(id, pid: pid, frame: frame) }
         discovery.closed = { [weak self] in self?.closeFocus.noteClose(now: ProcessInfo.processInfo.systemUptime) }
         transitions.commit = { [weak self] in self?.commitHeld($0) }
         transitions.model = { [weak self] in self?.engine.savedState() ?? SavedState() }
@@ -335,8 +341,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return handle(.command(argv), grab: grab) ?? Reply()
     }
 
-    @discardableResult func handle(_ input: Input, grab session: Int? = nil) -> Reply? {
+    @discardableResult func handle(_ input: Input, grab session: Int? = nil, admitting: Bool = false) -> Reply? {
         guard started, !quitting else { return nil }
+        if !admitting, interceptPendingAppearance(input) { return nil }
         var checksCloseFocus = false
         if case .windowGone(let id) = input {
             reconciler?.forget(id); updateDragTracking()
@@ -517,6 +524,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func requestQuit() {
         guard !quitting else { return }
         quitting = true
+        suspendPendingAppearances()
         endGrab()
         updateModalAvailability()
         keyboard?.stop()
@@ -540,7 +548,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         desktopNotice.stop()
         transitions.stop()
         cancelNativeTiling()
-        permissionTimer?.invalidate(); healthTimer?.invalidate(); dragTimer?.invalidate(); switcherPressTimer?.invalidate(); displayWork?.cancel(); activationFocusRead?.cancel(); closeFocusRead?.cancel()
+        permissionTimer?.invalidate(); healthTimer?.invalidate(); dragTimer?.invalidate(); appearanceTimer?.invalidate(); switcherPressTimer?.invalidate(); displayWork?.cancel(); activationFocusRead?.cancel(); closeFocusRead?.cancel()
         for (center, token) in observers { center.removeObserver(token) }
         signalSources.forEach { $0.cancel() }
         stateWriter.flush()

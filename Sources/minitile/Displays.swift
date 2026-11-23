@@ -73,6 +73,8 @@ final class DisplayCatalog {
     private var nativeSpaces: [NativeDisplaySpaces] = []
     var infos: [DisplayInfo] { displays.map(\.info) }
 
+    func setDisplays(_ displays: [NativeDisplay]) { self.displays = displays }
+
     static func id(for screen: NSScreen) -> DisplayID? {
         guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
               let uuid = CGDisplayCreateUUIDFromDisplayID(number.uint32Value)?.takeRetainedValue() else { return nil }

@@ -89,6 +89,7 @@ final class Discovery {
     var focused: ((WindowID?) -> Void)?
     var acceptsFocus: ((Int32) -> Bool)?
     var moved: ((WindowID) -> Void)?
+    var frameObserved: ((WindowID, Int32, Rect) -> Void)?
     var closed: (() -> Void)?
     var suppressGeometry: ((WindowID) -> Bool)?
     var fullScans: Int { passes.count }
@@ -99,6 +100,8 @@ final class Discovery {
                                        kAXTitleChangedNotification, kAXWindowMiniaturizedNotification, kAXWindowDeminiaturizedNotification]
 
     init(config: Config, displays: DisplayCatalog) { self.config = config; self.displays = displays }
+
+    func setWindow(_ id: WindowID, window: Window?) { windows[id] = window }
 
     func allows(_ app: NSRunningApplication) -> Bool {
         app.processIdentifier != ProcessInfo.processInfo.processIdentifier && !app.isTerminated && app.activationPolicy != .prohibited
@@ -377,6 +380,7 @@ final class Discovery {
         }
         if tabsRead, selectTab(info, group: tabGroup, focus: focus) { return }
         if info != old.info { input?(.windowUpdated(info)) }
+        if let frame = attributes.frame, !suppressed { frameObserved?(id, info.pid, frame) }
     }
 
     private func selectTab(_ info: WindowInfo, group: AXRef?, isNew: Bool = false, focus: FocusObservation? = nil) -> Bool {

@@ -73,7 +73,7 @@ extension AppDelegate {
 
     func settleNativeTiling() {
         guard !quitting, let discovery, !discovery.frozen, let reconciler else { cancelNativeTiling(); return }
-        guard NSEvent.pressedMouseButtons & 1 == 0 else { return }
+        guard pressedMouseButtons() & 1 == 0 else { return }
         let now = ProcessInfo.processInfo.systemUptime
         let state = engine.savedState()
         let ready = reconciler.geometry.ready(state: state, now: now)

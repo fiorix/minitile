@@ -228,6 +228,10 @@ final class Reconciler {
     private(set) var lastMilliseconds = 0.0
     var activation: (pid: Int32, source: String, received: TimeInterval)?
     private(set) var activationTimings: [ActivationTiming] = []
+    var submitSpaceMove: (SpaceMove) -> Bool = { csl_move_windows($0.windows, $0.windows.count, $0.space) }
+    var readEnhancedUI: (AXUIElement) -> Bool? = { AX.value($0, "AXEnhancedUserInterface") as? Bool }
+    var setEnhancedUI: (AXUIElement, Bool) -> Void = { AX.set($0, "AXEnhancedUserInterface", $1 ? kCFBooleanTrue : kCFBooleanFalse) }
+    var writeWindowFrame: (WindowID, AXUIElement, Rect) -> Void = { _, element, target in AX.setFrame(element, target) }
 
     init(discovery: Discovery, displays: DisplayCatalog) { self.discovery = discovery; self.displays = displays }
 
@@ -314,7 +318,7 @@ final class Reconciler {
 
     private func submit(_ move: SpaceMove, verify: Bool = true) {
         let before = ProcessInfo.processInfo.systemUptime
-        guard csl_move_windows(move.windows, move.windows.count, move.space) else {
+        guard submitSpaceMove(move) else {
             warning?("Could not submit a desktop move"); return
         }
         if let activation {
@@ -347,8 +351,8 @@ final class Reconciler {
         let groups = Dictionary(grouping: writes.keys) { discovery.windows[$0]!.info.pid }
         for (pid, ids) in groups {
             let app = discovery.applications[pid]?.element ?? AXUIElementCreateApplication(pid)
-            let enhanced = AX.value(app, "AXEnhancedUserInterface") as? Bool
-            if enhanced == true { AX.set(app, "AXEnhancedUserInterface", kCFBooleanFalse) }
+            let enhanced = readEnhancedUI(app)
+            if enhanced == true { setEnhancedUI(app, false) }
             for id in ids {
                 guard let window = discovery.windows[id], let target = writes[id] else { continue }
                 frames[id] = target
@@ -359,7 +363,7 @@ final class Reconciler {
                     guard let self, let dragging = self.dragging, dragging != id else { return false }
                     return self.dragPressIsCurrent?() == true
                 }
-                AX.setFrame(window.element, target)
+                writeWindowFrame(id, window.element, target)
                 if verify {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.25) { [weak self] in
                         guard let self, !self.discovery.frozen, NSEvent.pressedMouseButtons & 1 == 0,
@@ -371,7 +375,7 @@ final class Reconciler {
                     }
                 }
             }
-            if enhanced == true { AX.set(app, "AXEnhancedUserInterface", kCFBooleanTrue) }
+            if enhanced == true { setEnhancedUI(app, true) }
         }
     }
 
