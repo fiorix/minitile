@@ -3,7 +3,7 @@ import MinitileCore
 import Testing
 @testable import minitile
 
-/// Renders the view offscreen at twice its point size and returns the colour of each point in `rect` that it draws.
+/// Renders at the environment's backing scale and samples bright, mostly opaque pixels in `rect` at half-point intervals.
 @MainActor func drawn(_ view: NSView, in rect: CGRect) throws -> [NSColor] {
     let rep = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
     view.cacheDisplay(in: view.bounds, to: rep)

@@ -104,28 +104,56 @@ import Testing
     #expect(alpha(rect.midX, rect.midY) == 0)
 }
 
-@Test @MainActor func offscreenViewsRenderPinkFocalElementsAndConcentricHugs() throws {
-    let preview = DropPreviewView(frame: NSRect(x: 0, y: 0, width: 280, height: 190))
-    let previewRep = try #require(preview.bitmapImageRepForCachingDisplay(in: preview.bounds))
-    preview.cacheDisplay(in: preview.bounds, to: previewRep)
-    try saveRender(previewRep, name: "drop-preview-tunnel")
-    let previewColors = try drawn(preview, in: NSRect(x: 4, y: 4, width: 44, height: 44)).compactMap { $0.usingColorSpace(.sRGB) }
-    #expect(previewColors.contains { $0.redComponent > $0.blueComponent + 0.2 })
+@Test(arguments: [1, 2])
+@MainActor func offscreenViewsRenderPinkFocalElementsAndConcentricHugs(scale: Int) throws {
+    func rendered(_ view: NSView, name: String) throws -> NSBitmapImageRep {
+        let size = view.bounds.size
+        let bitmap = try #require(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(ceil(size.width)) * scale,
+                                                   pixelsHigh: Int(ceil(size.height)) * scale, bitsPerSample: 8,
+                                                   samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                                   colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+        bitmap.size = size
+        view.cacheDisplay(in: view.bounds, to: bitmap)
+        try saveRender(bitmap, name: "\(name)-\(scale)x")
+        return bitmap
+    }
+    func colors(_ bitmap: NSBitmapImageRep, in rect: CGRect) -> [NSColor] {
+        let scale = CGFloat(scale)
+        var colors: [NSColor] = []
+        for y in Int(rect.minY * scale)..<Int(rect.maxY * scale) {
+            for x in Int(rect.minX * scale)..<Int(rect.maxX * scale) {
+                if let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) { colors.append(color) }
+            }
+        }
+        return colors
+    }
 
+    let preview = DropPreviewView(frame: NSRect(x: 0, y: 0, width: 280, height: 190))
     let grab = GrabOutlineView(frame: NSRect(x: 0, y: 0, width: 280, height: 190))
-    let grabRep = try #require(grab.bitmapImageRepForCachingDisplay(in: grab.bounds))
-    grab.cacheDisplay(in: grab.bounds, to: grabRep)
-    try saveRender(grabRep, name: "grab-corner-hugs")
-    let grabColors = try drawn(grab, in: NSRect(x: 4, y: 4, width: 44, height: 44)).compactMap { $0.usingColorSpace(.sRGB) }
-    #expect(grabColors.contains { $0.redComponent > $0.blueComponent + 0.2 })
+    let outlines: [(NSView, String)] = [(preview, "drop-preview-tunnel"), (grab, "grab-corner-hugs")]
+    for (view, name) in outlines {
+        let bitmap = try rendered(view, name: name)
+        let core = PanelStyle.accentCore
+        let cornerColors = colors(bitmap, in: NSRect(x: 4, y: 4, width: 44, height: 44))
+        #expect(cornerColors.contains {
+            $0.alphaComponent > 0.95 && abs($0.redComponent - core.red) < 0.03
+                && abs($0.greenComponent - core.green) < 0.03 && abs($0.blueComponent - core.blue) < 0.03
+        }, "\(name) has an opaque pale-pink core at \(scale)x")
+        // Outside both corner-arc strokes, only the translucent halo can colour these pixels.
+        let haloColors = colors(bitmap, in: NSRect(x: 3, y: 38, width: 2, height: 10))
+        #expect(haloColors.contains {
+            $0.alphaComponent > 0.05 && $0.alphaComponent < 0.75
+                && $0.redComponent > $0.blueComponent + 0.2 && $0.blueComponent > $0.greenComponent + 0.1
+        }, "\(name) has a saturated pink halo at \(scale)x")
+    }
 
     let notice = DesktopNoticeView(layout: DesktopNoticeLayout(name: "Studio Display"))
-    let noticeRep = try #require(notice.bitmapImageRepForCachingDisplay(in: notice.bounds))
-    notice.cacheDisplay(in: notice.bounds, to: noticeRep)
-    try saveRender(noticeRep, name: "desktop-notice")
+    let noticeRep = try rendered(notice, name: "desktop-notice")
     let secondDesktop = notice.layout.desktops[1]
-    let noticeColors = try drawn(notice, in: secondDesktop).compactMap { $0.usingColorSpace(.sRGB) }
-    #expect(noticeColors.contains { $0.redComponent > $0.blueComponent + 0.2 })
+    let noticeColors = colors(noticeRep, in: secondDesktop)
+    #expect(noticeColors.contains {
+        $0.alphaComponent > 0.75 && $0.redComponent > $0.blueComponent + 0.2 && $0.blueComponent > $0.greenComponent + 0.1
+    })
 }
 
 @Test func labelsUseTheMonospacedSystemFont() {
