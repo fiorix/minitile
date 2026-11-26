@@ -174,7 +174,7 @@ final class DesktopNoticeView: NSView {
         PanelStyle.highlight.draw(plus)
         for (index, desktop) in desktops.enumerated() {
             GridPainter.text("Desktop \(index + 1)", rect: layout.labelRect(desktop), size: 9,
-                             color: index == 0 ? PanelStyle.dim : PanelStyle.amberCore,
+                             color: index == 0 ? PanelStyle.dim : PanelStyle.accentCore,
                              alignment: .center, monospaced: true)
         }
         GridPainter.text(layout.advice.title, rect: layout.headerRect, size: 13, weight: .semibold)

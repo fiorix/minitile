@@ -52,7 +52,7 @@ final class EdgeDropView: NSView {
         let top = NSRect(x: inner.minX, y: inner.minY, width: inner.width, height: max(2, inner.height - 1.5))
         if hovered {
             GridPainter.capsulePlate(top, fill: PanelStyle.plateFill, stroke: PanelStyle.highlight,
-                                     gradientTop: PanelStyle.amber.opacity(0.28), gradientBottom: PanelStyle.amberBloom.opacity(0.16))
+                                     gradientTop: PanelStyle.accent.opacity(0.28), gradientBottom: PanelStyle.accentBloom.opacity(0.16))
         } else {
             GridPainter.capsulePlate(top, fill: PanelStyle.plateFill, stroke: PanelStyle.plate,
                                      gradientTop: PanelStyle.wire.opacity(0.12), gradientBottom: PanelStyle.void.opacity(0.90))
@@ -60,7 +60,7 @@ final class EdgeDropView: NSView {
 
         let attributes: [NSAttributedString.Key: Any] = [
             .font: PanelStyle.font(size: 12.5, weight: hovered ? .semibold : .medium),
-            .foregroundColor: (hovered ? PanelStyle.amberCore : PanelStyle.dim).color,
+            .foregroundColor: (hovered ? PanelStyle.accentCore : PanelStyle.dim).color,
         ]
         let label = edge.title as NSString, size = label.size(withAttributes: attributes)
         label.draw(at: NSPoint(x: (bounds.width - size.width) / 2 + 9, y: (top.height - size.height) / 2 + top.minY),
@@ -88,7 +88,7 @@ final class EdgeDropView: NSView {
             path.lineCapStyle = .round
             path.lineJoinStyle = .round
             if hovered {
-                (idx == 1 ? PanelStyle.highlight : Stroke(paint: PanelStyle.amber.opacity(0.65), width: 1.0)).draw(path)
+                (idx == 1 ? PanelStyle.highlight : Stroke(paint: PanelStyle.accent.opacity(0.65), width: 1.0)).draw(path)
             } else {
                 Stroke(paint: PanelStyle.wire.opacity(idx == 1 ? 0.65 : 0.35), width: 1.0).draw(path)
             }

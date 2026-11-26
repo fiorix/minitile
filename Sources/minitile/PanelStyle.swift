@@ -173,7 +173,7 @@ struct Stroke: Equatable {
 
 /// Shared visual tokens for minitile's panels: dark navy + cool steel-blue wireframes (`void` + `wire`), concentric
 /// Apple continuous-corner ("squircle") platters, 2.5D milled page basins and Z-lifted window slabs, and the two-state
-/// P1 neon system (`neon` cyan for resting spatial context, `amber` for active focus, selection, drop targets and grab).
+/// neon system (`neon` cyan for resting spatial context, `accent` pink for active focus, selection, drop targets and grab).
 enum PanelStyle {
     static let void = Paint(rgb: 0x05070c)
     static let well = Paint(rgb: 0x04060b)
@@ -186,16 +186,16 @@ enum PanelStyle {
     static let neon = Paint(rgb: 0x53e9ff)
     static let neonCore = Paint(rgb: 0xdcfbff)
 
-    /// Active focal target (focused/selected window slab, hovered drop target, preview tunnel, grab clamp).
-    static let amber = Paint(rgb: 0xffb038)
-    static let amberCore = Paint(rgb: 0xfff3d6)
-    static let amberBloom = Paint(rgb: 0xd95b00)
+    /// Active focal target in Laser Rose pink (focused/selected window slab, hovered drop target, preview tunnel, grab clamp).
+    static let accent = Paint(rgb: 0xff5599)
+    static let accentCore = Paint(rgb: 0xffe4f0)
+    static let accentBloom = Paint(rgb: 0xc21868)
 
     static let glow = Glow(paint: neon.opacity(0.85), radii: [6, 2])
-    static let amberGlow = Glow(paint: amber.opacity(0.88), radii: [6, 2])
+    static let accentGlow = Glow(paint: accent.opacity(0.88), radii: [6, 2])
 
     static func lit(width: CGFloat) -> Stroke { Stroke(paint: neonCore, width: width, glow: glow) }
-    static func focal(width: CGFloat) -> Stroke { Stroke(paint: amberCore, width: width, glow: amberGlow) }
+    static func focal(width: CGFloat) -> Stroke { Stroke(paint: accentCore, width: width, glow: accentGlow) }
 
     /// Laid over the blurred backdrop.
     static let tint = void.opacity(0.68)
@@ -211,7 +211,7 @@ enum PanelStyle {
     static let tileFill = wire.opacity(0.08)
     /// The focused tile in the indicator, the selection in the switcher and the hovered tile in the drop picker.
     static let highlight = focal(width: 1.2)
-    static let highlightFill = amber.opacity(0.20)
+    static let highlightFill = accent.opacity(0.20)
     /// Behind the floating badge and tray, the reserved slots' icons, and the switcher's Dock capsule.
     static let plate = Stroke(paint: wire.opacity(0.52), width: 0.75)
     static let plateFill = void.opacity(0.94)
@@ -226,7 +226,7 @@ enum PanelStyle {
     static let reservedOpacity: CGFloat = 0.42
 
     static let preview = focal(width: 1.5)
-    static let previewFill = amber.opacity(0.08)
+    static let previewFill = accent.opacity(0.08)
     /// Just outside the preview's pale outline, which alone would vanish over a light window.
     static let keyline = Stroke(paint: void.opacity(0.55), width: 1)
     /// Wider than the preview's line, since it has no fill to carry it.
@@ -254,8 +254,8 @@ enum PanelStyle {
 
         let basePath = Squircle.path(base, radius: baseRadius)
         if let accent {
-            let tint = accent.paint == amberCore ? amber : neon
-            let bloom = accent.paint == amberCore ? amberBloom : skyBloom
+            let tint = accent.paint == accentCore ? Self.accent : neon
+            let bloom = accent.paint == accentCore ? accentBloom : skyBloom
             NSGradient(starting: tint.opacity(0.32).color, ending: bloom.opacity(0.42).color)?.draw(in: basePath, angle: 90)
             accent.draw(inside: base, radius: baseRadius)
         } else {
@@ -267,8 +267,8 @@ enum PanelStyle {
         void.opacity(0.88).color.setFill()
         dishPath.fill()
         if let accent {
-            let tint = accent.paint == amberCore ? amber : neon
-            let bloom = accent.paint == amberCore ? amberBloom : skyBloom
+            let tint = accent.paint == accentCore ? Self.accent : neon
+            let bloom = accent.paint == accentCore ? accentBloom : skyBloom
             NSGradient(starting: tint.opacity(0.22).color, ending: bloom.opacity(0.08).color)?.draw(in: dishPath, angle: 95)
             Stroke(paint: accent.paint.opacity(0.82), width: 0.65).draw(inside: dish, radius: dishRadius)
         } else {

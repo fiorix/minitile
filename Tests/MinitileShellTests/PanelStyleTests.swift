@@ -12,14 +12,14 @@ import Testing
     #expect(PanelStyle.skyBloom == Paint(rgb: 0x2d5cff))
     #expect(PanelStyle.neon == Paint(rgb: 0x53e9ff))
     #expect(PanelStyle.neonCore == Paint(rgb: 0xdcfbff))
-    #expect(PanelStyle.amber == Paint(rgb: 0xffb038))
-    #expect(PanelStyle.amberCore == Paint(rgb: 0xfff3d6))
-    #expect(PanelStyle.amberBloom == Paint(rgb: 0xd95b00))
-    let amber = PanelStyle.amber.opacity(0.4)
-    #expect(amber.rgb == 0xffb038 && amber.alpha == 0.4)
-    let expected: [CGFloat] = [0xff, 0xb0, 0x38, 0.4 * 255].map { $0 / 255 }
-    #expect([amber.red, amber.green, amber.blue, amber.alpha] == expected)
-    let color = try #require(amber.color.usingColorSpace(.sRGB))
+    #expect(PanelStyle.accent == Paint(rgb: 0xff5599))
+    #expect(PanelStyle.accentCore == Paint(rgb: 0xffe4f0))
+    #expect(PanelStyle.accentBloom == Paint(rgb: 0xc21868))
+    let accent = PanelStyle.accent.opacity(0.4)
+    #expect(accent.rgb == 0xff5599 && accent.alpha == 0.4)
+    let expected: [CGFloat] = [0xff, 0x55, 0x99, 0.4 * 255].map { $0 / 255 }
+    #expect([accent.red, accent.green, accent.blue, accent.alpha] == expected)
+    let color = try #require(accent.color.usingColorSpace(.sRGB))
     let components = [color.redComponent, color.greenComponent, color.blueComponent, color.alphaComponent]
     #expect(zip(components, expected).allSatisfy { abs($0 - $1) < 1e-6 })
 }
@@ -32,24 +32,24 @@ import Testing
     #expect(PanelStyle.emptyPage == Stroke(paint: Paint(rgb: 0x7d9cc9, alpha: 0.22), width: 0.8))
     #expect(PanelStyle.tile == Stroke(paint: Paint(rgb: 0x7d9cc9, alpha: 0.55), width: 0.75))
     #expect(PanelStyle.tileFill == Paint(rgb: 0x7d9cc9, alpha: 0.08))
-    #expect(PanelStyle.highlightFill == Paint(rgb: 0xffb038, alpha: 0.20))
+    #expect(PanelStyle.highlightFill == Paint(rgb: 0xff5599, alpha: 0.20))
     #expect(PanelStyle.plate == Stroke(paint: Paint(rgb: 0x7d9cc9, alpha: 0.52), width: 0.75))
     #expect(PanelStyle.plateFill == Paint(rgb: 0x05070c, alpha: 0.94))
     #expect(PanelStyle.iconOpacity == 0.75 && PanelStyle.reservedOpacity < PanelStyle.iconOpacity)
-    #expect(PanelStyle.previewFill == Paint(rgb: 0xffb038, alpha: 0.08))
+    #expect(PanelStyle.previewFill == Paint(rgb: 0xff5599, alpha: 0.08))
     #expect(PanelStyle.keyline == Stroke(paint: Paint(rgb: 0x05070c, alpha: 0.55), width: 1))
     #expect(PanelStyle.marker == Stroke(paint: Paint(rgb: 0x7d9cc9, alpha: 0.6), width: 1))
 }
 
-@Test @MainActor func onlyStateIsLitWithCyanContextAndSolarAmberFocus() {
+@Test @MainActor func onlyStateIsLitWithCyanContextAndPinkFocus() {
     let cyanGlow = Glow(paint: Paint(rgb: 0x53e9ff, alpha: 0.85), radii: [6, 2])
-    let amberGlow = Glow(paint: Paint(rgb: 0xffb038, alpha: 0.88), radii: [6, 2])
+    let accentGlow = Glow(paint: Paint(rgb: 0xff5599, alpha: 0.88), radii: [6, 2])
     #expect(PanelStyle.glow == cyanGlow && cyanGlow.reach == 6)
-    #expect(PanelStyle.amberGlow == amberGlow && amberGlow.reach == 6)
+    #expect(PanelStyle.accentGlow == accentGlow && accentGlow.reach == 6)
     #expect(PanelStyle.shownPage == Stroke(paint: Paint(rgb: 0xdcfbff), width: 1.1, glow: cyanGlow) && PanelStyle.shownPage.reach == 6)
     let focal: [(Stroke, CGFloat)] = [(PanelStyle.highlight, 1.2), (PanelStyle.preview, 1.5), (PanelStyle.grab, 2)]
     for (stroke, width) in focal {
-        #expect(stroke == Stroke(paint: Paint(rgb: 0xfff3d6), width: width, glow: amberGlow) && stroke.reach == 6)
+        #expect(stroke == Stroke(paint: Paint(rgb: 0xffe4f0), width: width, glow: accentGlow) && stroke.reach == 6)
     }
     for stroke in [PanelStyle.border, PanelStyle.page, PanelStyle.emptyPage, PanelStyle.tile, PanelStyle.plate, PanelStyle.keyline,
                    PanelStyle.marker] {
@@ -104,7 +104,7 @@ import Testing
     #expect(alpha(rect.midX, rect.midY) == 0)
 }
 
-@Test @MainActor func offscreenViewsRenderAmberFocalElementsAndConcentricHugs() throws {
+@Test @MainActor func offscreenViewsRenderPinkFocalElementsAndConcentricHugs() throws {
     let preview = DropPreviewView(frame: NSRect(x: 0, y: 0, width: 280, height: 190))
     let previewRep = try #require(preview.bitmapImageRepForCachingDisplay(in: preview.bounds))
     preview.cacheDisplay(in: preview.bounds, to: previewRep)

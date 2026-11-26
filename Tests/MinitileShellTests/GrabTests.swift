@@ -298,7 +298,7 @@ private func highlight() -> (GrabHighlight, FakeOutline, FakeTimer) {
 @Test @MainActor func outlineIsALitLineInTheGapJustOutsideTheTile() {
     let tile = NSRect(x: 100, y: 200, width: 640, height: 480)
     let width = PanelStyle.grab.width, hugOffset = GrabPanel.hugOffset, reach = PanelStyle.grab.reach
-    #expect(PanelStyle.grab.glow == PanelStyle.amberGlow && width <= Config.default.gaps / 2)
+    #expect(PanelStyle.grab.glow == PanelStyle.accentGlow && width <= Config.default.gaps / 2)
     let frame = GrabPanel.frame(around: tile)
     let line = GrabOutlineView.line(in: NSRect(origin: .zero, size: frame.size))
     // The line runs from the tile's edge out into the gap, and the panel leaves room for the outer corner hugs and halo.

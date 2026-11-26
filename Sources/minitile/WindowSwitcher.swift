@@ -603,9 +603,9 @@ final class SwitcherView: NSView {
             let posW = ceil(posText.size(withAttributes: [.font: PanelStyle.font(size: 9.5 * s, weight: .semibold, monospaced: true)]).width) + 16 * s
             let posPill = NSRect(x: bounds.width - margin - 4 * s - posW, y: 9 * s, width: posW, height: 17 * s)
             GridPainter.capsulePlate(posPill, fill: PanelStyle.plateFill, stroke: PanelStyle.highlight,
-                                     gradientTop: PanelStyle.amber.opacity(0.22), gradientBottom: PanelStyle.amberBloom.opacity(0.12))
+                                     gradientTop: PanelStyle.accent.opacity(0.22), gradientBottom: PanelStyle.accentBloom.opacity(0.12))
             GridPainter.text(content.position, rect: NSRect(x: posPill.minX, y: posPill.minY + 2.5 * s, width: posPill.width, height: 13 * s),
-                             size: 9.5 * s, weight: .semibold, color: PanelStyle.amberCore, alignment: .center, monospaced: true)
+                             size: 9.5 * s, weight: .semibold, color: PanelStyle.accentCore, alignment: .center, monospaced: true)
         }
         // The display's name shares the title's row, right-aligned under the position, as the indicator's "Active" does.
         let named = content.displayName != nil

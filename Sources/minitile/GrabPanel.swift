@@ -15,7 +15,7 @@ final class GrabPanel: GrabPresenting {
     var visible: Bool { panel?.isVisible == true }
 
     /// The line lies just outside the tile, in the gap, with four concentric corner-arc hugs outside it; the panel
-    /// reaches past the hugs so their Solar Amber halo is not clipped.
+    /// reaches past the hugs so their focal halo is not clipped.
     static func frame(around tile: NSRect) -> NSRect {
         let margin = PanelStyle.grab.width + hugOffset + PanelStyle.grab.reach
         return tile.insetBy(dx: -margin, dy: -margin)

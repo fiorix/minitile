@@ -100,7 +100,7 @@ final class DropPickerView: NSView {
 }
 
 /// A concentric continuous-squircle 3D landing bay for the frame the dragged window would get: outer corner-arc hugs,
-/// a dark keyline, a Solar Amber rim, and nested depth rings receding inward.
+/// a dark keyline, a focal-accent rim, and nested depth rings receding inward.
 @MainActor
 final class DropPreviewView: NSView {
     static let radius: CGFloat = 14
@@ -124,7 +124,7 @@ final class DropPreviewView: NSView {
             let ring = inner.insetBy(dx: inset, dy: inset)
             guard ring.width > 12, ring.height > 12 else { break }
             let ringRadius = max(4, Self.radius - inset * 0.55)
-            Stroke(paint: PanelStyle.amber.opacity(max(0.12, 0.46 - step * 0.11)), width: 0.85)
+            Stroke(paint: PanelStyle.accent.opacity(max(0.12, 0.46 - step * 0.11)), width: 0.85)
                 .draw(inside: ring, radius: ringRadius)
         }
         // Over the rim's halo, so the target keeps a crisp dark edge over light windows, then the outer corner hugs.

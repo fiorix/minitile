@@ -219,7 +219,7 @@ final class HelpView: NSView {
         GridPainter.background(bounds)
         PanelStyle.mark(in: header.mark)
         GridPainter.text(HelpHeader.title, rect: header.title, size: HelpHeader.titleSize, weight: .semibold,
-                         color: linkHovered ? PanelStyle.amberCore : PanelStyle.ink)
+                         color: linkHovered ? PanelStyle.accentCore : PanelStyle.ink)
         GridPainter.text(HelpHeader.subtitle, rect: header.subtitle, size: HelpHeader.textSize, color: PanelStyle.dim)
         if let version, !header.version.isEmpty {
             let pill = header.version.insetBy(dx: -5, dy: -1)

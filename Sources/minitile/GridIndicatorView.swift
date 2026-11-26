@@ -288,7 +288,7 @@ struct GridPainter {
         }
     }
 
-    /// The focused tile and the selected one are highlighted as Z-lifted Solar Amber squircle slabs; their icons alone
+    /// The focused tile and the selected one are highlighted as Z-lifted focal-accent squircle slabs; their icons alone
     /// are drawn at full opacity, shifted onto the elevated top face.
     func draw(_ miniature: GridMiniature, in cell: NSRect, current: Bool, litCell: Bool = false, selected: WindowID? = nil,
               dimmed: WindowID? = nil) {
@@ -358,7 +358,7 @@ struct GridPainter {
     }
 
     /// The switcher's apps row: a floating 3D Dock capsule with a curved lower bevel lip, lifting the selected app in
-    /// Solar Amber.
+    /// the focal accent.
     func shelf(_ pids: [Int32], geometry: GridIndicatorGeometry, selected: Int32?) {
         let s = metrics.scale
         guard let plate = geometry.shelfPlate else { return }
@@ -448,26 +448,26 @@ struct GridPainter {
         stroke.draw(inside: rect, radius: radius)
     }
 
-    /// A 2.5D continuous-squircle window slab. When `highlighted`, lifts up-left in Z on a smooth cylindrical Solar
-    /// Amber skirt and returns the elevated top-face rect.
+    /// A 2.5D continuous-squircle window slab. When `highlighted`, lifts up-left in Z on a smooth cylindrical focal
+    /// accent skirt and returns the elevated top-face rect.
     @discardableResult
     static func tileSlab(_ rect: NSRect, radius: CGFloat, highlighted: Bool, scale s: CGFloat = 1, lift customLift: CGPoint? = nil) -> NSRect {
         guard rect.width > 2, rect.height > 2 else { return rect }
         if highlighted {
             let lift = customLift ?? CGPoint(x: -1.8 * s, y: -2.5 * s)
             let basePath = Squircle.path(rect, radius: radius)
-            PanelStyle.amberBloom.opacity(0.22).color.setFill()
+            PanelStyle.accentBloom.opacity(0.22).color.setFill()
             basePath.fill()
-            Stroke(paint: PanelStyle.amber.opacity(0.45), width: 0.7).draw(inside: rect, radius: radius)
+            Stroke(paint: PanelStyle.accent.opacity(0.45), width: 0.7).draw(inside: rect, radius: radius)
 
             let steps = 10
             for step in 1..<steps {
                 let t = CGFloat(step) / CGFloat(steps)
                 let sliceRect = rect.offsetBy(dx: lift.x * t, dy: lift.y * t)
                 let slicePath = Squircle.path(sliceRect, radius: radius)
-                PanelStyle.amberBloom.opacity(0.05).color.setFill()
+                PanelStyle.accentBloom.opacity(0.05).color.setFill()
                 slicePath.fill()
-                let rim = step == steps / 2 ? PanelStyle.amberCore.opacity(0.28) : PanelStyle.amber.opacity(0.10 + 0.08 * t)
+                let rim = step == steps / 2 ? PanelStyle.accentCore.opacity(0.28) : PanelStyle.accent.opacity(0.10 + 0.08 * t)
                 Stroke(paint: rim, width: 1.1).draw(slicePath)
             }
 
@@ -475,10 +475,10 @@ struct GridPainter {
             let topPath = Squircle.path(topRect, radius: radius)
             PanelStyle.void.opacity(0.80).color.setFill()
             topPath.fill()
-            NSGradient(starting: PanelStyle.amber.opacity(0.30).color, ending: PanelStyle.amberBloom.opacity(0.16).color)?
+            NSGradient(starting: PanelStyle.accent.opacity(0.30).color, ending: PanelStyle.accentBloom.opacity(0.16).color)?
                 .draw(in: topPath, angle: 115)
             if topRect.width > 6, topRect.height > 6 {
-                Stroke(paint: PanelStyle.amberCore.opacity(0.34), width: 0.5)
+                Stroke(paint: PanelStyle.accentCore.opacity(0.34), width: 0.5)
                     .draw(inside: topRect.insetBy(dx: 1.8, dy: 1.8), radius: max(1, radius - 1.8))
             }
             PanelStyle.highlight.draw(inside: topRect, radius: radius)
@@ -522,7 +522,7 @@ struct GridPainter {
         PanelStyle.border.draw(inside: bounds, radius: radius)
     }
 
-    /// A monitor marker in unlit wire (unless hovered as a switcher drop target, where it lights in Solar Amber):
+    /// A monitor marker in unlit wire (unless hovered as a switcher drop target, where it lights in the focal accent):
     /// a rounded mini-display squircle on a stand, a chevron pointing out of the panel, and the display's name.
     static func marker(_ marker: MonitorMarker, geometry: GridIndicatorGeometry, lit: Bool = false) {
         let s = geometry.metrics.scale, parts = geometry.marker(marker.side)
@@ -532,7 +532,7 @@ struct GridPainter {
             PanelStyle.wire.opacity(0.08).color.setFill()
             Squircle.path(screen, radius: 2.2 * s).fill()
         } else {
-            PanelStyle.amber.opacity(0.18).color.setFill()
+            PanelStyle.accent.opacity(0.18).color.setFill()
             Squircle.path(screen, radius: 2.2 * s).fill()
         }
         stroke.draw(inside: screen, radius: 2.2 * s)
@@ -557,7 +557,7 @@ struct GridPainter {
         chevron.lineJoinStyle = .round
         stroke.draw(chevron)
         let sideways = marker.side == .left || marker.side == .right
-        text(marker.name, rect: parts.name, size: 9 * s, color: lit ? PanelStyle.amberCore : PanelStyle.dim,
+        text(marker.name, rect: parts.name, size: 9 * s, color: lit ? PanelStyle.accentCore : PanelStyle.dim,
              alignment: sideways ? .center : .left, monospaced: true)
     }
 
@@ -573,11 +573,11 @@ struct GridPainter {
         if current {
             let pillW = min(rect.width, max(rect.height * 1.4, CGFloat(string.count) * size * 0.72 + size * 0.9))
             let pill = NSRect(x: rect.midX - pillW / 2, y: rect.midY - rect.height / 2, width: pillW, height: rect.height)
-            capsulePlate(pill, fill: PanelStyle.plateFill, stroke: Stroke(paint: PanelStyle.amber.opacity(0.75), width: 0.8),
-                         gradientTop: PanelStyle.amber.opacity(0.20), gradientBottom: PanelStyle.amberBloom.opacity(0.10))
+            capsulePlate(pill, fill: PanelStyle.plateFill, stroke: Stroke(paint: PanelStyle.accent.opacity(0.75), width: 0.8),
+                         gradientTop: PanelStyle.accent.opacity(0.20), gradientBottom: PanelStyle.accentBloom.opacity(0.10))
         }
         text(string, rect: rect, size: size, weight: current ? .semibold : .regular,
-             color: current ? PanelStyle.amberCore : PanelStyle.dim, alignment: .center, monospaced: true)
+             color: current ? PanelStyle.accentCore : PanelStyle.dim, alignment: .center, monospaced: true)
     }
 
     static func text(_ string: String, rect: NSRect, size: CGFloat, weight: NSFont.Weight = .regular, color: Paint = PanelStyle.ink,
