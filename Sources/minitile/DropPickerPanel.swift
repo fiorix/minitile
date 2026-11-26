@@ -52,7 +52,8 @@ final class DropPickerPanels {
     }
 
     /// `styled` puts the view over the panels' dark backdrop; the preview draws only its outline.
-    static func makePanel(level: NSWindow.Level, shadow: Bool, view: NSView, styled: Bool) -> NSPanel {
+    static func makePanel(level: NSWindow.Level, shadow: Bool, view: NSView, styled: Bool,
+                          radius: CGFloat = PanelStyle.radius) -> NSPanel {
         let panel = GridPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.isReleasedWhenClosed = false
         panel.isFloatingPanel = true
@@ -64,7 +65,7 @@ final class DropPickerPanels {
         panel.animationBehavior = .none
         panel.level = level
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
-        if styled { panel.setStyledContent(view) } else { panel.contentView = view }
+        if styled { panel.setStyledContent(view, radius: radius) } else { panel.contentView = view }
         return panel
     }
 }
@@ -98,23 +99,36 @@ final class DropPickerView: NSView {
     }
 }
 
-/// A lit outline of the frame the dragged window would get, over a faint fill, with a dark keyline outside it.
+/// A concentric continuous-squircle 3D landing bay for the frame the dragged window would get: outer corner-arc hugs,
+/// a dark keyline, a Solar Amber rim, and nested depth rings receding inward.
 @MainActor
 final class DropPreviewView: NSView {
-    static let radius: CGFloat = 10
+    static let radius: CGFloat = 14
+    static let hugOffset: CGFloat = 6
 
-    /// The panel reaches past the window's frame so the outline's halo is not clipped.
+    /// The panel reaches past the window's frame so the outer corner-arc hugs and their halo are not clipped.
     static func frame(around target: NSRect) -> NSRect {
-        let reach = PanelStyle.preview.reach
-        return target.insetBy(dx: -reach, dy: -reach)
+        let margin = hugOffset + PanelStyle.preview.reach
+        return target.insetBy(dx: -margin, dy: -margin)
     }
 
+    override var isFlipped: Bool { true }
+
     override func draw(_ dirtyRect: NSRect) {
-        let keyline = PanelStyle.keyline, reach = PanelStyle.preview.reach
-        let frame = bounds.insetBy(dx: reach, dy: reach)
-        GridPainter.plate(frame.insetBy(dx: keyline.width, dy: keyline.width), radius: Self.radius, fill: PanelStyle.previewFill,
-                          stroke: PanelStyle.preview)
-        // Over the halo, so the outline keeps a dark edge over light windows.
+        let keyline = PanelStyle.keyline, margin = Self.hugOffset + PanelStyle.preview.reach
+        let frame = bounds.insetBy(dx: margin, dy: margin)
+        let inner = frame.insetBy(dx: keyline.width, dy: keyline.width)
+        GridPainter.plate(inner, radius: Self.radius, fill: PanelStyle.previewFill, stroke: PanelStyle.preview)
+        for step in [1, 2, 3] as [CGFloat] {
+            let inset = step * 8
+            let ring = inner.insetBy(dx: inset, dy: inset)
+            guard ring.width > 12, ring.height > 12 else { break }
+            let ringRadius = max(4, Self.radius - inset * 0.55)
+            Stroke(paint: PanelStyle.amber.opacity(max(0.12, 0.46 - step * 0.11)), width: 0.85)
+                .draw(inside: ring, radius: ringRadius)
+        }
+        // Over the rim's halo, so the target keeps a crisp dark edge over light windows, then the outer corner hugs.
         keyline.draw(inside: frame, radius: Self.radius + keyline.width)
+        PanelStyle.cornerHugs(around: inner, radius: Self.radius, offset: Self.hugOffset, arm: 22, stroke: PanelStyle.preview)
     }
 }

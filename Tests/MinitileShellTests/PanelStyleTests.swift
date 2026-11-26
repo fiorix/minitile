@@ -5,49 +5,59 @@ import Testing
 
 @Test func paletteIsTheBrandsInSRGB() throws {
     #expect(PanelStyle.void == Paint(rgb: 0x05070c))
+    #expect(PanelStyle.well == Paint(rgb: 0x04060b))
     #expect(PanelStyle.wire == Paint(rgb: 0x7d9cc9))
     #expect(PanelStyle.ink == Paint(rgb: 0xe8f0fc))
     #expect(PanelStyle.dim == Paint(rgb: 0x8e9cb4))
+    #expect(PanelStyle.skyBloom == Paint(rgb: 0x2d5cff))
     #expect(PanelStyle.neon == Paint(rgb: 0x53e9ff))
     #expect(PanelStyle.neonCore == Paint(rgb: 0xdcfbff))
-    let neon = PanelStyle.neon.opacity(0.4)
-    #expect(neon.rgb == 0x53e9ff && neon.alpha == 0.4)
-    let expected: [CGFloat] = [0x53, 0xe9, 0xff, 0.4 * 255].map { $0 / 255 }
-    #expect([neon.red, neon.green, neon.blue, neon.alpha] == expected)
-    let color = try #require(neon.color.usingColorSpace(.sRGB))
+    #expect(PanelStyle.amber == Paint(rgb: 0xffb038))
+    #expect(PanelStyle.amberCore == Paint(rgb: 0xfff3d6))
+    #expect(PanelStyle.amberBloom == Paint(rgb: 0xd95b00))
+    let amber = PanelStyle.amber.opacity(0.4)
+    #expect(amber.rgb == 0xffb038 && amber.alpha == 0.4)
+    let expected: [CGFloat] = [0xff, 0xb0, 0x38, 0.4 * 255].map { $0 / 255 }
+    #expect([amber.red, amber.green, amber.blue, amber.alpha] == expected)
+    let color = try #require(amber.color.usingColorSpace(.sRGB))
     let components = [color.redComponent, color.greenComponent, color.blueComponent, color.alphaComponent]
     #expect(zip(components, expected).allSatisfy { abs($0 - $1) < 1e-6 })
 }
 
 @Test func panelsAreDarkTranslucentAndDrawnWithFineWire() {
-    #expect(PanelStyle.tint == Paint(rgb: 0x05070c, alpha: 0.6))
-    #expect(PanelStyle.border == Stroke(paint: Paint(rgb: 0x7d9cc9, alpha: 0.28), width: 0.5))
-    #expect(PanelStyle.page == Stroke(paint: Paint(rgb: 0x7d9cc9, alpha: 0.45), width: 0.75))
-    #expect(PanelStyle.emptyPage == Stroke(paint: Paint(rgb: 0x7d9cc9, alpha: 0.2), width: 0.75))
-    #expect(PanelStyle.tile == Stroke(paint: Paint(rgb: 0x7d9cc9, alpha: 0.5), width: 0.5))
-    #expect(PanelStyle.tileFill == Paint(rgb: 0x7d9cc9, alpha: 0.05))
-    #expect(PanelStyle.highlightFill == Paint(rgb: 0x53e9ff, alpha: 0.12))
-    #expect(PanelStyle.plate == Stroke(paint: Paint(rgb: 0x7d9cc9, alpha: 0.5), width: 0.5))
-    #expect(PanelStyle.plateFill == Paint(rgb: 0x05070c, alpha: 0.92))
-    #expect(PanelStyle.iconOpacity == 0.7 && PanelStyle.reservedOpacity < PanelStyle.iconOpacity)
-    #expect(PanelStyle.previewFill == Paint(rgb: 0x53e9ff, alpha: 0.08))
-    #expect(PanelStyle.keyline == Stroke(paint: Paint(rgb: 0x05070c, alpha: 0.5), width: 1))
+    #expect(PanelStyle.tint == Paint(rgb: 0x05070c, alpha: 0.68))
+    #expect(PanelStyle.border == Stroke(paint: Paint(rgb: 0x7d9cc9, alpha: 0.36), width: 0.75))
+    #expect(PanelStyle.radius == 24 && PanelStyle.pageRadius == 7.5 && PanelStyle.tileRadius == 5)
+    #expect(PanelStyle.page == Stroke(paint: Paint(rgb: 0x7d9cc9, alpha: 0.48), width: 0.8))
+    #expect(PanelStyle.emptyPage == Stroke(paint: Paint(rgb: 0x7d9cc9, alpha: 0.22), width: 0.8))
+    #expect(PanelStyle.tile == Stroke(paint: Paint(rgb: 0x7d9cc9, alpha: 0.55), width: 0.75))
+    #expect(PanelStyle.tileFill == Paint(rgb: 0x7d9cc9, alpha: 0.08))
+    #expect(PanelStyle.highlightFill == Paint(rgb: 0xffb038, alpha: 0.20))
+    #expect(PanelStyle.plate == Stroke(paint: Paint(rgb: 0x7d9cc9, alpha: 0.52), width: 0.75))
+    #expect(PanelStyle.plateFill == Paint(rgb: 0x05070c, alpha: 0.94))
+    #expect(PanelStyle.iconOpacity == 0.75 && PanelStyle.reservedOpacity < PanelStyle.iconOpacity)
+    #expect(PanelStyle.previewFill == Paint(rgb: 0xffb038, alpha: 0.08))
+    #expect(PanelStyle.keyline == Stroke(paint: Paint(rgb: 0x05070c, alpha: 0.55), width: 1))
     #expect(PanelStyle.marker == Stroke(paint: Paint(rgb: 0x7d9cc9, alpha: 0.6), width: 1))
 }
 
-@Test @MainActor func onlyStateIsLitAndPanelsLeaveRoomForTheHalo() {
-    let glow = Glow(paint: Paint(rgb: 0x53e9ff, alpha: 0.85), radii: [6, 2])
-    #expect(PanelStyle.glow == glow && glow.reach == 6)
-    let lit: [(Stroke, CGFloat)] = [(PanelStyle.shownPage, 1), (PanelStyle.highlight, 1), (PanelStyle.preview, 1.5), (PanelStyle.grab, 2)]
-    for (stroke, width) in lit {
-        #expect(stroke == Stroke(paint: Paint(rgb: 0xdcfbff), width: width, glow: glow) && stroke.reach == 6)
+@Test @MainActor func onlyStateIsLitWithCyanContextAndSolarAmberFocus() {
+    let cyanGlow = Glow(paint: Paint(rgb: 0x53e9ff, alpha: 0.85), radii: [6, 2])
+    let amberGlow = Glow(paint: Paint(rgb: 0xffb038, alpha: 0.88), radii: [6, 2])
+    #expect(PanelStyle.glow == cyanGlow && cyanGlow.reach == 6)
+    #expect(PanelStyle.amberGlow == amberGlow && amberGlow.reach == 6)
+    #expect(PanelStyle.shownPage == Stroke(paint: Paint(rgb: 0xdcfbff), width: 1.1, glow: cyanGlow) && PanelStyle.shownPage.reach == 6)
+    let focal: [(Stroke, CGFloat)] = [(PanelStyle.highlight, 1.2), (PanelStyle.preview, 1.5), (PanelStyle.grab, 2)]
+    for (stroke, width) in focal {
+        #expect(stroke == Stroke(paint: Paint(rgb: 0xfff3d6), width: width, glow: amberGlow) && stroke.reach == 6)
     }
     for stroke in [PanelStyle.border, PanelStyle.page, PanelStyle.emptyPage, PanelStyle.tile, PanelStyle.plate, PanelStyle.keyline,
                    PanelStyle.marker] {
         #expect(stroke.glow == nil && stroke.reach == 0)
     }
     let target = NSRect(x: 100, y: 200, width: 640, height: 480)
-    #expect(DropPreviewView.frame(around: target) == target.insetBy(dx: -6, dy: -6))
+    let previewMargin = DropPreviewView.hugOffset + PanelStyle.preview.reach
+    #expect(DropPreviewView.frame(around: target) == target.insetBy(dx: -previewMargin, dy: -previewMargin))
 }
 
 /// Draws into a transparent bitmap at twice the point size, as on a Retina display.
@@ -65,15 +75,15 @@ import Testing
     return rep
 }
 
-@Test @MainActor func aLitLineGlowsWithinItsReachAndIsLitInBandsExactlyAsWhole() throws {
-    let size = NSSize(width: 200, height: 140), rect = NSRect(x: 20, y: 20, width: 160, height: 100), radius: CGFloat = 12
+@Test @MainActor func aLitSquircleGlowsWithinItsReachAndIsLitInBandsExactlyAsWhole() throws {
+    let size = NSSize(width: 220, height: 150), rect = NSRect(x: 20, y: 20, width: 180, height: 110), radius: CGFloat = 12
     let stroke = PanelStyle.grab, glow = try #require(stroke.glow)
     #expect(glow.bands(around: rect, radius: radius, width: stroke.width).count == 4)
     #expect(glow.bands(around: NSRect(x: 0, y: 0, width: 40, height: 30), radius: radius, width: stroke.width).count == 1)
     let banded = try render(size) { stroke.draw(inside: rect, radius: radius) }
     let whole = try render(size) {
         let inset = stroke.width / 2
-        let path = NSBezierPath(roundedRect: rect.insetBy(dx: inset, dy: inset), xRadius: radius - inset, yRadius: radius - inset)
+        let path = Squircle.path(rect.insetBy(dx: inset, dy: inset), radius: radius - inset)
         path.lineWidth = stroke.width
         glow.light(path, core: stroke.paint)
     }
@@ -86,12 +96,36 @@ import Testing
     func alpha(_ x: CGFloat, _ y: CGFloat) -> CGFloat {
         banded.colorAt(x: Int(x * 2), y: Int((size.height - y) * 2))?.alphaComponent ?? -1
     }
-    // The core is opaque, the halo shows on both sides of it, at the corners too, and has faded out by its reach.
+    // The core is opaque, the halo shows on both sides of it, at the continuous corners too, and fades out by its reach.
     #expect(alpha(rect.midX, rect.maxY - 1) == 1)
     #expect(alpha(rect.midX, rect.maxY + 1.5) > 0.1 && alpha(rect.midX, rect.maxY - stroke.width - 1) > 0.1)
-    #expect(alpha(rect.minX + 2, rect.minY + 2) > 0.05)
+    #expect(alpha(rect.minX + 3, rect.minY + 3) > 0.05)
     #expect(alpha(rect.midX, rect.maxY + stroke.reach + 1) == 0 && alpha(rect.minX - stroke.reach - 1, rect.midY) == 0)
     #expect(alpha(rect.midX, rect.midY) == 0)
+}
+
+@Test @MainActor func offscreenViewsRenderAmberFocalElementsAndConcentricHugs() throws {
+    let preview = DropPreviewView(frame: NSRect(x: 0, y: 0, width: 280, height: 190))
+    let previewRep = try #require(preview.bitmapImageRepForCachingDisplay(in: preview.bounds))
+    preview.cacheDisplay(in: preview.bounds, to: previewRep)
+    try saveRender(previewRep, name: "drop-preview-tunnel")
+    let previewColors = try drawn(preview, in: NSRect(x: 4, y: 4, width: 44, height: 44)).compactMap { $0.usingColorSpace(.sRGB) }
+    #expect(previewColors.contains { $0.redComponent > $0.blueComponent + 0.2 })
+
+    let grab = GrabOutlineView(frame: NSRect(x: 0, y: 0, width: 280, height: 190))
+    let grabRep = try #require(grab.bitmapImageRepForCachingDisplay(in: grab.bounds))
+    grab.cacheDisplay(in: grab.bounds, to: grabRep)
+    try saveRender(grabRep, name: "grab-corner-hugs")
+    let grabColors = try drawn(grab, in: NSRect(x: 4, y: 4, width: 44, height: 44)).compactMap { $0.usingColorSpace(.sRGB) }
+    #expect(grabColors.contains { $0.redComponent > $0.blueComponent + 0.2 })
+
+    let notice = DesktopNoticeView(layout: DesktopNoticeLayout(name: "Studio Display"))
+    let noticeRep = try #require(notice.bitmapImageRepForCachingDisplay(in: notice.bounds))
+    notice.cacheDisplay(in: notice.bounds, to: noticeRep)
+    try saveRender(noticeRep, name: "desktop-notice")
+    let secondDesktop = notice.layout.desktops[1]
+    let noticeColors = try drawn(notice, in: secondDesktop).compactMap { $0.usingColorSpace(.sRGB) }
+    #expect(noticeColors.contains { $0.redComponent > $0.blueComponent + 0.2 })
 }
 
 @Test func labelsUseTheMonospacedSystemFont() {

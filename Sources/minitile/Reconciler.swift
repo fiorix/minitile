@@ -214,6 +214,7 @@ final class Reconciler {
     var geometry = GeometrySettlement()
     private(set) var scene = Scene()
     private var spaces: [WindowID: UInt64] = [:]
+    private var recentMoves: [SpaceMove] = []
     private var frames: [WindowID: Rect] = [:]
     private var correctedFrames: [WindowID: Rect] = [:]
     private var deferred: [WindowID: Rect] = [:]
@@ -229,6 +230,7 @@ final class Reconciler {
     var activation: (pid: Int32, source: String, received: TimeInterval)?
     private(set) var activationTimings: [ActivationTiming] = []
     var submitSpaceMove: (SpaceMove) -> Bool = { csl_move_windows($0.windows, $0.windows.count, $0.space) }
+    var readWindowSpaces: (WindowID) -> [UInt64] = DisplayCatalog.windowSpaces
     var readEnhancedUI: (AXUIElement) -> Bool? = { AX.value($0, "AXEnhancedUserInterface") as? Bool }
     var setEnhancedUI: (AXUIElement, Bool) -> Void = { AX.set($0, "AXEnhancedUserInterface", $1 ? kCFBooleanTrue : kCFBooleanFalse) }
     var writeWindowFrame: (WindowID, AXUIElement, Rect) -> Void = { _, element, target in AX.setFrame(element, target) }
@@ -258,10 +260,24 @@ final class Reconciler {
     func refreshSpaces(invalidateFrames: Bool = false) {
         if invalidateFrames { frames.removeAll() }
         spaces = [:]
+        recentMoves = []
         for id in discovery.windows.keys {
-            let current = DisplayCatalog.windowSpaces(id)
+            let current = readWindowSpaces(id)
             if current.count == 1 { spaces[id] = current[0] }
         }
+    }
+
+    /// Whether the last reconcile's desktop moves on `id` have settled in WindowServer.
+    func movesSettled(on id: DisplayID) -> Bool {
+        guard let display = displays.infos.first(where: { $0.id == id }), display.unmanagedReason == nil else { return true }
+        let owned = Set([display.visibleSpace, display.stashSpace].compactMap { $0 })
+        for move in recentMoves where owned.contains(move.space) {
+            for window in move.windows where discovery.windows[window] != nil && spaces[window] == move.space {
+                let actual = readWindowSpaces(window)
+                if !actual.isEmpty, !actual.contains(move.space) { return false }
+            }
+        }
+        return true
     }
 
     func externalMove(_ id: WindowID) { frames.removeValue(forKey: id) }
@@ -291,6 +307,7 @@ final class Reconciler {
         scene = output.scene
         let moves = ReconcilePlan.moves(scene: scene, displays: displays.infos,
                                         known: Set(discovery.windows.keys), spaces: spaces)
+        recentMoves = moves
         for move in moves { submit(move) }
         // macOS gives a window that leaves full screen the frame it had before, so its tile is written again then.
         frames = frames.filter { discovery.windows[$0.key]?.info.fullscreen != true }
@@ -337,7 +354,7 @@ final class Reconciler {
             guard let self, !self.discovery.frozen else { return }
             let failed = identities.compactMap { id, pid -> WindowID? in
                 guard self.discovery.windows[id]?.info.pid == pid, self.spaces[id] == move.space else { return nil }
-                let actual = DisplayCatalog.windowSpaces(id)
+                let actual = self.readWindowSpaces(id)
                 return !actual.isEmpty && !actual.contains(move.space) ? id : nil
             }
             if !failed.isEmpty {

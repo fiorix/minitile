@@ -288,29 +288,36 @@ struct GridPainter {
         }
     }
 
-    /// The focused tile and the selected one are highlighted; their icons alone are drawn at full opacity.
+    /// The focused tile and the selected one are highlighted as Z-lifted Solar Amber squircle slabs; their icons alone
+    /// are drawn at full opacity, shifted onto the elevated top face.
     func draw(_ miniature: GridMiniature, in cell: NSRect, current: Bool, litCell: Bool = false, selected: WindowID? = nil,
               dimmed: WindowID? = nil) {
         let s = metrics.scale
-        for tile in miniature.tiles {
+        let outline = litCell ? PanelStyle.highlight : current ? PanelStyle.shownPage : miniature.empty ? PanelStyle.emptyPage : PanelStyle.page
+        Self.pageWell(cell, radius: PanelStyle.pageRadius * s, stroke: outline, empty: miniature.empty && !current && !litCell)
+
+        // Draw unhighlighted tiles first so the Z-lifted highlighted slab hovers cleanly above neighbours.
+        let ordered = miniature.tiles.sorted { lhs, rhs in
+            let lLit = lhs.window != dimmed && (lhs.focused || lhs.window == selected)
+            let rLit = rhs.window != dimmed && (rhs.focused || rhs.window == selected)
+            return !lLit && rLit
+        }
+        for tile in ordered {
             guard let frame = tile.frame else { continue }
             let rect = GridIndicatorGeometry.tileRect(frame, area: area, cell: cell)
             let isDimmed = tile.window == dimmed
             let highlighted = !isDimmed && (tile.focused || tile.window == selected)
-            Self.plate(rect, radius: PanelStyle.tileRadius * s, fill: highlighted ? PanelStyle.highlightFill : PanelStyle.tileFill,
-                       stroke: highlighted ? PanelStyle.highlight : PanelStyle.tile)
+            let topFace = Self.tileSlab(rect, radius: PanelStyle.tileRadius * s, highlighted: highlighted, scale: s)
             if !tile.placeholder {
-                icon(tile.pid, in: GridIndicatorGeometry.iconRect(tile: rect, range: metrics.icon),
+                icon(tile.pid, in: GridIndicatorGeometry.iconRect(tile: topFace, range: metrics.icon),
                      fraction: isDimmed ? PanelStyle.reservedOpacity : highlighted ? 1 : PanelStyle.iconOpacity)
             }
         }
         let reserved = GridIndicatorGeometry.reservedRects(count: miniature.reserved.count, cell: cell, metrics: metrics)
         if let first = reserved.first, let last = reserved.last {
-            Self.plate(first.union(last).insetBy(dx: -s, dy: -s), radius: 2 * s, fill: PanelStyle.plateFill, stroke: PanelStyle.plate)
+            Self.capsulePlate(first.union(last).insetBy(dx: -1.5 * s, dy: -s), fill: PanelStyle.plateFill, stroke: PanelStyle.plate)
             for (slot, rect) in zip(miniature.reserved, reserved) { icon(slot.pid, in: rect, fraction: PanelStyle.reservedOpacity) }
         }
-        let outline = litCell ? PanelStyle.highlight : current ? PanelStyle.shownPage : miniature.empty ? PanelStyle.emptyPage : PanelStyle.page
-        outline.draw(inside: cell, radius: PanelStyle.pageRadius * s)
         if metrics.trayIcon != nil { tray(miniature.floaters.filter(\.active), cell: cell, selected: selected, dimmed: dimmed) }
         else if miniature.floating > 0 { badge(miniature.floating, cell: cell) }
     }
@@ -319,46 +326,64 @@ struct GridPainter {
     func dragIcon(_ pid: Int32, at point: CGPoint, scale s: CGFloat) {
         let side = (18 * s).rounded()
         let rect = NSRect(x: (point.x - side / 2).rounded(), y: (point.y - side / 2).rounded(), width: side, height: side)
-        Self.plate(rect.insetBy(dx: -2 * s, dy: -2 * s), radius: 4 * s, fill: PanelStyle.plateFill, stroke: PanelStyle.highlight)
-        icon(pid, in: rect, fraction: 1)
+        let face = Self.tileSlab(rect.insetBy(dx: -2 * s, dy: -2 * s), radius: 5 * s, highlighted: true, scale: s * 0.6)
+        icon(pid, in: face.insetBy(dx: 2 * s, dy: 2 * s), fraction: 1)
     }
 
     private func badge(_ count: Int, cell: NSRect) {
         let badge = GridIndicatorGeometry.badgeRect(count: count, cell: cell, metrics: metrics)
-        Self.plate(badge, radius: badge.height / 2, fill: PanelStyle.plateFill, stroke: PanelStyle.plate)
+        Self.capsulePlate(badge, fill: PanelStyle.plateFill, stroke: PanelStyle.plate)
         // Digits are as tall as capitals, so the baseline sits half a cap height below the badge's middle.
-        let size = 9 * metrics.scale, font = PanelStyle.font(size: size, weight: .medium, monospaced: true)
+        let size = 9 * metrics.scale, font = PanelStyle.font(size: size, weight: .semibold, monospaced: true)
         let line = NSRect(x: badge.minX, y: badge.midY + font.capHeight / 2 - font.ascender, width: badge.width,
                           height: font.ascender - font.descender)
-        Self.text(String(count), rect: line, size: size, weight: .medium, color: PanelStyle.dim, alignment: .center, monospaced: true)
+        Self.text(String(count), rect: line, size: size, weight: .semibold, color: PanelStyle.ink, alignment: .center, monospaced: true)
     }
 
     private func tray(_ floaters: [GridMiniature.Floater], cell: NSRect, selected: WindowID?, dimmed: WindowID? = nil) {
         let s = metrics.scale
         let rects = GridIndicatorGeometry.trayRects(count: floaters.count, cell: cell, metrics: metrics)
         guard let first = rects.first, let last = rects.last else { return }
-        Self.plate(first.union(last).insetBy(dx: -2 * s, dy: -2 * s), radius: 4 * s, fill: PanelStyle.plateFill, stroke: PanelStyle.plate)
+        Self.capsulePlate(first.union(last).insetBy(dx: -3 * s, dy: -2 * s), fill: PanelStyle.plateFill, stroke: PanelStyle.plate)
         for (floater, rect) in zip(floaters, rects) {
             let isDimmed = floater.window == dimmed
             let chosen = !isDimmed && floater.window == selected
             if chosen {
-                Self.plate(rect.insetBy(dx: -1.5 * s, dy: -1.5 * s), radius: 3 * s, fill: PanelStyle.highlightFill, stroke: PanelStyle.highlight)
+                let face = Self.tileSlab(rect.insetBy(dx: -1.5 * s, dy: -1.5 * s), radius: 4 * s, highlighted: true, scale: s * 0.5)
+                icon(floater.pid, in: face.insetBy(dx: 1.5 * s, dy: 1.5 * s), fraction: 1)
+            } else {
+                icon(floater.pid, in: rect, fraction: isDimmed ? PanelStyle.reservedOpacity : PanelStyle.iconOpacity)
             }
-            icon(floater.pid, in: rect, fraction: isDimmed ? PanelStyle.reservedOpacity : chosen ? 1 : PanelStyle.iconOpacity)
         }
     }
 
-    /// The switcher's apps row: icons on a plate, the selected one highlighted like a tray icon.
+    /// The switcher's apps row: a floating 3D Dock capsule with a curved lower bevel lip, lifting the selected app in
+    /// Solar Amber.
     func shelf(_ pids: [Int32], geometry: GridIndicatorGeometry, selected: Int32?) {
         let s = metrics.scale
         guard let plate = geometry.shelfPlate else { return }
-        Self.plate(plate, radius: 5 * s, fill: PanelStyle.plateFill, stroke: PanelStyle.plate)
+        let dock = plate.insetBy(dx: -3 * s, dy: -s)
+        let dockRadius = min(dock.height / 2, 12 * s)
+        let lip = dock.offsetBy(dx: 0, dy: 2 * s)
+        PanelStyle.void.opacity(0.96).color.setFill()
+        Squircle.path(lip, radius: dockRadius).fill()
+        Stroke(paint: PanelStyle.wire.opacity(0.32), width: 0.75).draw(inside: lip, radius: dockRadius)
+
+        let topPath = Squircle.path(dock, radius: dockRadius)
+        PanelStyle.plateFill.color.setFill()
+        topPath.fill()
+        NSGradient(starting: PanelStyle.wire.opacity(0.14).color, ending: PanelStyle.void.opacity(0.92).color)?.draw(in: topPath, angle: 90)
+        PanelStyle.plate.draw(inside: dock, radius: dockRadius)
+
         for (pid, rect) in zip(pids, geometry.shelfRects) {
             let chosen = pid == selected
             if chosen {
-                Self.plate(rect.insetBy(dx: -1.5 * s, dy: -1.5 * s), radius: 3 * s, fill: PanelStyle.highlightFill, stroke: PanelStyle.highlight)
+                let pad = rect.insetBy(dx: -2 * s, dy: -2 * s)
+                let face = Self.tileSlab(pad, radius: 6 * s, highlighted: true, scale: s * 0.75, lift: CGPoint(x: 0, y: -3 * s))
+                icon(pid, in: face.insetBy(dx: 2 * s, dy: 2 * s), fraction: 1)
+            } else {
+                icon(pid, in: rect, fraction: PanelStyle.iconOpacity)
             }
-            icon(pid, in: rect, fraction: chosen ? 1 : PanelStyle.iconOpacity)
         }
     }
 
@@ -368,34 +393,155 @@ struct GridPainter {
             image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: fraction, respectFlipped: true,
                        hints: [.interpolation: NSNumber(value: NSImageInterpolation.high.rawValue)])
         } else {
-            PanelStyle.wire.opacity(0.5 * fraction).color.setFill()
-            NSBezierPath(roundedRect: rect.insetBy(dx: 1, dy: 1), xRadius: 2, yRadius: 2).fill()
+            PanelStyle.wire.opacity(0.38 * fraction).color.setFill()
+            Squircle.path(rect.insetBy(dx: 1, dy: 1), radius: rect.width * 0.225).fill()
         }
     }
 
     static func plate(_ rect: NSRect, radius: CGFloat, fill: Paint, stroke: Stroke) {
+        let path = Squircle.path(rect, radius: radius)
         fill.color.setFill()
-        NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+        path.fill()
         stroke.draw(inside: rect, radius: radius)
     }
 
-    /// The tint and border over a panel's blurred backdrop.
-    static func background(_ bounds: NSRect) {
-        plate(bounds, radius: PanelStyle.radius, fill: PanelStyle.tint, stroke: PanelStyle.border)
+    static func capsulePlate(_ rect: NSRect, fill: Paint, stroke: Stroke, gradientTop: Paint? = nil, gradientBottom: Paint? = nil) {
+        let path = Squircle.capsule(rect)
+        fill.color.setFill()
+        path.fill()
+        if let gradientTop, let gradientBottom {
+            NSGradient(starting: gradientTop.color, ending: gradientBottom.color)?.draw(in: path, angle: 90)
+        }
+        stroke.draw(inside: rect, radius: min(rect.width, rect.height) / 2)
     }
 
-    /// A monitor marker in unlit wire, since it shows where Ctrl+arrows cross rather than state: a small screen on a
-    /// stand, a chevron pointing out of the panel, and the display's name in dim monospace.
+    /// A concave CNC-milled rounded dark glass basin for a page miniature.
+    static func pageWell(_ rect: NSRect, radius: CGFloat, stroke: Stroke, empty: Bool = false) {
+        guard rect.width > 2, rect.height > 2 else { return }
+        let outer = Squircle.path(rect, radius: radius)
+        PanelStyle.well.opacity(empty ? 0.42 : 0.82).color.setFill()
+        outer.fill()
+
+        let wall = min(3, min(rect.width, rect.height) * 0.08)
+        let floor = rect.insetBy(dx: wall, dy: wall)
+        let floorRadius = max(1.5, radius - wall)
+        NSGraphicsContext.saveGraphicsState()
+        outer.addClip()
+        Stroke(paint: PanelStyle.void.opacity(empty ? 0.30 : 0.58), width: 2.4).draw(Squircle.path(rect.offsetBy(dx: 1, dy: 1.5), radius: radius))
+        if !empty, floor.width > 12, floor.height > 12 {
+            let grid = NSBezierPath()
+            for step in 1..<4 {
+                let x = rect.minX + rect.width * CGFloat(step) / 4
+                grid.move(to: NSPoint(x: x, y: rect.minY))
+                grid.line(to: NSPoint(x: x, y: rect.maxY))
+            }
+            for step in 1..<3 {
+                let y = rect.minY + rect.height * CGFloat(step) / 3
+                grid.move(to: NSPoint(x: rect.minX, y: y))
+                grid.line(to: NSPoint(x: rect.maxX, y: y))
+            }
+            Stroke(paint: PanelStyle.wire.opacity(0.07), width: 0.5).draw(grid)
+        }
+        NSGraphicsContext.restoreGraphicsState()
+
+        Stroke(paint: PanelStyle.wire.opacity(empty ? 0.10 : 0.18), width: 0.5).draw(inside: floor, radius: floorRadius)
+        stroke.draw(inside: rect, radius: radius)
+    }
+
+    /// A 2.5D continuous-squircle window slab. When `highlighted`, lifts up-left in Z on a smooth cylindrical Solar
+    /// Amber skirt and returns the elevated top-face rect.
+    @discardableResult
+    static func tileSlab(_ rect: NSRect, radius: CGFloat, highlighted: Bool, scale s: CGFloat = 1, lift customLift: CGPoint? = nil) -> NSRect {
+        guard rect.width > 2, rect.height > 2 else { return rect }
+        if highlighted {
+            let lift = customLift ?? CGPoint(x: -1.8 * s, y: -2.5 * s)
+            let basePath = Squircle.path(rect, radius: radius)
+            PanelStyle.amberBloom.opacity(0.22).color.setFill()
+            basePath.fill()
+            Stroke(paint: PanelStyle.amber.opacity(0.45), width: 0.7).draw(inside: rect, radius: radius)
+
+            let steps = 10
+            for step in 1..<steps {
+                let t = CGFloat(step) / CGFloat(steps)
+                let sliceRect = rect.offsetBy(dx: lift.x * t, dy: lift.y * t)
+                let slicePath = Squircle.path(sliceRect, radius: radius)
+                PanelStyle.amberBloom.opacity(0.05).color.setFill()
+                slicePath.fill()
+                let rim = step == steps / 2 ? PanelStyle.amberCore.opacity(0.28) : PanelStyle.amber.opacity(0.10 + 0.08 * t)
+                Stroke(paint: rim, width: 1.1).draw(slicePath)
+            }
+
+            let topRect = rect.offsetBy(dx: lift.x, dy: lift.y)
+            let topPath = Squircle.path(topRect, radius: radius)
+            PanelStyle.void.opacity(0.80).color.setFill()
+            topPath.fill()
+            NSGradient(starting: PanelStyle.amber.opacity(0.30).color, ending: PanelStyle.amberBloom.opacity(0.16).color)?
+                .draw(in: topPath, angle: 115)
+            if topRect.width > 6, topRect.height > 6 {
+                Stroke(paint: PanelStyle.amberCore.opacity(0.34), width: 0.5)
+                    .draw(inside: topRect.insetBy(dx: 1.8, dy: 1.8), radius: max(1, radius - 1.8))
+            }
+            PanelStyle.highlight.draw(inside: topRect, radius: radius)
+            return topRect
+        } else {
+            let depth = CGPoint(x: min(2.2, 1.0 * s), y: min(3.0, 1.4 * s))
+            for step in [1.0, 0.5] as [CGFloat] {
+                let slice = rect.offsetBy(dx: depth.x * step, dy: depth.y * step)
+                let slicePath = Squircle.path(slice, radius: radius)
+                PanelStyle.void.opacity(0.42).color.setFill()
+                slicePath.fill()
+                Stroke(paint: PanelStyle.wire.opacity(0.18 * (1.2 - 0.4 * step)), width: 0.6).draw(slicePath)
+            }
+            let topPath = Squircle.path(rect, radius: radius)
+            PanelStyle.void.opacity(0.76).color.setFill()
+            topPath.fill()
+            NSGradient(starting: PanelStyle.wire.opacity(0.14).color, ending: PanelStyle.void.opacity(0.82).color)?
+                .draw(in: topPath, angle: 105)
+            PanelStyle.tile.draw(inside: rect, radius: radius)
+            return rect
+        }
+    }
+
+    /// The tint, cool glass sheen, concentric inner bevel and border over a panel's blurred backdrop.
+    static func background(_ bounds: NSRect, radius: CGFloat = PanelStyle.radius) {
+        let hull = Squircle.path(bounds, radius: radius)
+        PanelStyle.tint.color.setFill()
+        hull.fill()
+        NSGradient(starting: PanelStyle.wire.opacity(0.09).color, ending: PanelStyle.skyBloom.opacity(0.03).color)?
+            .draw(in: hull, angle: 108)
+        if bounds.width > 12, bounds.height > 12 {
+            let inset: CGFloat = 3
+            Stroke(paint: PanelStyle.wire.opacity(0.15), width: 0.5).draw(inside: bounds.insetBy(dx: inset, dy: inset),
+                                                                          radius: max(2, radius - inset))
+            NSGraphicsContext.saveGraphicsState()
+            NSRect(x: bounds.minX + radius * 0.6, y: bounds.minY, width: max(0, bounds.width - radius * 1.2), height: 3).clip()
+            Stroke(paint: PanelStyle.ink.opacity(0.38), width: 1.0).draw(inside: bounds.insetBy(dx: 0.8, dy: 0.8),
+                                                                         radius: max(2, radius - 0.8))
+            NSGraphicsContext.restoreGraphicsState()
+        }
+        PanelStyle.border.draw(inside: bounds, radius: radius)
+    }
+
+    /// A monitor marker in unlit wire (unless hovered as a switcher drop target, where it lights in Solar Amber):
+    /// a rounded mini-display squircle on a stand, a chevron pointing out of the panel, and the display's name.
     static func marker(_ marker: MonitorMarker, geometry: GridIndicatorGeometry, lit: Bool = false) {
         let s = geometry.metrics.scale, parts = geometry.marker(marker.side)
         let stroke = lit ? PanelStyle.highlight : PanelStyle.marker
         let glyph = parts.screen, screen = NSRect(x: glyph.minX, y: glyph.minY, width: glyph.width, height: (9 * s).rounded())
-        stroke.draw(inside: screen, radius: 1.5 * s)
+        if !lit {
+            PanelStyle.wire.opacity(0.08).color.setFill()
+            Squircle.path(screen, radius: 2.2 * s).fill()
+        } else {
+            PanelStyle.amber.opacity(0.18).color.setFill()
+            Squircle.path(screen, radius: 2.2 * s).fill()
+        }
+        stroke.draw(inside: screen, radius: 2.2 * s)
         let base = glyph.maxY - stroke.width / 2, stand = NSBezierPath()
         stand.move(to: NSPoint(x: glyph.midX, y: screen.maxY))
         stand.line(to: NSPoint(x: glyph.midX, y: base))
         stand.move(to: NSPoint(x: glyph.midX - 3.5 * s, y: base))
         stand.line(to: NSPoint(x: glyph.midX + 3.5 * s, y: base))
+        stand.lineCapStyle = .round
         stroke.draw(stand)
         let c = parts.chevron
         let points = switch marker.side {
@@ -411,7 +557,7 @@ struct GridPainter {
         chevron.lineJoinStyle = .round
         stroke.draw(chevron)
         let sideways = marker.side == .left || marker.side == .right
-        text(marker.name, rect: parts.name, size: 9 * s, color: lit ? PanelStyle.neon : PanelStyle.dim,
+        text(marker.name, rect: parts.name, size: 9 * s, color: lit ? PanelStyle.amberCore : PanelStyle.dim,
              alignment: sideways ? .center : .left, monospaced: true)
     }
 
@@ -424,8 +570,14 @@ struct GridPainter {
     }
 
     static func label(_ string: String, rect: NSRect, size: CGFloat, current: Bool) {
-        text(string, rect: rect, size: size, weight: current ? .semibold : .regular, color: current ? PanelStyle.ink : PanelStyle.dim,
-             alignment: .center, monospaced: true)
+        if current {
+            let pillW = min(rect.width, max(rect.height * 1.4, CGFloat(string.count) * size * 0.72 + size * 0.9))
+            let pill = NSRect(x: rect.midX - pillW / 2, y: rect.midY - rect.height / 2, width: pillW, height: rect.height)
+            capsulePlate(pill, fill: PanelStyle.plateFill, stroke: Stroke(paint: PanelStyle.amber.opacity(0.75), width: 0.8),
+                         gradientTop: PanelStyle.amber.opacity(0.20), gradientBottom: PanelStyle.amberBloom.opacity(0.10))
+        }
+        text(string, rect: rect, size: size, weight: current ? .semibold : .regular,
+             color: current ? PanelStyle.amberCore : PanelStyle.dim, alignment: .center, monospaced: true)
     }
 
     static func text(_ string: String, rect: NSRect, size: CGFloat, weight: NSFont.Weight = .regular, color: Paint = PanelStyle.ink,
@@ -475,8 +627,11 @@ final class GridIndicatorView: NSView {
         GridPainter.text(content.position, rect: NSRect(x: margin, y: 28 * s, width: width - 46 * s, height: 16 * s), size: 11 * s,
                          color: PanelStyle.dim, monospaced: true)
         if content.active {
-            GridPainter.text("Active", rect: NSRect(x: bounds.width - margin - 42 * s, y: 28 * s, width: 42 * s, height: 16 * s),
-                             size: 10 * s, color: PanelStyle.neon, alignment: .right, monospaced: true)
+            let pill = NSRect(x: bounds.width - margin - 50 * s, y: 12 * s, width: 50 * s, height: 18 * s)
+            GridPainter.capsulePlate(pill, fill: PanelStyle.plateFill, stroke: PanelStyle.shownPage,
+                                     gradientTop: PanelStyle.neon.opacity(0.20), gradientBottom: PanelStyle.skyBloom.opacity(0.12))
+            GridPainter.text("Active", rect: NSRect(x: pill.minX, y: pill.minY + 3 * s, width: pill.width, height: 13 * s),
+                             size: 9.5 * s, weight: .semibold, color: PanelStyle.neonCore, alignment: .center, monospaced: true)
         }
         if let warning = content.warning {
             GridPainter.text(warning, rect: NSRect(x: margin, y: 52 * s, width: width, height: 52 * s), size: 11 * s,

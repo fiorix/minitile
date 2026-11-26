@@ -226,6 +226,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         transitions.commit = { [weak self] in self?.commitHeld($0) }
         transitions.model = { [weak self] in self?.engine.savedState() ?? SavedState() }
         transitions.showsItsPage = { [weak self] id, state in self?.showsItsPage(id, state: state) ?? true }
+        transitions.incomingReady = { [weak self] id in self?.reconciler?.movesSettled(on: id) ?? true }
         transitions.uncovered = { [weak self] in self?.updateGrab() }
         grabHighlight.due = { [weak self] in self?.updateGrab() }
         updateTransitions()

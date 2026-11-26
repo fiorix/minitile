@@ -5,6 +5,7 @@ import MinitileCore
 /// move, so an animated command's reconcile waits for that capture, and every output arriving meanwhile joins it.
 @MainActor
 final class Transitions {
+    typealias Schedule = @MainActor (TimeInterval, @escaping @MainActor @Sendable () -> Void) -> Void
     static let captureTimeout: TimeInterval = 0.15
     /// About one frame for the overlay to reach the screen before windows move underneath it.
     static let coverDelay: TimeInterval = 0.016
@@ -28,18 +29,38 @@ final class Transitions {
     /// Whether the display is on the native Space of the page it shows in the given state: its visible desktop, or a
     /// full screen window's Space. Only then is what a slide or bounce captures the page.
     var showsItsPage: ((DisplayID, SavedState) -> Bool)?
+    /// Whether the display's desktop moves from the held reconcile have taken effect in WindowServer.
+    var incomingReady: ((DisplayID) -> Bool)?
     /// Runs when an overlay goes away, so what it hid can show again.
     var uncovered: (() -> Void)?
     private(set) var milliseconds: Double = 0
     private var gate: String? = "Not started"
     private let capture: any TransitionCapturing
-    private var overlays: [DisplayID: TransitionOverlay] = [:]
+    private let now: () -> TimeInterval
+    private let schedule: Schedule
+    private let makeOverlay: (DisplayID) -> (any TransitionAnimating)?
+    private var overlays: [DisplayID: any TransitionAnimating] = [:]
     private var pending: Pending?
     private var serial = 0
     private var bounceRequests: [DisplayID: Int] = [:]
     private var waiters: [() -> Void] = []
 
-    init(capture: any TransitionCapturing = ScreenCapture()) { self.capture = capture }
+    init(capture: any TransitionCapturing = ScreenCapture(),
+         now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+         schedule: @escaping Schedule = { delay, work in
+             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { MainActor.assumeIsolated { work() } }
+         },
+         makeOverlay: ((DisplayID) -> (any TransitionAnimating)?)? = nil) {
+        self.capture = capture
+        self.now = now
+        self.schedule = schedule
+        self.makeOverlay = makeOverlay ?? { id in
+            guard let screen = NSScreen.screen(for: id) else { return nil }
+            let overlay = TransitionOverlay()
+            overlay.place(on: screen)
+            return overlay
+        }
+    }
 
     var reason: String? { gate ?? capture.problem }
     var enabled: Bool { reason == nil }
@@ -83,7 +104,7 @@ final class Transitions {
         let serial = serial
         pending = Pending(serial: serial, before: before, reconcile: PendingReconcile(output), waiting: Set(slides))
         for id in slides { captureLeaving(id, serial: serial) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.captureTimeout) { [weak self] in
+        schedule(Self.captureTimeout) { [weak self] in
             guard let self, self.pending?.serial == serial, self.pending?.covering == false else { return }
             logger.info("Transition capture timed out; applying without a slide where missing")
             self.cover()
@@ -116,13 +137,15 @@ final class Transitions {
         capture.clear()
     }
 
-    private func overlay(_ id: DisplayID) -> TransitionOverlay? {
-        guard let screen = NSScreen.screen(for: id) else { return nil }
-        let overlay = overlays[id] ?? TransitionOverlay()
-        if overlays[id] == nil { overlay.ended = { [weak self] in self?.uncovered?() } }
-        overlays[id] = overlay
-        overlay.place(on: screen)
-        return overlay
+    private func overlay(_ id: DisplayID) -> (any TransitionAnimating)? {
+        if let existing = overlays[id] {
+            if let screen = NSScreen.screen(for: id) { existing.place(on: screen) }
+            return existing
+        }
+        guard let created = makeOverlay(id) else { return nil }
+        created.ended = { [weak self] in self?.uncovered?() }
+        overlays[id] = created
+        return created
     }
 
     private func captureLeaving(_ id: DisplayID, serial: Int) {
@@ -149,7 +172,7 @@ final class Transitions {
         self.pending = pending
         guard !pending.sliding.isEmpty else { commitPending(); return }
         let serial = pending.serial
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.coverDelay) { [weak self] in
+        schedule(Self.coverDelay) { [weak self] in
             guard self?.pending?.serial == serial else { return }
             self?.commitPending()
         }
@@ -159,11 +182,11 @@ final class Transitions {
         guard let pending else { return }
         self.pending = nil
         commit?(pending.reconcile.output(modelFocus: model?().focus))
-        let deadline = ProcessInfo.processInfo.systemUptime + Self.incomingTimeout
+        let deadline = now() + Self.incomingTimeout
         for (id, generation) in pending.sliding {
             captureIncoming(id, generation: generation, deadline: deadline)
             // Without the new page's image, ending the slide early beats a dark page sliding all the way in.
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.incomingTimeout) { [weak self] in
+            schedule(Self.incomingTimeout) { [weak self] in
                 guard let overlay = self?.overlays[id], overlay.generation == generation, overlay.awaitingIncoming else { return }
                 logger.info("Transition incoming capture missing; ending the slide early")
                 overlay.end(generation)
@@ -177,10 +200,10 @@ final class Transitions {
     /// Capture the new page once its windows have moved, only while the display is on that page's Space: if macOS
     /// switched to the stash, the shell bounces back first.
     private func captureIncoming(_ id: DisplayID, generation: Int, deadline: TimeInterval) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.incomingDelay) { [weak self] in
+        schedule(Self.incomingDelay) { [weak self] in
             guard let self, let overlay = self.overlays[id], overlay.generation == generation,
-                  ProcessInfo.processInfo.systemUptime < deadline else { return }
-            if let state = self.model?(), self.showsItsPage?(id, state) == false {
+                  self.now() < deadline else { return }
+            if (self.model.map { self.showsItsPage?(id, $0()) == false } ?? false) || self.incomingReady?(id) == false {
                 self.captureIncoming(id, generation: generation, deadline: deadline); return
             }
             self.capture.image(of: id) { image in

@@ -159,19 +159,22 @@ final class DesktopNoticeView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         GridPainter.background(bounds)
-        let desktops = layout.desktops, radius = PanelStyle.pageRadius
-        GridPainter.plate(desktops[0], radius: radius, fill: PanelStyle.tileFill, stroke: PanelStyle.page)
-        GridPainter.plate(desktops[0].insetBy(dx: 10, dy: 8), radius: PanelStyle.tileRadius, fill: PanelStyle.tileFill, stroke: PanelStyle.tile)
-        GridPainter.plate(desktops[1], radius: radius, fill: PanelStyle.highlightFill, stroke: PanelStyle.highlight)
-        let plus = NSBezierPath(), center = CGPoint(x: desktops[1].midX, y: desktops[1].midY), arm: CGFloat = 6
+        let desktops = layout.desktops, radius: CGFloat = 9
+        GridPainter.pageWell(desktops[0], radius: radius, stroke: PanelStyle.page)
+        GridPainter.tileSlab(desktops[0].insetBy(dx: 9, dy: 7), radius: 5, highlighted: false, scale: 1)
+
+        let lifted = GridPainter.tileSlab(desktops[1], radius: radius, highlighted: true, scale: 1.3,
+                                          lift: CGPoint(x: -2.5, y: -3.5))
+        let plus = NSBezierPath(), center = CGPoint(x: lifted.midX, y: lifted.midY), arm: CGFloat = 6.5
         plus.move(to: CGPoint(x: center.x - arm, y: center.y))
         plus.line(to: CGPoint(x: center.x + arm, y: center.y))
         plus.move(to: CGPoint(x: center.x, y: center.y - arm))
         plus.line(to: CGPoint(x: center.x, y: center.y + arm))
-        plus.lineWidth = PanelStyle.highlight.width
-        PanelStyle.glow.light(plus, core: PanelStyle.neonCore)
+        plus.lineCapStyle = .round
+        PanelStyle.highlight.draw(plus)
         for (index, desktop) in desktops.enumerated() {
-            GridPainter.text("Desktop \(index + 1)", rect: layout.labelRect(desktop), size: 9, color: index == 0 ? PanelStyle.dim : PanelStyle.neon,
+            GridPainter.text("Desktop \(index + 1)", rect: layout.labelRect(desktop), size: 9,
+                             color: index == 0 ? PanelStyle.dim : PanelStyle.amberCore,
                              alignment: .center, monospaced: true)
         }
         GridPainter.text(layout.advice.title, rect: layout.headerRect, size: 13, weight: .semibold)

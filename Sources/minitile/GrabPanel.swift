@@ -7,16 +7,17 @@ final class GrabPanel: GrabPresenting {
     /// Above normal windows and below the page-transition overlays (one below `.floating`), so a slide covers it, and
     /// the position indicator, the drop picker and the window switcher above those.
     static let level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue - 2)
-    /// The corner radius at the tile's edge.
+    /// The corner radius at the tile's edge, matching macOS window corners, and the offset of the outer corner hugs.
     static let radius: CGFloat = 12
+    static let hugOffset: CGFloat = 6
     private var panel: NSPanel?
 
     var visible: Bool { panel?.isVisible == true }
 
-    /// The line lies just outside the tile, in the gap, so it does not cover the window's edge; the panel reaches past
-    /// it so the halo is not clipped.
+    /// The line lies just outside the tile, in the gap, with four concentric corner-arc hugs outside it; the panel
+    /// reaches past the hugs so their Solar Amber halo is not clipped.
     static func frame(around tile: NSRect) -> NSRect {
-        let margin = PanelStyle.grab.width + PanelStyle.grab.reach
+        let margin = PanelStyle.grab.width + hugOffset + PanelStyle.grab.reach
         return tile.insetBy(dx: -margin, dy: -margin)
     }
 
@@ -54,16 +55,19 @@ final class GrabPanel: GrabPresenting {
 
 @MainActor
 final class GrabOutlineView: NSView {
-    /// The rect the line is drawn just inside, the tile grown by the line's width, and its corner radius there, which
-    /// keeps the line concentric with the tile's corner.
+    /// The rect the line is drawn just inside, the tile grown by the line's width, and its concentric corner radius.
     static func line(in bounds: NSRect) -> (rect: NSRect, radius: CGFloat) {
-        let reach = PanelStyle.grab.reach
-        return (bounds.insetBy(dx: reach, dy: reach), GrabPanel.radius + PanelStyle.grab.width)
+        let outer = GrabPanel.hugOffset + PanelStyle.grab.reach
+        return (bounds.insetBy(dx: outer, dy: outer), GrabPanel.radius + PanelStyle.grab.width)
     }
+
+    override var isFlipped: Bool { true }
 
     override func draw(_ dirtyRect: NSRect) {
         let line = Self.line(in: bounds)
         PanelStyle.grab.draw(inside: line.rect, radius: line.radius)
+        PanelStyle.cornerHugs(around: line.rect, radius: line.radius, offset: GrabPanel.hugOffset, arm: 22,
+                              stroke: PanelStyle.highlight)
     }
 }
 

@@ -591,16 +591,28 @@ final class SwitcherView: NSView {
     private func drawInner(_ geometry: GridIndicatorGeometry) {
         let s = geometry.metrics.scale, margin = geometry.margin, bounds = NSRect(origin: .zero, size: geometry.inner)
         let width = bounds.width - 2 * margin
-        GridPainter.text(content.app, rect: NSRect(x: margin, y: 10 * s, width: width - 156 * s, height: 17 * s), size: 12 * s,
+        let headerPlinth = NSRect(x: margin - 4 * s, y: 6 * s, width: width + 8 * s, height: 40 * s)
+        PanelStyle.well.opacity(0.68).color.setFill()
+        Squircle.path(headerPlinth, radius: 10 * s).fill()
+        Stroke(paint: PanelStyle.wire.opacity(0.24), width: 0.65).draw(inside: headerPlinth, radius: 10 * s)
+
+        GridPainter.text(content.app, rect: NSRect(x: margin + 4 * s, y: 10 * s, width: width - 168 * s, height: 17 * s), size: 12 * s,
                          weight: .semibold)
-        GridPainter.text(content.position, rect: NSRect(x: bounds.width - margin - 150 * s, y: 11 * s, width: 150 * s, height: 16 * s),
-                         size: 10 * s, color: PanelStyle.dim, alignment: .right, monospaced: true)
+        if !content.position.isEmpty {
+            let posText = content.position as NSString
+            let posW = ceil(posText.size(withAttributes: [.font: PanelStyle.font(size: 9.5 * s, weight: .semibold, monospaced: true)]).width) + 16 * s
+            let posPill = NSRect(x: bounds.width - margin - 4 * s - posW, y: 9 * s, width: posW, height: 17 * s)
+            GridPainter.capsulePlate(posPill, fill: PanelStyle.plateFill, stroke: PanelStyle.highlight,
+                                     gradientTop: PanelStyle.amber.opacity(0.22), gradientBottom: PanelStyle.amberBloom.opacity(0.12))
+            GridPainter.text(content.position, rect: NSRect(x: posPill.minX, y: posPill.minY + 2.5 * s, width: posPill.width, height: 13 * s),
+                             size: 9.5 * s, weight: .semibold, color: PanelStyle.amberCore, alignment: .center, monospaced: true)
+        }
         // The display's name shares the title's row, right-aligned under the position, as the indicator's "Active" does.
         let named = content.displayName != nil
-        GridPainter.text(content.title, rect: NSRect(x: margin, y: 28 * s, width: width - (named ? 156 * s : 0), height: 16 * s),
+        GridPainter.text(content.title, rect: NSRect(x: margin + 4 * s, y: 28 * s, width: width - (named ? 164 * s : 8 * s), height: 16 * s),
                          size: 11 * s, color: PanelStyle.dim)
         if let name = content.displayName {
-            GridPainter.text(name, rect: NSRect(x: bounds.width - margin - 150 * s, y: 29 * s, width: 150 * s, height: 16 * s),
+            GridPainter.text(name, rect: NSRect(x: bounds.width - margin - 154 * s, y: 29 * s, width: 150 * s, height: 16 * s),
                              size: 10 * s, color: PanelStyle.dim, alignment: .right, monospaced: true)
         }
         let painter = GridPainter(area: content.area, metrics: geometry.metrics, icons: icons)

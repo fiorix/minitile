@@ -225,6 +225,10 @@ private let up = TransitionKind.slide(TransitionDirection(dx: 0, dy: -1))
 @Test @MainActor func overlayStaysBelowTheIndicatorAndAboveNormalWindows() {
     #expect(TransitionOverlay.level.rawValue > NSWindow.Level.normal.rawValue)
     #expect(TransitionOverlay.level.rawValue < NSWindow.Level.floating.rawValue)
+    let horiz = TransitionOverlay.depthTransform(direction: TransitionDirection(dx: 1, dy: 0), angleDegrees: 4)
+    let vert = TransitionOverlay.depthTransform(direction: TransitionDirection(dx: 0, dy: 1), angleDegrees: 4)
+    #expect(horiz.m11 < 1 && horiz.m22 < 1 && horiz.m13 != 0 && horiz.m23 == 0)
+    #expect(vert.m11 < 1 && vert.m22 < 1 && vert.m23 != 0 && vert.m13 == 0)
 }
 
 @MainActor
@@ -238,22 +242,87 @@ private final class FakeCapture: TransitionCapturing {
 }
 
 @MainActor
+private final class FakeOverlay: TransitionAnimating {
+    var generation = 0
+    var awaitingIncoming = false
+    var covering = false
+    var ended: (() -> Void)?
+    var slides: [(CGImage, TransitionDirection, TimeInterval)] = []
+    var arrivals: [(CGImage, Int)] = []
+
+    func place(on screen: NSScreen) {}
+
+    func slide(from image: CGImage, direction: TransitionDirection, duration: TimeInterval) -> Int {
+        generation += 1
+        covering = true
+        awaitingIncoming = true
+        slides.append((image, direction, duration))
+        return generation
+    }
+
+    func arrive(_ image: CGImage, generation: Int) {
+        guard generation == self.generation else { return }
+        awaitingIncoming = false
+        arrivals.append((image, generation))
+    }
+
+    func bounce(_ image: CGImage, direction: TransitionDirection, duration: TimeInterval) {
+        generation += 1
+        covering = true
+    }
+
+    func end(_ generation: Int) {
+        guard generation == self.generation else { return }
+        self.generation += 1
+        awaitingIncoming = false
+        covering = false
+        ended?()
+    }
+
+    func close() { end(generation) }
+}
+
+@MainActor
 private final class Harness {
     let capture = FakeCapture()
     let transitions: Transitions
     var engine = started(5)
     var committed: [Output] = []
-    var image: CGImage {
-        let context = CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+    var clock: TimeInterval = 100
+    var timers: [(due: TimeInterval, work: @MainActor @Sendable () -> Void)] = []
+    var overlays: [DisplayID: FakeOverlay] = [:]
+
+    func makeImage(width: Int = 1) -> CGImage {
+        let context = CGContext(data: nil, width: width, height: 1, bitsPerComponent: 8, bytesPerRow: width * 4,
                                 space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
         return context.makeImage()!
     }
 
-    init() {
-        transitions = Transitions(capture: capture)
+    var image: CGImage { makeImage() }
+
+    init(withFakeOverlays: Bool = false) {
+        var holder: Harness?
+        transitions = Transitions(capture: capture, now: { holder?.clock ?? 0 }, schedule: { delay, work in
+            guard let h = holder else { return }
+            h.timers.append((h.clock + delay, work))
+        }, makeOverlay: withFakeOverlays ? { id in
+            guard let h = holder else { return nil }
+            let overlay = FakeOverlay()
+            h.overlays[id] = overlay
+            return overlay
+        } : nil)
+        holder = self
         transitions.configure(milliseconds: 500, reduceMotion: false, screenRecording: true)
         transitions.commit = { [unowned self] in self.committed.append($0) }
         transitions.model = { [unowned self] in self.engine.savedState() }
+    }
+
+    func advance(_ seconds: TimeInterval) {
+        clock += seconds
+        while let index = timers.firstIndex(where: { $0.due <= clock }) {
+            let item = timers.remove(at: index)
+            item.work()
+        }
     }
 
     /// The shell's handle path, reduced to what decides whether the reconcile is held.
@@ -342,4 +411,78 @@ private final class Harness {
     #expect(!h.transitions.covers("primary"))
     #expect(!h.handle(.command(["window", "resize", "1", "left"])))
     #expect(!h.transitions.covers("primary"))
+}
+
+@Test func screenCaptureRequiresOwnApplicationToExcludeOverlays() {
+    struct Failure: Error {}
+    #expect(ScreenCapture.loadProblem(contentPresent: true, applicationFound: true, error: nil) == nil)
+    #expect(ScreenCapture.loadProblem(contentPresent: true, applicationFound: false, error: nil) == "Screen capture content omitted minitile")
+    #expect(ScreenCapture.loadProblem(contentPresent: false, applicationFound: false, error: Failure())?.hasPrefix("Screen capture content failed:") == true)
+}
+
+@Test @MainActor func incomingCaptureWaitsUntilDesktopMovesSettle() {
+    let h = Harness(withFakeOverlays: true)
+    var ready = false
+    h.transitions.incomingReady = { _ in ready }
+
+    #expect(h.handle(.command(["page", "next"])))
+    #expect(h.capture.requests.count == 1)
+    let leaving = h.makeImage(width: 2)
+    h.capture.requests[0].1(leaving)
+
+    // Overlay covers with leaving snapshot first; reconcile waits coverDelay (16 ms).
+    #expect(h.overlays["primary"]?.slides.count == 1)
+    #expect(h.committed.isEmpty)
+    h.advance(Transitions.coverDelay)
+    #expect(h.committed.count == 1)
+
+    // At +20 ms, desktop moves have not settled yet, so incoming capture retries instead of screenshotting leaving windows.
+    h.advance(Transitions.incomingDelay)
+    #expect(h.capture.requests.count == 1)
+
+    // Once moves settle, the next 20 ms tick captures the landing page and fills the incoming layer.
+    ready = true
+    h.advance(Transitions.incomingDelay)
+    #expect(h.capture.requests.count == 2)
+    let landing = h.makeImage(width: 3)
+    h.capture.requests[1].1(landing)
+    #expect(h.overlays["primary"]?.arrivals.count == 1)
+    #expect(h.overlays["primary"]?.arrivals.first?.0.width == 3)
+    #expect(h.overlays["primary"]?.awaitingIncoming == false)
+}
+
+@Test @MainActor func reconcilerReportsWhetherDisplayMovesHaveSettledInWindowServer() {
+    let catalog = DisplayCatalog()
+    catalog.setDisplays([NativeDisplay(info: primary, identifier: "native-primary",
+                                       spaces: [NativeSpace(id: 1, type: 0), NativeSpace(id: 2, type: 0)], current: 1),
+                         NativeDisplay(info: secondary, identifier: "native-secondary",
+                                       spaces: [NativeSpace(id: 3, type: 0), NativeSpace(id: 4, type: 0)], current: 3)])
+    let discovery = Discovery(config: .default, displays: catalog)
+    for id: WindowID in [1, 2, 9] {
+        let display = id == 9 ? "secondary" : "primary"
+        discovery.setWindow(id, window: Discovery.Window(info: info(id, display: display), element: AXUIElementCreateApplication(Int32(id + 100))))
+    }
+    var actualSpaces: [WindowID: [UInt64]] = [1: [1], 2: [2], 9: [3]]
+    let reconciler = Reconciler(discovery: discovery, displays: catalog)
+    reconciler.submitSpaceMove = { _ in true }
+    reconciler.readWindowSpaces = { actualSpaces[$0] ?? [] }
+    reconciler.readEnhancedUI = { _ in nil }
+    reconciler.setEnhancedUI = { _, _ in }
+    reconciler.writeWindowFrame = { _, _, _ in }
+    reconciler.refreshSpaces()
+
+    // Flip primary from window 1 to window 2; WindowServer has not finished moving either window yet.
+    let scene = Scene(displays: ["primary": DisplayScene(visible: [2], stashed: [1], label: "1:2"),
+                                 "secondary": DisplayScene(visible: [9], stashed: [], label: "1:1")])
+    reconciler.apply(Output(scene: scene))
+    #expect(!reconciler.movesSettled(on: "primary"))
+    #expect(reconciler.movesSettled(on: "secondary"))
+
+    // Arriving window 2 reached visibleSpace 1, but leaving window 1 is still on visibleSpace 1.
+    actualSpaces[2] = [1]
+    #expect(!reconciler.movesSettled(on: "primary"))
+
+    // Leaving window 1 reaches stashSpace 2 (or an ordered-out window reports []), settling primary.
+    actualSpaces[1] = [2]
+    #expect(reconciler.movesSettled(on: "primary"))
 }

@@ -219,17 +219,35 @@ final class HelpView: NSView {
         GridPainter.background(bounds)
         PanelStyle.mark(in: header.mark)
         GridPainter.text(HelpHeader.title, rect: header.title, size: HelpHeader.titleSize, weight: .semibold,
-                         color: linkHovered ? PanelStyle.neon : PanelStyle.ink)
+                         color: linkHovered ? PanelStyle.amberCore : PanelStyle.ink)
         GridPainter.text(HelpHeader.subtitle, rect: header.subtitle, size: HelpHeader.textSize, color: PanelStyle.dim)
-        if let version { GridPainter.text(version, rect: header.version, size: HelpHeader.textSize, color: PanelStyle.dim, monospaced: true) }
+        if let version, !header.version.isEmpty {
+            let pill = header.version.insetBy(dx: -5, dy: -1)
+            GridPainter.capsulePlate(pill, fill: PanelStyle.plateFill, stroke: PanelStyle.plate)
+            GridPainter.text(version, rect: header.version, size: HelpHeader.textSize, color: PanelStyle.dim, monospaced: true)
+        }
+        let rule = NSBezierPath()
+        rule.move(to: CGPoint(x: HelpLayout.margin, y: HelpLayout.margin + HelpLayout.titleHeight - 6))
+        rule.line(to: CGPoint(x: bounds.width - HelpLayout.margin, y: HelpLayout.margin + HelpLayout.titleHeight - 6))
+        Stroke(paint: PanelStyle.wire.opacity(0.22), width: 0.65).draw(rule)
+
         for (index, column) in layout.columns.enumerated() {
             var origin = layout.origin(column: index)
+            var rowIndex = 0
             for line in column {
                 switch line {
                 case .header(let title):
+                    rowIndex = 0
                     GridPainter.text(title, rect: NSRect(x: origin.x, y: origin.y + line.height - 18, width: HelpLayout.columnWidth, height: 15),
-                                     size: 11, weight: .semibold)
+                                     size: 11, weight: .semibold, color: PanelStyle.neon)
                 case .entry(let entry):
+                    if rowIndex % 2 == 0 {
+                        let rowRect = NSRect(x: origin.x - 6, y: origin.y - 2, width: HelpLayout.columnWidth + 12, height: line.height - 2)
+                        PanelStyle.well.opacity(0.50).color.setFill()
+                        Squircle.path(rowRect, radius: 9).fill()
+                        Stroke(paint: PanelStyle.wire.opacity(0.14), width: 0.5).draw(inside: rowRect, radius: 9)
+                    }
+                    rowIndex += 1
                     GridPainter.text(entry.text, rect: NSRect(x: origin.x, y: origin.y + 5, width: HelpLayout.textWidth - 12, height: 16),
                                      size: 12)
                     if let detail = entry.detail {
@@ -240,15 +258,23 @@ final class HelpView: NSView {
                         let gap: CGFloat = 4
                         let width = entry.keys.reduce(CGFloat(0)) { $0 + PanelStyle.keycapSize($1).width } + CGFloat(entry.keys.count - 1) * gap
                         let scale = min(1, HelpLayout.keyWidth / max(1, width))
+                        let accent: Stroke? = if entry.text.hasPrefix("Find a window") { PanelStyle.highlight }
+                            else if entry.text.hasPrefix("Move around") { PanelStyle.shownPage }
+                            else { nil }
                         var x = origin.x + HelpLayout.columnWidth - width * scale
                         for key in entry.keys {
-                            PanelStyle.keycap(key, at: CGPoint(x: x, y: origin.y), scale: scale)
+                            PanelStyle.keycap(key, at: CGPoint(x: x, y: origin.y), scale: scale, accent: accent)
                             x += PanelStyle.keycapSize(key, scale: scale).width + gap * scale
                         }
                     } else {
-                        GridPainter.text(entry.keys.joined(separator: " "),
-                                         rect: NSRect(x: origin.x + HelpLayout.textWidth, y: origin.y + 5, width: HelpLayout.keyWidth, height: 16),
-                                         size: 12, color: PanelStyle.dim, alignment: .right)
+                        let label = entry.keys.joined(separator: " ")
+                        let textSize = (label as NSString).size(withAttributes: [.font: PanelStyle.font(size: 11)])
+                        let pillW = min(HelpLayout.keyWidth, ceil(textSize.width) + 20)
+                        let pill = NSRect(x: origin.x + HelpLayout.columnWidth - pillW, y: origin.y + 3, width: pillW, height: 21)
+                        GridPainter.capsulePlate(pill, fill: PanelStyle.plateFill, stroke: PanelStyle.plate,
+                                                 gradientTop: PanelStyle.wire.opacity(0.10), gradientBottom: PanelStyle.void.opacity(0.88))
+                        GridPainter.text(label, rect: NSRect(x: pill.minX, y: pill.minY + 3, width: pill.width, height: 15),
+                                         size: 11, color: PanelStyle.ink, alignment: .center)
                     }
                 }
                 origin.y += line.height
