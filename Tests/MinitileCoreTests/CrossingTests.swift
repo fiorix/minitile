@@ -258,8 +258,12 @@ func neighbourEdgeMayBeOffByAPoint(_ x: Double, _ found: Bool) {
 @Test func aDraggedWindowNeverCrosses() {
     var e = plus([(1, "centre"), (2, "left")], focus: 1)
     e.dragging = 1
-    command(&e, "window nudge 1 left")
-    command(&e, "window move 1 workspace prev")
+    let before = e.savedState()
+    for text in ["window nudge 1 left", "window move 1 workspace prev", "window move 1 workspace next"] {
+        let out = command(&e, text)
+        #expect(!out.stateChanged && out.events.isEmpty && out.actions.isEmpty && out.crossed == nil, "\(text)")
+        #expect(e.savedState() == before, "\(text)")
+    }
     #expect(grid(e, "centre") == [[[1]]])
     #expect(grid(e, "left") == [[[2]]])
     e.dragging = nil
@@ -299,6 +303,13 @@ func neighbourEdgeMayBeOffByAPoint(_ x: Double, _ found: Bool) {
     #expect(e.savedState().focus == 3)
     #expect(out.scene.displays["centre"]?.visible == [2])
     #expect(shown(out) == ["centre"])
+    // On below, 3 splits into a new bottom workspace, then stops with no display below it.
+    command(&e, "window move down")
+    #expect(grid(e, "below") == [[[4]], [[3]]])
+    let atBottom = e.savedState()
+    let stopped = command(&e, "window move workspace next")
+    #expect(!stopped.stateChanged && stopped.events.isEmpty && stopped.actions.isEmpty && stopped.crossed == nil)
+    #expect(e.savedState() == atBottom)
 }
 
 @Test func aWindowCarriedAcrossSpillsPastAFullShownPage() {

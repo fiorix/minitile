@@ -53,6 +53,7 @@ private extension SavedState {
     #expect(grabbing(&two, "window resize 2 left") == GrabCommand(window: 2, acted: true))
     #expect(grabbing(&two, "window nudge right") == GrabCommand(window: 1, acted: true))
     #expect(grabbing(&two, "window move workspace next") == GrabCommand(window: 1, acted: true))
+    #expect(grabbing(&two, "window move workspace next") == GrabCommand(window: 1, acted: false))
     // Alone on the first page and workspace: nothing to the left or above.
     #expect(grabbing(&two, "window move workspace prev") == GrabCommand(window: 1, acted: true))
     #expect(grabbing(&two, "window move workspace prev") == GrabCommand(window: 1, acted: false))

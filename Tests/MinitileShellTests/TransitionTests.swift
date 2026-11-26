@@ -64,6 +64,8 @@ private let up = TransitionKind.slide(TransitionDirection(dx: 0, dy: -1))
     // 1 is alone on its page, so it joins the page on its left.
     #expect(plan(&e, "window nudge 1 left") == ["primary": left])
     #expect(plan(&e, "window move 1 workspace next") == ["primary": down])
+    #expect(plan(&e, "window move 1 workspace next").isEmpty)
+    #expect(plan(&e, "window move 1 down").isEmpty)
     #expect(plan(&e, "window move 1 workspace prev") == ["primary": up])
     // 2 shares the first page, so it gets a new first page; only the state after holds both pages.
     #expect(plan(&e, "window nudge 2 left") == ["primary": left])

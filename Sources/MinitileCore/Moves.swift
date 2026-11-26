@@ -53,13 +53,17 @@ extension Engine {
     }
 
     /// A carry up from the first workspace, or down from a last workspace the window is alone in, would change
-    /// nothing on its display, so it goes to the display above or below.
+    /// nothing on its display, so it goes to the display above or below, or stops when none lies there.
     mutating func carryPastGrid(_ id: WindowID, from at: Location, address: String, output: inout Output) -> Bool {
         let workspaces = state.displays[at.display].workspaces
-        if address == "prev", at.workspace == 0 { return carryAcross(id, from: at, dx: 0, dy: -1, output: &output) }
+        if address == "prev", at.workspace == 0 {
+            carryAcross(id, from: at, dx: 0, dy: -1, output: &output)
+            return true
+        }
         guard address == "next", at.workspace == workspaces.count - 1,
               workspaces[at.workspace].pages.allSatisfy({ $0.windows.allSatisfy { $0 == id } }) else { return false }
-        return carryAcross(id, from: at, dx: 0, dy: 1, output: &output)
+        carryAcross(id, from: at, dx: 0, dy: 1, output: &output)
+        return true
     }
 
     mutating func moveTarget(_ id: WindowID, noun: String, address: String, output: inout Output) throws {
@@ -71,6 +75,7 @@ extension Engine {
             let pages = state.displays[d].workspaces[target.workspace].pages
             let index = try addressedIndex(address, current: target.page, count: pages.count, allowNext: true)
             if index == pages.count {
+                if let source = location(id), page(source).windows == [id] { return }
                 let created = PageState(id: nextSerial())
                 state.displays[d].workspaces[target.workspace].pages.append(created)
             }

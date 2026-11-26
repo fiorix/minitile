@@ -13,18 +13,50 @@ import Testing
     #expect(e.savedState().focus == 2)
 }
 
-@Test func nudgeAtOuterEdgeAndCarryAboveFirstAreNoOps() {
+@Test func nudgeAtOuterEdgeAndCarryPastVerticalEdgesAreNoOps() {
     var e = engine(1)
     command(&e, "window focus 1")
     let before = e.savedState()
-    for direction in ["left", "right"] {
-        let out = command(&e, "window nudge \(direction)")
-        #expect(out.actions.isEmpty)
-        #expect(out.events.isEmpty)
-        #expect(!out.stateChanged)
+    for text in ["window nudge left", "window nudge right", "window move up", "window move down",
+                 "window move workspace prev", "window move workspace next", "window move page next"] {
+        let out = command(&e, text)
+        #expect(out.actions.isEmpty, "\(text)")
+        #expect(out.events.isEmpty, "\(text)")
+        #expect(!out.stateChanged, "\(text)")
+        #expect(e.savedState() == before, "\(text)")
     }
-    command(&e, "window move up")
-    #expect(e.savedState() == before)
+}
+
+@Test func carryDownStopsOnceAloneInLastWorkspaceAndCarryUpStopsFromAnyFirstWorkspacePage() {
+    var e = engine(5)
+    // W1: P1 [1, 2, 3, 4], P2 [5] (shown on P1). Carrying stashed 5 up from W1 P2 changes nothing.
+    let beforeUp = e.savedState()
+    let up = command(&e, "window move 5 workspace prev")
+    #expect(!up.stateChanged && up.events.isEmpty && up.actions.isEmpty)
+    #expect(e.savedState() == beforeUp)
+    // Carrying 5 alone on the last page to page next also changes nothing.
+    let pageNext = command(&e, "window move 5 page next")
+    #expect(!pageNext.stateChanged && pageNext.events.isEmpty && pageNext.actions.isEmpty)
+    #expect(e.savedState() == beforeUp)
+    // Carry 1 down into a new bottom workspace, then repeat: further down carries are no-ops.
+    command(&e, "window focus 1")
+    command(&e, "window move workspace next")
+    #expect(grid(e) == [[[2, 3, 4], [5]], [[1]]])
+    let atBottom = e.savedState()
+    for text in ["window move workspace next", "window move down", "window move page next"] {
+        let out = command(&e, text)
+        #expect(!out.stateChanged && out.events.isEmpty && out.actions.isEmpty, "\(text)")
+        #expect(e.savedState() == atBottom, "\(text)")
+    }
+    // Once another window joins the bottom workspace on another page, carrying down creates a new workspace again.
+    command(&e, "window move 5 workspace next")
+    command(&e, "window nudge 5 right")
+    #expect(grid(e) == [[[2, 3, 4]], [[1], [5]]])
+    command(&e, "window move 5 workspace next")
+    #expect(grid(e) == [[[2, 3, 4]], [[1]], [[5]]])
+    // Carrying 1 (alone in non-last W2) down still moves it into existing W3.
+    command(&e, "window move 1 workspace next")
+    #expect(grid(e) == [[[2, 3, 4]], [[5, 1]]])
 }
 
 @Test func loneWindowNudgesLeftPastFullNeighborOntoNewFirstPage() {
